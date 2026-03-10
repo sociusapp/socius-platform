@@ -2,6 +2,7 @@ const Verification = require('../models/Verification')
 const User = require('../models/User')
 const logger = require('../utils/logger')
 const { compressImage } = require('../utils/imageCompressor')
+const redis = require('../config/redis')
 
 /**
  * Verification record get karo (ya banao agar nahi hai)
@@ -194,6 +195,10 @@ const approveVerification = async (userId, adminId) => {
     profileImage: verification.selfie?.fileUrl || null,
   })
 
+  // Clear caches so mobile app sees the update immediately
+  await redis.del(`user:home:${userId}`)
+  await redis.del(`user:profile:${userId}`)
+
   logger.info(`Verification approved: ${userId} by admin ${adminId}`)
   return verification
 }
@@ -229,6 +234,10 @@ const rejectVerification = async (userId, adminId, { failureReasons, adminNote }
     isIdentityVerified: false,
     accountStatus: 'pending_review',
   })
+
+  // Clear caches
+  await redis.del(`user:home:${userId}`)
+  await redis.del(`user:profile:${userId}`)
 
   logger.info(`Verification rejected: ${userId} by admin ${adminId}`)
   return verification
@@ -272,6 +281,10 @@ const requestResubmission = async (userId, adminId, { failureReasons, adminNote 
     isIdentityVerified: false,
     accountStatus: 'pending_review',
   })
+
+  // Clear caches
+  await redis.del(`user:home:${userId}`)
+  await redis.del(`user:profile:${userId}`)
 
   logger.info(`Resubmission requested by admin for user ${userId}`)
   return verification

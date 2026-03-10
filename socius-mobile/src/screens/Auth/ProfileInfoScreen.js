@@ -7,6 +7,8 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useResponsive } from '../../utils/responsive';
@@ -87,8 +89,8 @@ const UserProfileScreen = ({ navigation, route }) => {
         selectedGender === 'Male'
           ? 'male'
           : selectedGender === 'Female'
-          ? 'female'
-          : 'prefer_not_to_say';
+            ? 'female'
+            : 'prefer_not_to_say';
 
       const payload = {
         fullName: fullName.trim(),
@@ -159,211 +161,216 @@ const UserProfileScreen = ({ navigation, route }) => {
         style={{ borderBottomWidth: 0 }}
       />
 
-      <ScrollView
-        contentContainerStyle={[
-          styles.scrollContent,
-          { alignItems: 'center', paddingHorizontal: spacing(16), paddingTop: vscale(16) },
-        ]}
-        showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <View style={{ width: contentWidth }}>
-          <View style={[styles.titleSection, { marginBottom: vscale(28) }]}>
-            <Text style={[styles.mainTitle, { fontSize: ms(26), lineHeight: ms(32) }]}>
-              Tell us a bit about you
-            </Text>
-            <Text style={[styles.subtitle, { fontSize: ms(15), lineHeight: ms(22) }]}>
-              This helps people recognize each other and builds trust in the community.
-            </Text>
-          </View>
-
-          <View style={[styles.formContainer, { marginBottom: vscale(20) }]}>
-            {/* Full Name */}
-            <View
-              style={[
-                styles.fieldGroup,
-                {
-                  marginBottom: vscale(14),
-                  borderRadius: scale(13),
-                  padding: spacing(11),
-                  borderWidth: scale(1),
-                  shadowOffset: { width: 0, height: vscale(2) },
-                  shadowRadius: scale(6),
-                  elevation: scale(2),
-                },
-              ]}
-            >
-              <Text style={[styles.fieldLabel, { fontSize: ms(14), marginBottom: vscale(7) }]}>
-                Full Name
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            { alignItems: 'center', paddingHorizontal: spacing(16), paddingTop: vscale(16) },
+          ]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={{ width: contentWidth }}>
+            <View style={[styles.titleSection, { marginBottom: vscale(28) }]}>
+              <Text style={[styles.mainTitle, { fontSize: ms(26), lineHeight: ms(32) }]}>
+                Tell us a bit about you
               </Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  {
-                    borderRadius: scale(11),
-                    paddingHorizontal: spacing(11),
-                    paddingVertical: vscale(9),
-                    fontSize: ms(14),
-                    height: vscale(45),
-                    borderWidth: scale(1),
-                  },
-                ]}
-                placeholder="Enter your name"
-                placeholderTextColor="#CCCCCC"
-                value={fullName}
-                onChangeText={(text) => {
-                  setFullName(text);
-                  if (fieldErrors.fullName) {
-                    setFieldErrors((prev) => ({ ...prev, fullName: '' }));
-                  }
-                }}
-                editable={!isLoading}
-              />
-              {fieldErrors.fullName ? (
-                <Text
-                  style={[
-                    styles.errorText,
-                    { fontSize: ms(12), marginTop: vscale(4) },
-                  ]}
-                >
-                  {fieldErrors.fullName}
-                </Text>
-              ) : null}
+              <Text style={[styles.subtitle, { fontSize: ms(15), lineHeight: ms(22) }]}>
+                This helps people recognize each other and builds trust in the community.
+              </Text>
             </View>
 
-            {/* Age */}
-            <View
-              style={[
-                styles.fieldGroup,
-                {
-                  marginBottom: vscale(14),
-                  borderRadius: scale(13),
-                  padding: spacing(11),
-                  borderWidth: scale(1),
-                  shadowOffset: { width: 0, height: vscale(2) },
-                  shadowRadius: scale(6),
-                  elevation: scale(2),
-                },
-              ]}
-            >
-              <Text style={[styles.fieldLabel, { fontSize: ms(14), marginBottom: vscale(7) }]}>
-                Age
-              </Text>
-              <TextInput
+            <View style={[styles.formContainer, { marginBottom: vscale(20) }]}>
+              {/* Full Name */}
+              <View
                 style={[
-                  styles.input,
+                  styles.fieldGroup,
                   {
-                    borderRadius: scale(11),
-                    paddingHorizontal: spacing(11),
-                    paddingVertical: vscale(9),
-                    fontSize: ms(14),
-                    height: vscale(45),
+                    marginBottom: vscale(14),
+                    borderRadius: scale(13),
+                    padding: spacing(11),
                     borderWidth: scale(1),
+                    shadowOffset: { width: 0, height: vscale(2) },
+                    shadowRadius: scale(6),
+                    elevation: scale(2),
                   },
                 ]}
-                placeholder="Enter your age"
-                placeholderTextColor="#CCCCCC"
-                keyboardType="number-pad"
-                maxLength={3}
-                value={age}
-                onChangeText={(text) => {
-                  setAge(text);
-                  if (fieldErrors.age) {
-                    setFieldErrors((prev) => ({ ...prev, age: '' }));
-                  }
-                }}
-                editable={!isLoading}
-              />
-              {fieldErrors.age ? (
-                <Text
-                  style={[
-                    styles.errorText,
-                    { fontSize: ms(12), marginTop: vscale(4) },
-                  ]}
-                >
-                  {fieldErrors.age}
-                </Text>
-              ) : null}
-            </View>
-
-            {/* Gender */}
-            <View
-              style={[
-                styles.fieldGroup,
-                {
-                  marginBottom: vscale(14),
-                  borderRadius: scale(13),
-                  padding: spacing(11),
-                  borderWidth: scale(1),
-                  shadowOffset: { width: 0, height: vscale(2) },
-                  shadowRadius: scale(6),
-                  elevation: scale(2),
-                },
-              ]}
-            >
-              <View style={[styles.genderHeader, { marginBottom: vscale(7) }]}>
+              >
                 <Text style={[styles.fieldLabel, { fontSize: ms(14), marginBottom: vscale(7) }]}>
-                  Gender
+                  Full Name
                 </Text>
-                <Text
-                  style={[styles.optionalLabel, { fontSize: ms(13), marginLeft: spacing(4) }]}
-                >
-                  (Optional)
-                </Text>
-              </View>
-              <View style={[styles.genderButtonContainer, { gap: spacing(7) }]}>
-                {genderOptions.map(option => (
-                  <TouchableOpacity
-                    key={option}
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      borderRadius: scale(11),
+                      paddingHorizontal: spacing(11),
+                      paddingVertical: vscale(9),
+                      fontSize: ms(14),
+                      height: vscale(45),
+                      borderWidth: scale(1),
+                    },
+                  ]}
+                  placeholder="Enter your name"
+                  placeholderTextColor="#CCCCCC"
+                  value={fullName}
+                  onChangeText={(text) => {
+                    setFullName(text);
+                    if (fieldErrors.fullName) {
+                      setFieldErrors((prev) => ({ ...prev, fullName: '' }));
+                    }
+                  }}
+                  editable={!isLoading}
+                />
+                {fieldErrors.fullName ? (
+                  <Text
                     style={[
-                      styles.genderButton,
-                      selectedGender === option && styles.genderButtonSelected,
-                      {
-                        paddingVertical: vscale(9),
-                        paddingHorizontal: spacing(6),
-                        borderRadius: scale(10),
-                        borderWidth: scale(1),
-                        shadowOffset: { width: 0, height: vscale(1) },
-                        shadowRadius: scale(4),
-                        elevation: scale(1),
-                      },
+                      styles.errorText,
+                      { fontSize: ms(12), marginTop: vscale(4) },
                     ]}
-                    onPress={() => setSelectedGender(option)}
-                    disabled={isLoading}
                   >
-                    <Text
-                      style={[
-                        styles.genderButtonText,
-                        selectedGender === option && styles.genderButtonTextSelected,
-                        { fontSize: ms(13) },
-                      ]}
-                    >
-                      {option}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                    {fieldErrors.fullName}
+                  </Text>
+                ) : null}
               </View>
-            </View>
 
-            {/* Address */}
-            <View
-              style={[
-                styles.fieldGroup,
-                {
-                  marginBottom: vscale(14),
-                  borderRadius: scale(13),
-                  padding: spacing(11),
-                  borderWidth: scale(1),
-                  shadowOffset: { width: 0, height: vscale(2) },
-                  shadowRadius: scale(6),
-                  elevation: scale(2),
-                },
-              ]}
-            >
-              <Text style={[styles.fieldLabel, { fontSize: ms(14), marginBottom: vscale(7) }]}>
-                Address
-              </Text>
+              {/* Age */}
+              <View
+                style={[
+                  styles.fieldGroup,
+                  {
+                    marginBottom: vscale(14),
+                    borderRadius: scale(13),
+                    padding: spacing(11),
+                    borderWidth: scale(1),
+                    shadowOffset: { width: 0, height: vscale(2) },
+                    shadowRadius: scale(6),
+                    elevation: scale(2),
+                  },
+                ]}
+              >
+                <Text style={[styles.fieldLabel, { fontSize: ms(14), marginBottom: vscale(7) }]}>
+                  Age
+                </Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      borderRadius: scale(11),
+                      paddingHorizontal: spacing(11),
+                      paddingVertical: vscale(9),
+                      fontSize: ms(14),
+                      height: vscale(45),
+                      borderWidth: scale(1),
+                    },
+                  ]}
+                  placeholder="Enter your age"
+                  placeholderTextColor="#CCCCCC"
+                  keyboardType="number-pad"
+                  maxLength={3}
+                  value={age}
+                  onChangeText={(text) => {
+                    setAge(text);
+                    if (fieldErrors.age) {
+                      setFieldErrors((prev) => ({ ...prev, age: '' }));
+                    }
+                  }}
+                  editable={!isLoading}
+                />
+                {fieldErrors.age ? (
+                  <Text
+                    style={[
+                      styles.errorText,
+                      { fontSize: ms(12), marginTop: vscale(4) },
+                    ]}
+                  >
+                    {fieldErrors.age}
+                  </Text>
+                ) : null}
+              </View>
 
-              <View style={{ marginBottom: vscale(8) }}>
+              {/* Gender */}
+              <View
+                style={[
+                  styles.fieldGroup,
+                  {
+                    marginBottom: vscale(14),
+                    borderRadius: scale(13),
+                    padding: spacing(11),
+                    borderWidth: scale(1),
+                    shadowOffset: { width: 0, height: vscale(2) },
+                    shadowRadius: scale(6),
+                    elevation: scale(2),
+                  },
+                ]}
+              >
+                <View style={[styles.genderHeader, { marginBottom: vscale(7) }]}>
+                  <Text style={[styles.fieldLabel, { fontSize: ms(14), marginBottom: vscale(7) }]}>
+                    Gender
+                  </Text>
+                  <Text
+                    style={[styles.optionalLabel, { fontSize: ms(13), marginLeft: spacing(4) }]}
+                  >
+                    (Optional)
+                  </Text>
+                </View>
+                <View style={[styles.genderButtonContainer, { gap: spacing(7) }]}>
+                  {genderOptions.map(option => (
+                    <TouchableOpacity
+                      key={option}
+                      style={[
+                        styles.genderButton,
+                        selectedGender === option && styles.genderButtonSelected,
+                        {
+                          paddingVertical: vscale(9),
+                          paddingHorizontal: spacing(6),
+                          borderRadius: scale(10),
+                          borderWidth: scale(1),
+                          shadowOffset: { width: 0, height: vscale(1) },
+                          shadowRadius: scale(4),
+                          elevation: scale(1),
+                        },
+                      ]}
+                      onPress={() => setSelectedGender(option)}
+                      disabled={isLoading}
+                    >
+                      <Text
+                        style={[
+                          styles.genderButtonText,
+                          selectedGender === option && styles.genderButtonTextSelected,
+                          { fontSize: ms(13) },
+                        ]}
+                      >
+                        {option}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Address */}
+              <View
+                style={[
+                  styles.fieldGroup,
+                  {
+                    marginBottom: vscale(14),
+                    borderRadius: scale(13),
+                    padding: spacing(11),
+                    borderWidth: scale(1),
+                    shadowOffset: { width: 0, height: vscale(2) },
+                    shadowRadius: scale(6),
+                    elevation: scale(2),
+                  },
+                ]}
+              >
+                <Text style={[styles.fieldLabel, { fontSize: ms(14), marginBottom: vscale(7) }]}>
+                  Address
+                </Text>
+
+                <View style={{ marginBottom: vscale(8) }}>
                   <TextInput
                     style={[
                       styles.input,
@@ -387,216 +394,217 @@ const UserProfileScreen = ({ navigation, route }) => {
                     }}
                     editable={!isLoading}
                   />
-              {fieldErrors.addressLine1 ? (
-                <Text
-                  style={[
-                    styles.errorText,
-                    { fontSize: ms(12), marginTop: vscale(4) },
-                  ]}
-                >
-                  {fieldErrors.addressLine1}
-                </Text>
-              ) : null}
-              </View>
+                  {fieldErrors.addressLine1 ? (
+                    <Text
+                      style={[
+                        styles.errorText,
+                        { fontSize: ms(12), marginTop: vscale(4) },
+                      ]}
+                    >
+                      {fieldErrors.addressLine1}
+                    </Text>
+                  ) : null}
+                </View>
 
-              <View style={{ marginBottom: vscale(8) }}>
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      borderRadius: scale(11),
-                      paddingHorizontal: spacing(11),
-                      paddingVertical: vscale(9),
-                      fontSize: ms(14),
-                      height: vscale(45),
-                      borderWidth: scale(1),
-                    },
-                  ]}
-                  placeholder="Address line 2 (optional)"
-                  placeholderTextColor="#CCCCCC"
-                  value={addressLine2}
-                  onChangeText={(text) => {
-                    setAddressLine2(text);
-                  }}
-                  editable={!isLoading}
-                />
-              </View>
-
-              <View style={{ marginBottom: vscale(8) }}>
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      borderRadius: scale(11),
-                      paddingHorizontal: spacing(11),
-                      paddingVertical: vscale(9),
-                      fontSize: ms(14),
-                      height: vscale(45),
-                      borderWidth: scale(1),
-                    },
-                  ]}
-                  placeholder="Landmark / directions (optional)"
-                  placeholderTextColor="#CCCCCC"
-                  value={addressLandmark}
-                  onChangeText={(text) => {
-                    setAddressLandmark(text);
-                  }}
-                  editable={!isLoading}
-                />
-              </View>
-
-              <View style={{ marginBottom: vscale(8) }}>
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      borderRadius: scale(11),
-                      paddingHorizontal: spacing(11),
-                      paddingVertical: vscale(9),
-                      fontSize: ms(14),
-                      height: vscale(45),
-                      borderWidth: scale(1),
-                    },
-                  ]}
-                  placeholder="City"
-                  placeholderTextColor="#CCCCCC"
-                  value={addressCity}
-                  onChangeText={(text) => {
-                    setAddressCity(text);
-                    if (fieldErrors.addressCity) {
-                      setFieldErrors((prev) => ({ ...prev, addressCity: '' }));
-                    }
-                  }}
-                  editable={!isLoading}
-                />
-                {fieldErrors.addressCity ? (
-                  <Text
+                <View style={{ marginBottom: vscale(8) }}>
+                  <TextInput
                     style={[
-                      styles.errorText,
-                      { fontSize: ms(12), marginTop: vscale(4) },
+                      styles.input,
+                      {
+                        borderRadius: scale(11),
+                        paddingHorizontal: spacing(11),
+                        paddingVertical: vscale(9),
+                        fontSize: ms(14),
+                        height: vscale(45),
+                        borderWidth: scale(1),
+                      },
                     ]}
-                  >
-                    {fieldErrors.addressCity}
-                  </Text>
-                ) : null}
-              </View>
+                    placeholder="Address line 2 (optional)"
+                    placeholderTextColor="#CCCCCC"
+                    value={addressLine2}
+                    onChangeText={(text) => {
+                      setAddressLine2(text);
+                    }}
+                    editable={!isLoading}
+                  />
+                </View>
 
-              <View style={{ marginBottom: vscale(8) }}>
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      borderRadius: scale(11),
-                      paddingHorizontal: spacing(11),
-                      paddingVertical: vscale(9),
-                      fontSize: ms(14),
-                      height: vscale(45),
-                      borderWidth: scale(1),
-                    },
-                  ]}
-                  placeholder="State"
-                  placeholderTextColor="#CCCCCC"
-                  value={addressState}
-                  onChangeText={(text) => {
-                    setAddressState(text);
-                    if (fieldErrors.addressState) {
-                      setFieldErrors((prev) => ({ ...prev, addressState: '' }));
-                    }
-                  }}
-                  editable={!isLoading}
-                />
-                {fieldErrors.addressState ? (
-                  <Text
+                <View style={{ marginBottom: vscale(8) }}>
+                  <TextInput
                     style={[
-                      styles.errorText,
-                      { fontSize: ms(12), marginTop: vscale(4) },
+                      styles.input,
+                      {
+                        borderRadius: scale(11),
+                        paddingHorizontal: spacing(11),
+                        paddingVertical: vscale(9),
+                        fontSize: ms(14),
+                        height: vscale(45),
+                        borderWidth: scale(1),
+                      },
                     ]}
-                  >
-                    {fieldErrors.addressState}
-                  </Text>
-                ) : null}
-              </View>
+                    placeholder="Landmark / directions (optional)"
+                    placeholderTextColor="#CCCCCC"
+                    value={addressLandmark}
+                    onChangeText={(text) => {
+                      setAddressLandmark(text);
+                    }}
+                    editable={!isLoading}
+                  />
+                </View>
 
-              <View>
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      borderRadius: scale(11),
-                      paddingHorizontal: spacing(11),
-                      paddingVertical: vscale(9),
-                      fontSize: ms(14),
-                      height: vscale(45),
-                      borderWidth: scale(1),
-                    },
-                  ]}
-                  placeholder="Pincode / Zip code"
-                  placeholderTextColor="#CCCCCC"
-                  value={addressPincodeZip}
-                  onChangeText={(text) => {
-                    setAddressPincodeZip(text);
-                    if (fieldErrors.addressPincodeZip) {
-                      setFieldErrors((prev) => ({ ...prev, addressPincodeZip: '' }));
-                    }
-                  }}
-                  editable={!isLoading}
-                  keyboardType="number-pad"
-                />
-                {fieldErrors.addressPincodeZip ? (
-                  <Text
+                <View style={{ marginBottom: vscale(8) }}>
+                  <TextInput
                     style={[
-                      styles.errorText,
-                      { fontSize: ms(12), marginTop: vscale(4) },
+                      styles.input,
+                      {
+                        borderRadius: scale(11),
+                        paddingHorizontal: spacing(11),
+                        paddingVertical: vscale(9),
+                        fontSize: ms(14),
+                        height: vscale(45),
+                        borderWidth: scale(1),
+                      },
                     ]}
-                  >
-                    {fieldErrors.addressPincodeZip}
-                  </Text>
-                ) : null}
+                    placeholder="City"
+                    placeholderTextColor="#CCCCCC"
+                    value={addressCity}
+                    onChangeText={(text) => {
+                      setAddressCity(text);
+                      if (fieldErrors.addressCity) {
+                        setFieldErrors((prev) => ({ ...prev, addressCity: '' }));
+                      }
+                    }}
+                    editable={!isLoading}
+                  />
+                  {fieldErrors.addressCity ? (
+                    <Text
+                      style={[
+                        styles.errorText,
+                        { fontSize: ms(12), marginTop: vscale(4) },
+                      ]}
+                    >
+                      {fieldErrors.addressCity}
+                    </Text>
+                  ) : null}
+                </View>
+
+                <View style={{ marginBottom: vscale(8) }}>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      {
+                        borderRadius: scale(11),
+                        paddingHorizontal: spacing(11),
+                        paddingVertical: vscale(9),
+                        fontSize: ms(14),
+                        height: vscale(45),
+                        borderWidth: scale(1),
+                      },
+                    ]}
+                    placeholder="State"
+                    placeholderTextColor="#CCCCCC"
+                    value={addressState}
+                    onChangeText={(text) => {
+                      setAddressState(text);
+                      if (fieldErrors.addressState) {
+                        setFieldErrors((prev) => ({ ...prev, addressState: '' }));
+                      }
+                    }}
+                    editable={!isLoading}
+                  />
+                  {fieldErrors.addressState ? (
+                    <Text
+                      style={[
+                        styles.errorText,
+                        { fontSize: ms(12), marginTop: vscale(4) },
+                      ]}
+                    >
+                      {fieldErrors.addressState}
+                    </Text>
+                  ) : null}
+                </View>
+
+                <View>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      {
+                        borderRadius: scale(11),
+                        paddingHorizontal: spacing(11),
+                        paddingVertical: vscale(9),
+                        fontSize: ms(14),
+                        height: vscale(45),
+                        borderWidth: scale(1),
+                      },
+                    ]}
+                    placeholder="Pincode / Zip code"
+                    placeholderTextColor="#CCCCCC"
+                    value={addressPincodeZip}
+                    onChangeText={(text) => {
+                      setAddressPincodeZip(text);
+                      if (fieldErrors.addressPincodeZip) {
+                        setFieldErrors((prev) => ({ ...prev, addressPincodeZip: '' }));
+                      }
+                    }}
+                    editable={!isLoading}
+                    keyboardType="number-pad"
+                  />
+                  {fieldErrors.addressPincodeZip ? (
+                    <Text
+                      style={[
+                        styles.errorText,
+                        { fontSize: ms(12), marginTop: vscale(4) },
+                      ]}
+                    >
+                      {fieldErrors.addressPincodeZip}
+                    </Text>
+                  ) : null}
+                </View>
               </View>
             </View>
-          </View>
 
-          <Text
-            style={[
-              styles.infoText,
-              { fontSize: ms(13), lineHeight: ms(19), marginBottom: vscale(12) },
-            ]}
-          >
-            Your information is visible only during active requests and{'\n'}never shared publicly.
-          </Text>
-          {formError ? (
             <Text
               style={[
-                styles.errorText,
-                { fontSize: ms(13), lineHeight: ms(18), marginBottom: vscale(8) },
+                styles.infoText,
+                { fontSize: ms(13), lineHeight: ms(19), marginBottom: vscale(12) },
               ]}
             >
-              {formError}
+              Your information is visible only during active requests and{'\n'}never shared publicly.
             </Text>
-          ) : null}
-        </View>
-      </ScrollView>
+            {formError ? (
+              <Text
+                style={[
+                  styles.errorText,
+                  { fontSize: ms(13), lineHeight: ms(18), marginBottom: vscale(8) },
+                ]}
+              >
+                {formError}
+              </Text>
+            ) : null}
+          </View>
+        </ScrollView>
 
-      <View
-        style={[
-          styles.footer,
-          {
-            paddingHorizontal: spacing(16),
-            paddingVertical: vscale(14),
-            paddingBottom: vscale(22),
-            borderTopWidth: 0,
-            backgroundColor: '#FFFFFF',
-          },
-        ]}
-      >
-        <Button
-          title="Continue"
-          onPress={handleContinue}
-          loading={isLoading}
-          disabled={isLoading}
-          fullWidth
-        />
-      </View>
+        <View
+          style={[
+            styles.footer,
+            {
+              paddingHorizontal: spacing(16),
+              paddingVertical: vscale(14),
+              paddingBottom: Platform.OS === 'ios' ? spacing(4) : vscale(22),
+              borderTopWidth: 0,
+              backgroundColor: '#FFFFFF',
+            },
+          ]}
+        >
+          <Button
+            title="Continue"
+            onPress={handleContinue}
+            loading={isLoading}
+            disabled={isLoading}
+            fullWidth
+          />
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };

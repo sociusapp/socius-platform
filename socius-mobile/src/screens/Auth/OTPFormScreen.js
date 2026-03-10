@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Keyboard, Platform, Animated } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Keyboard, Platform, Animated, KeyboardAvoidingView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Device from 'expo-device';
 import * as Application from 'expo-application';
@@ -380,93 +380,98 @@ const OTPVerificationScreen = ({ navigation, route }) => {
           onBackPress={() => navigation.goBack()}
           style={{ borderBottomWidth: 0 }}
         />
-        <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
-          <View style={[styles.content, { alignItems: 'center', paddingHorizontal: spacing(20), paddingTop: vscale(32) }]}>
-            <View style={{ width: contentWidth }}>
-              <View style={[styles.titleSection, { marginBottom: vscale(36) }]}>
-                <Text style={[styles.mainTitle, { fontSize: ms(28), lineHeight: ms(36) }]}>Enter verification code</Text>
-                <Text style={[styles.subtitle, { fontSize: ms(16), lineHeight: ms(24) }]}>We've sent a 6-digit code to your phone.</Text>
-              </View>
-              <View style={[styles.otpContainer, { gap: spacing(10), marginBottom: vscale(20) }]}>
-                {otp.map((digit, index) => (
-                  <TextInput
-                    key={index}
-                    ref={ref => otpInputs.current[index] = ref}
-                    style={[styles.otpInput, {
-                      width: otpSize,
-                      height: otpSize,
-                      fontSize: otpFont,
-                      borderRadius: 10,
-                      borderWidth: scale(2),
-                      shadowOffset: { width: 0, height: vscale(2) },
-                      shadowRadius: scale(4),
-                      elevation: scale(2)
-                    }]}
-                    maxLength={1}
-                    keyboardType="number-pad"
-                    value={digit}
-                    onChangeText={(value) => handleOTPChange(value, index)}
-                    onFocus={() => {
-                      const ref = otpInputs.current[index];
-                      if (ref) {
-                        const length = digit ? digit.length : 0;
-                        ref.setNativeProps({ selection: { start: length, end: length } });
-                      }
-                    }}
-                    onSelectionChange={({ nativeEvent }) => {
-                      const { selection } = nativeEvent;
-                      if (digit && selection.start === 0 && selection.end === 0) {
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+            <View style={[styles.content, { alignItems: 'center', paddingHorizontal: spacing(20), paddingTop: vscale(32) }]}>
+              <View style={{ width: contentWidth }}>
+                <View style={[styles.titleSection, { marginBottom: vscale(36) }]}>
+                  <Text style={[styles.mainTitle, { fontSize: ms(28), lineHeight: ms(36) }]}>Enter verification code</Text>
+                  <Text style={[styles.subtitle, { fontSize: ms(16), lineHeight: ms(24) }]}>We've sent a 6-digit code to your phone.</Text>
+                </View>
+                <View style={[styles.otpContainer, { gap: spacing(10), marginBottom: vscale(20) }]}>
+                  {otp.map((digit, index) => (
+                    <TextInput
+                      key={index}
+                      ref={ref => otpInputs.current[index] = ref}
+                      style={[styles.otpInput, {
+                        width: otpSize,
+                        height: otpSize,
+                        fontSize: otpFont,
+                        borderRadius: 10,
+                        borderWidth: scale(2),
+                        shadowOffset: { width: 0, height: vscale(2) },
+                        shadowRadius: scale(4),
+                        elevation: scale(2)
+                      }]}
+                      maxLength={1}
+                      keyboardType="number-pad"
+                      value={digit}
+                      onChangeText={(value) => handleOTPChange(value, index)}
+                      onFocus={() => {
                         const ref = otpInputs.current[index];
                         if (ref) {
-                          ref.setNativeProps({ selection: { start: 1, end: 1 } });
+                          const length = digit ? digit.length : 0;
+                          ref.setNativeProps({ selection: { start: length, end: length } });
                         }
-                      }
-                    }}
-                    onKeyPress={({ nativeEvent }) => {
-                      if (nativeEvent.key === 'Backspace') {
-                        handleBackspace(index);
-                      }
-                    }}
-                    placeholder=""
-                    placeholderTextColor="#E8EAED"
+                      }}
+                      onSelectionChange={({ nativeEvent }) => {
+                        const { selection } = nativeEvent;
+                        if (digit && selection.start === 0 && selection.end === 0) {
+                          const ref = otpInputs.current[index];
+                          if (ref) {
+                            ref.setNativeProps({ selection: { start: 1, end: 1 } });
+                          }
+                        }
+                      }}
+                      onKeyPress={({ nativeEvent }) => {
+                        if (nativeEvent.key === 'Backspace') {
+                          handleBackspace(index);
+                        }
+                      }}
+                      placeholder=""
+                      placeholderTextColor="#E8EAED"
+                    />
+                  ))}
+                </View>
+                {otpError ? (
+                  <Text style={[styles.errorText, { fontSize: ms(13), marginBottom: vscale(24) }]}>
+                    {otpError}
+                  </Text>
+                ) : null}
+                <View style={styles.resendSection}>
+                  <Text style={[styles.resendLabel, { fontSize: ms(14), marginBottom: vscale(12) }]}>Didn't receive the code?</Text>
+                  <Button
+                    title="Resend OTP"
+                    onPress={handleResendOTP}
+                    variant="outline"
+                    loading={isResending}
+                    disabled={!canResend || isResending}
+                    style={[
+                      styles.resendButtonContainer,
+                      (!canResend || isResending) && styles.resendButtonDisabled,
+                      { borderRadius: scale(24), marginBottom: vscale(8) }
+                    ]}
                   />
-                ))}
-              </View>
-              {otpError ? (
-                <Text style={[styles.errorText, { fontSize: ms(13), marginBottom: vscale(24) }]}>
-                  {otpError}
-                </Text>
-              ) : null}
-              <View style={styles.resendSection}>
-                <Text style={[styles.resendLabel, { fontSize: ms(14), marginBottom: vscale(12) }]}>Didn't receive the code?</Text>
-                <Button
-                  title="Resend OTP"
-                  onPress={handleResendOTP}
-                  variant="outline"
-                  loading={isResending}
-                  disabled={!canResend || isResending}
-                  style={[
-                    styles.resendButtonContainer,
-                    (!canResend || isResending) && styles.resendButtonDisabled,
-                    { borderRadius: scale(24), marginBottom: vscale(8) }
-                  ]}
-                />
-                {!canResend && (
-                  <Text style={[styles.timerText, { fontSize: ms(14) }]}>Resend available in {timer}s</Text>
-                )}
+                  {!canResend && (
+                    <Text style={[styles.timerText, { fontSize: ms(14) }]}>Resend available in {timer}s</Text>
+                  )}
+                </View>
               </View>
             </View>
+          </ScrollView>
+          <View style={[styles.footer, { paddingHorizontal: spacing(20), paddingVertical: vscale(16), paddingBottom: vscale(24), backgroundColor: '#FFFFFF' }]}>
+            <Button
+              title="Verify"
+              onPress={handleVerify}
+              loading={isVerifying}
+              disabled={!otpFilled || isVerifying || isResending}
+              fullWidth
+            />
           </View>
-        </ScrollView>
-        <View style={[styles.footer, { paddingHorizontal: spacing(20), paddingVertical: vscale(16), paddingBottom: vscale(24), backgroundColor: '#FFFFFF' }]}>
-          <Button
-            title="Verify"
-            onPress={handleVerify}
-            loading={isVerifying}
-            disabled={!otpFilled || isVerifying || isResending}
-            fullWidth
-          />
-        </View>
+        </KeyboardAvoidingView>
       </SafeAreaView>
       <CustomAlert
         visible={alertVisible}

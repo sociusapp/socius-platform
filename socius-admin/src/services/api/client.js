@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const LOCAL_API = process.env.REACT_APP_SOCIUS_API_BASE || 'http://127.0.0.1:48080/api';
-const LIVE_API = 'https://socius-platform.onrender.com/api';
+const LIVE_API = 'https://socius-platform-rxjo.onrender.com/api';
 
 // Auto-detect production environment based on hostname
 const isProduction = typeof window !== 'undefined' && window.location.hostname.includes('onrender.com');

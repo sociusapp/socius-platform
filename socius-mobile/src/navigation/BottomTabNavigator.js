@@ -80,67 +80,68 @@ const BottomTabNavigator = () => {
     }
   };
 
-  useEffect(() => {
-    const fetchVerification = async () => {
-      try {
-        const { accessToken } = await loadAuth();
-        if (!accessToken) {
-          setIsVerified(false);
-          setCheckedVerification(true);
-          return;
-        }
-        const result = await getHome(accessToken);
-        const { success, data } = result || {};
-        if (success && data?.user) {
-          const user = data.user;
-          const status = data.verificationStatus;
-          setVerificationStatus(status || null);
-          setVerificationFailureReasons(data.verificationFailureReasons || []);
-          setVerificationAdminNote(data.verificationAdminNote || null);
-          const verified =
-            user.isIdentityVerified &&
-            user.accountStatus === 'active' &&
-            status === 'approved';
-          setIsVerified(!!verified);
-
-          let hasLoc = !!user.hasGivenLocationPermission;
-
-          if (!hasLoc) {
-            try {
-              const availabilityResponse = await api.get('/availability', {
-                headers: {
-                  Authorization: `Bearer ${accessToken}`,
-                },
-              });
-              const body = availabilityResponse?.data;
-              if (body?.success && body.data?.location) {
-                const loc = body.data.location;
-                if (
-                  typeof loc.lat === 'number' &&
-                  typeof loc.lng === 'number'
-                ) {
-                  hasLoc = true;
-                }
-              }
-            } catch (e) {
-            }
-          }
-
-          setHasLocationPermissionFlag(hasLoc);
-          if (verified && !hasLoc) {
-            setShowLocationModal(true);
-          }
-        } else {
-          setIsVerified(false);
-        }
-      } catch (error) {
+  const fetchVerification = React.useCallback(async (silent = false) => {
+    try {
+      const { accessToken } = await loadAuth();
+      if (!accessToken) {
         setIsVerified(false);
-      } finally {
         setCheckedVerification(true);
+        return;
       }
-    };
+      const result = await getHome(accessToken);
+      const { success, data } = result || {};
+      if (success && data?.user) {
+        const user = data.user;
+        const status = data.verificationStatus;
+        setVerificationStatus(status || null);
+        setVerificationFailureReasons(data.verificationFailureReasons || []);
+        setVerificationAdminNote(data.verificationAdminNote || null);
+        const verified =
+          user.isIdentityVerified &&
+          user.accountStatus === 'active' &&
+          status === 'approved';
+        setIsVerified(!!verified);
+
+        let hasLoc = !!user.hasGivenLocationPermission;
+
+        if (!hasLoc) {
+          try {
+            const availabilityResponse = await api.get('/availability', {
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+              },
+            });
+            const body = availabilityResponse?.data;
+            if (body?.success && body.data?.location) {
+              const loc = body.data.location;
+              if (
+                typeof loc.lat === 'number' &&
+                typeof loc.lng === 'number'
+              ) {
+                hasLoc = true;
+              }
+            }
+          } catch (e) {
+          }
+        }
+
+        setHasLocationPermissionFlag(hasLoc);
+        if (verified && !hasLoc) {
+          setShowLocationModal(true);
+        }
+      } else {
+        setIsVerified(false);
+      }
+    } catch (error) {
+      if (!silent) setIsVerified(false);
+    } finally {
+      setCheckedVerification(true);
+    }
+  }, [navigation]);
+
+  useEffect(() => {
     fetchVerification();
-  }, []);
+  }, [fetchVerification]);
 
   useEffect(() => {
     if (checkedVerification && verificationStatus === 'failed') {
@@ -399,6 +400,18 @@ const BottomTabNavigator = () => {
           name="HomeTab"
           options={{
             tabBarLabel: 'Home',
+          }}
+          listeners={{
+            tabPress: (e) => {
+              if (checkedVerification && !isVerified) {
+                fetchVerification(true);
+              }
+            },
+            focus: (e) => {
+              if (checkedVerification && !isVerified) {
+                fetchVerification(true);
+              }
+            }
           }}
         >
           {(props) => {

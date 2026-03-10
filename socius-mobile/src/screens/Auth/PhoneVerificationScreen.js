@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Keyboard, Platform, ToastAndroid } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Keyboard, Platform, ToastAndroid, KeyboardAvoidingView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useResponsive } from '../../utils/responsive';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -134,121 +134,126 @@ const PhoneVerificationScreen = ({ navigation }) => {
         onBackPress={() => navigation.goBack()}
         style={{ borderBottomWidth: 0 }}
       />
-      <View style={styles.mainContent} pointerEvents="box-none">
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{ flexGrow: 1 }}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={[styles.content, { paddingHorizontal: spacing(20), paddingTop: vscale(40) }]}>
-            <View style={{ width: contentWidth, alignSelf: 'center' }}>
-              <View style={[styles.titleSection, { marginBottom: vscale(40) }]}>
-                <Text style={[styles.mainTitle, { fontSize: ms(28), lineHeight: ms(36), marginBottom: vscale(12) }]}>Verify your phone number</Text>
-                <Text style={[styles.subtitle, { fontSize: ms(16), lineHeight: ms(24) }]}>Your number helps keep the community{"\n"}accountable and safe.</Text>
-              </View>
-              <View>
-                <View
-                  style={[
-                    styles.inputContainer,
-                    {
-                      paddingHorizontal: spacing(16),
-                      paddingVertical: vscale(4),
-                      marginBottom: vscale(8),
-                      borderRadius: scale(28),
-                      borderWidth: scale(1),
-                      shadowOffset: { width: 0, height: vscale(2) },
-                      shadowRadius: scale(6),
-                      elevation: scale(2),
-                    },
-                  ]}
-                >
-                  <TouchableOpacity style={[styles.countryCodeBox, { paddingRight: spacing(12) }]} onPress={toggleCountryMenu} activeOpacity={0.8}>
-                    <Text style={[styles.flagText, { fontSize: ms(18), marginRight: spacing(8) }]}>{selectedCountry.flag}</Text>
-                    <Text style={[styles.countryCode, { fontSize: ms(16), marginRight: spacing(8) }]}>{selectedCountry.dial}</Text>
-                    <Icon name={countryMenuOpen ? 'chevron-up' : 'chevron-down'} size={scale(20)} color="#666666" />
-                    <View style={[styles.divider, { height: vscale(24), width: scale(1) }]} />
-                  </TouchableOpacity>
-                  <TextInput
-                    ref={phoneInputRef}
-                    style={[styles.phoneInput, { paddingVertical: vscale(14), fontSize: ms(16) }]}
-                    placeholder="Enter mobile number"
-                    placeholderTextColor="#CCCCCC"
-                    keyboardType="phone-pad"
-                    value={phoneNumber}
-                    onChangeText={(text) => {
-                      const numericText = text.replace(/[^0-9]/g, '');
-                      setPhoneNumber(numericText);
-                      if (phoneError) {
-                        setPhoneError('');
-                      }
-                      if (countryMenuOpen) {
-                        setCountryMenuOpen(false);
-                      }
-                      if (numericText.length === selectedCountry.maxLength) {
-                        Keyboard.dismiss();
-                      }
-                    }}
-                    maxLength={selectedCountry.maxLength}
-                  />
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <View style={styles.mainContent} pointerEvents="box-none">
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ flexGrow: 1 }}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={[styles.content, { paddingHorizontal: spacing(20), paddingTop: vscale(40) }]}>
+              <View style={{ width: contentWidth, alignSelf: 'center' }}>
+                <View style={[styles.titleSection, { marginBottom: vscale(40) }]}>
+                  <Text style={[styles.mainTitle, { fontSize: ms(28), lineHeight: ms(36), marginBottom: vscale(12) }]}>Verify your phone number</Text>
+                  <Text style={[styles.subtitle, { fontSize: ms(16), lineHeight: ms(24) }]}>Your number helps keep the community{"\n"}accountable and safe.</Text>
                 </View>
-                {phoneError || apiError ? (
-                  <Text style={[styles.errorText, { fontSize: ms(12), marginTop: vscale(1), marginBottom: vscale(20) }]}>
-                    {phoneError || apiError}
-                  </Text>
-                ) : null}
-                {countryMenuOpen && (
+                <View>
                   <View
                     style={[
-                      styles.countryDropdown,
+                      styles.inputContainer,
                       {
-                        marginTop: vscale(4),
-                        borderRadius: scale(12),
+                        paddingHorizontal: spacing(16),
+                        paddingVertical: vscale(4),
+                        marginBottom: vscale(8),
+                        borderRadius: scale(28),
                         borderWidth: scale(1),
-                        shadowOffset: { width: 0, height: vscale(10) },
-                        shadowRadius: scale(15),
-                        elevation: scale(10),
+                        shadowOffset: { width: 0, height: vscale(2) },
+                        shadowRadius: scale(6),
+                        elevation: scale(2),
                       },
                     ]}
                   >
-                    <ScrollView style={{ maxHeight: vscale(260) }} nestedScrollEnabled>
-                      {countries.map((c, idx) => (
-                        <TouchableOpacity
-                          key={c.code}
-                          style={[
-                            styles.dropdownItem,
-                            selectedCountryIndex === idx && styles.dropdownItemSelected,
-                            {
-                              paddingHorizontal: spacing(12),
-                              paddingVertical: vscale(12),
-                              borderBottomWidth: scale(1),
-                            },
-                          ]}
-                          onPress={() => chooseCountry(idx)}
-                        >
-                          <Text style={[styles.flagText, { fontSize: ms(18), marginRight: spacing(8) }]}>{c.flag}</Text>
-                          <Text style={[styles.dropdownText, { fontSize: ms(14), marginLeft: spacing(8) }]}>{c.name} {c.dial}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
+                    <TouchableOpacity style={[styles.countryCodeBox, { paddingRight: spacing(12) }]} onPress={toggleCountryMenu} activeOpacity={0.8}>
+                      <Text style={[styles.flagText, { fontSize: ms(18), marginRight: spacing(8) }]}>{selectedCountry.flag}</Text>
+                      <Text style={[styles.countryCode, { fontSize: ms(16), marginRight: spacing(8) }]}>{selectedCountry.dial}</Text>
+                      <Icon name={countryMenuOpen ? 'chevron-up' : 'chevron-down'} size={scale(20)} color="#666666" />
+                      <View style={[styles.divider, { height: vscale(24), width: scale(1) }]} />
+                    </TouchableOpacity>
+                    <TextInput
+                      ref={phoneInputRef}
+                      style={[styles.phoneInput, { paddingVertical: vscale(14), fontSize: ms(16) }]}
+                      placeholder="Enter mobile number"
+                      placeholderTextColor="#CCCCCC"
+                      keyboardType="phone-pad"
+                      value={phoneNumber}
+                      onChangeText={(text) => {
+                        const numericText = text.replace(/[^0-9]/g, '');
+                        setPhoneNumber(numericText);
+                        if (phoneError) {
+                          setPhoneError('');
+                        }
+                        if (countryMenuOpen) {
+                          setCountryMenuOpen(false);
+                        }
+                        if (numericText.length === selectedCountry.maxLength) {
+                          Keyboard.dismiss();
+                        }
+                      }}
+                      maxLength={selectedCountry.maxLength}
+                    />
                   </View>
-                )}
+                  {phoneError || apiError ? (
+                    <Text style={[styles.errorText, { fontSize: ms(12), marginTop: vscale(1), marginBottom: vscale(20) }]}>
+                      {phoneError || apiError}
+                    </Text>
+                  ) : null}
+                  {countryMenuOpen && (
+                    <View
+                      style={[
+                        styles.countryDropdown,
+                        {
+                          marginTop: vscale(4),
+                          borderRadius: scale(12),
+                          borderWidth: scale(1),
+                          shadowOffset: { width: 0, height: vscale(10) },
+                          shadowRadius: scale(15),
+                          elevation: scale(10),
+                        },
+                      ]}
+                    >
+                      <ScrollView style={{ maxHeight: vscale(260) }} nestedScrollEnabled>
+                        {countries.map((c, idx) => (
+                          <TouchableOpacity
+                            key={c.code}
+                            style={[
+                              styles.dropdownItem,
+                              selectedCountryIndex === idx && styles.dropdownItemSelected,
+                              {
+                                paddingHorizontal: spacing(12),
+                                paddingVertical: vscale(12),
+                                borderBottomWidth: scale(1),
+                              },
+                            ]}
+                            onPress={() => chooseCountry(idx)}
+                          >
+                            <Text style={[styles.flagText, { fontSize: ms(18), marginRight: spacing(8) }]}>{c.flag}</Text>
+                            <Text style={[styles.dropdownText, { fontSize: ms(14), marginLeft: spacing(8) }]}>{c.name} {c.dial}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  )}
+                </View>
+                <Text style={[styles.infoText, { fontSize: ms(14), lineHeight: ms(21) }]}>
+                  Your number is used only for verification and{"\n"}important account updates.
+                </Text>
               </View>
-              <Text style={[styles.infoText, { fontSize: ms(14), lineHeight: ms(21) }]}>
-                Your number is used only for verification and{"\n"}important account updates.
-              </Text>
             </View>
+          </ScrollView>
+          <View style={{ paddingHorizontal: spacing(20), paddingVertical: vscale(16), paddingBottom: vscale(24), backgroundColor: '#FFFFFF' }}>
+            <Button
+              title="Send OTP"
+              onPress={handleSendOTP}
+              loading={isLoading}
+              disabled={isLoading}
+              fullWidth
+            />
           </View>
-        </ScrollView>
-        <View style={{ paddingHorizontal: spacing(20), paddingVertical: vscale(16), paddingBottom: vscale(24), backgroundColor: '#FFFFFF' }}>
-          <Button
-            title="Send OTP"
-            onPress={handleSendOTP}
-            loading={isLoading}
-            disabled={isLoading}
-            fullWidth
-          />
         </View>
-      </View>
+      </KeyboardAvoidingView>
       <CustomAlert
         visible={alertVisible}
         title={alertConfig.title}
