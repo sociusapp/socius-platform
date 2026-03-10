@@ -1,0 +1,250 @@
+socius-app/
+│
+├── android/                    # Android native files
+├── ios/                        # iOS native files
+│
+├── src/
+│   ├── api/                    # API endpoints & HTTP calls
+│   │   ├── index.js
+│   │   ├── apiClient.js        # Axios configuration
+│   │   ├── authApi.js          # Login, OTP, verification
+│   │   ├── userApi.js          # User profile, data
+│   │   ├── awarenessApi.js     # Need Presence requests
+│   │   ├── communityApi.js     # Community & help requests
+│   │   ├── locationApi.js      # Location APIs
+│   │   ├── emergencyApi.js     # Emergency services
+│   │   └── subscriptionApi.js  # Payment & billing
+│   │
+│   ├── assets/                 # Images, icons, fonts
+│   │   ├── fonts/
+│   │   │   ├── Inter-Regular.ttf
+│   │   │   ├── Inter-Medium.ttf
+│   │   │   ├── Inter-SemiBold.ttf
+│   │   │   └── Inter-Bold.ttf
+│   │   │
+│   │   ├── icons/
+│   │   │   ├── home.png
+│   │   │   ├── prepare.png
+│   │   │   ├── community.png
+│   │   │   ├── profile.png
+│   │   │   ├── awareness-icon.png
+│   │   │   └── ... other icons
+│   │   │
+│   │   ├── images/
+│   │   │   ├── splash-logo.png
+│   │   │   ├── onboarding-1.png
+│   │   │   ├── onboarding-2.png
+│   │   │   └── ... illustrations
+│   │   │
+│   │   └── animations/
+│   │       ├── loading.json
+│   │       └── success.json
+│   │
+│   ├── components/             # Reusable UI components
+│   │   ├── Button.js
+│   │   ├── OutlineButton.js
+│   │   ├── Input.js
+│   │   ├── PhoneInput.js
+│   │   ├── OTPInput.js
+│   │   ├── Card.js
+│   │   ├── Modal.js
+│   │   ├── BottomSheet.js
+│   │   ├── Loading.js
+│   │   ├── Avatar.js
+│   │   ├── Badge.js
+│   │   ├── Switch.js
+│   │   ├── Header.js
+│   │   ├── TabBar.js
+│   │   ├── EmptyState.js
+│   │   ├── AwarenessButton.js
+│   │   ├── AwarenessCard.js
+│   │   ├── PersonCard.js
+│   │   ├── EmergencyTile.js
+│   │   ├── MapView.js
+│   │   ├── LocationCard.js
+│   │   ├── SafetyBanner.js
+│   │   ├── ProgressBar.js
+│   │   └── Divider.js
+│   │
+│   ├── config/                 # App configuration
+│   │   ├── theme.js            # Colors, spacing, fonts
+│   │   ├── constants.js        # App constants
+│   │   └── env.js              # Environment variables
+│   │
+│   ├── hooks/                  # Custom React hooks
+│   │   ├── useAuth.js
+│   │   ├── useLocation.js
+│   │   ├── useAwareness.js
+│   │   ├── useCommunity.js
+│   │   ├── useNotification.js
+│   │   └── usePermissions.js
+│   │
+│   ├── navigation/             # Navigation structure
+│   │   ├── AppNavigator.js     # Root navigator
+│   │   ├── AuthStack.js        # Auth screens
+│   │   ├── OnboardingStack.js  # Onboarding flow
+│   │   ├── FirstTimeStack.js   # First time user flow
+│   │   ├── MainStack.js        # Main app stack
+│   │   └── MainTabs.js         # Bottom tabs
+│   │
+│   ├── screens/                # App screens (Main Level)
+│   │   ├── auth/               # Authentication screens
+│   │   │   ├── LoginScreen.js
+│   │   │   ├── PhoneVerificationScreen.js
+│   │   │   ├── OTPScreen.js
+│   │   │   ├── OTPFormScreen.js
+│   │   │   ├── SelfieVerificationScreen.js
+│   │   │   ├── ProfileInfoScreen.js
+│   │   │   └── VerificationReviewScreen.js
+│   │   │
+│   │   ├── onboarding/         # Onboarding (16 screens)
+│   │   │   ├── SplashScreen.js
+│   │   │   ├── WelcomeScreen.js
+│   │   │   ├── WhatSociusIsScreen.js
+│   │   │   ├── WhatSociusIsNotScreen.js
+│   │   │   ├── PrinciplesScreen.js
+│   │   │   ├── CommunityPrinciplesScreen.js
+│   │   │   ├── ParticipationChoiceScreen.js
+│   │   │   ├── IdentityVerificationScreen.js
+│   │   │   ├── BeforeContinueScreen.js
+│   │   │   ├── SubscriptionScreen.js
+│   │   │   ├── ProfileReviewScreen.js
+│   │   │   ├── RequestReviewScreen.js
+│   │   │   └── VerificationAttentionScreen.js
+│   │   │
+│   │   ├── firstTime/          # First time user (5 screens)
+│   │   │   ├── AvailabilityScreen.js
+│   │   │   ├── AvailabilityRolesScreen.js
+│   │   │   ├── BeingAvailableScreen.js
+│   │   │   ├── PermissionScreen.js
+│   │   │   └── EmergencyContactsScreen.js
+│   │   │
+│   │   ├── guide/              # User guide (10 screens)
+│   │   │   ├── YourRoleScreen.js
+│   │   │   ├── NoObligationScreen.js
+│   │   │   ├── SafetyFirstScreen.js
+│   │   │   ├── PublicSpacesScreen.js
+│   │   │   ├── AfterLeaveScreen.js
+│   │   │   ├── IfYouSpeakScreen.js
+│   │   │   ├── IfPoliceScreen.js
+│   │   │   ├── ProtectYourselfScreen.js
+│   │   │   ├── FeelsWrongScreen.js
+│   │   │   └── EmergencyContactedScreen.js
+│   │   │
+│   │   ├── home/               # Home Flow (13 screens)
+│   │   │   ├── HomeScreen.js
+│   │   │   ├── AccountAccessScreen.js
+│   │   │   ├── ProfileUnderReviewScreen.js
+│   │   │   ├── SettingsScreen.js
+│   │   │   ├── ProfileScreen.js
+│   │   │   ├── DataPrivacyScreen.js
+│   │   │   ├── YourDataAccountScreen.js
+│   │   │   ├── SubscriptionManageScreen.js
+│   │   │   ├── SubscriptionStatusScreen.js
+│   │   │   ├── HelpSupportScreen.js
+│   │   │   ├── ConnectionIssueScreen.js
+│   │   │   ├── ReportConcernScreen.js
+│   │   │   └── PrepareStayReadyScreen.js
+│   │   │
+│   │   ├── prepare/            # Prepare Tab
+│   │   │   ├── PrepareScreen.js
+│   │   │   ├── SafetyTipsScreen.js
+│   │   │   ├── EmergencyContactsScreen.js
+│   │   │   └── WhenToAskPresenceScreen.js
+│   │   │
+│   │   ├── community/          # Community (20 screens)
+│   │   │   ├── CommunityScreen.js
+│   │   │   ├── CommunityAroundScreen.js
+│   │   │   ├── AskLocalHelpScreen.js
+│   │   │   ├── HelpTypeScreen.js
+│   │   │   ├── AddDetailsScreen.js
+│   │   │   ├── ReviewRequestScreen.js
+│   │   │   ├── RequestActiveScreen.js
+│   │   │   ├── PeopleAwareScreen.js
+│   │   │   ├── RequestConfirmationScreen.js
+│   │   │   ├── CancelRequestScreen.js
+│   │   │   ├── AwarenessProgressScreen.js
+│   │   │   ├── ClosingRequestScreen.js
+│   │   │   ├── MatchingMapScreen.js
+│   │   │   ├── StayAwayScreen.js
+│   │   │   ├── SomeoneNeedsHelpScreen.js
+│   │   │   ├── LocalRequestScreen.js
+│   │   │   ├── StartConcernScreen.js
+│   │   │   ├── SteppedAwayScreen.js
+│   │   │   ├── StatusSharedScreen.js
+│   │   │   └── NearbySharedScreen.js
+│   │   │
+│   │   └── awareness/          # Need Presence / Awareness (30+ screens)
+│   │       ├── WhatsHappeningScreen.js
+│   │       ├── CreateAwarenessScreen.js
+│   │       ├── BeingFollowedScreen.js
+│   │       ├── UnsafeWalkScreen.js
+│   │       ├── BloodNeededScreen.js
+│   │       ├── CarIssueScreen.js
+│   │       ├── BeforeShareScreen.js
+│   │       ├── ShareLocationScreen.js
+│   │       ├── NearDubaiedAreaScreen.js
+│   │       ├── RequestSharedScreen.js
+│   │       ├── AwarenessSharedScreen.js
+│   │       ├── MultiplePeopleScreen.js
+│   │       ├── PeopleListScreen.js
+│   │       ├── SafetyGuidanceScreen.js
+│   │       ├── NotAloneScreen.js
+│   │       ├── SafetyComesFirstScreen.js
+│   │       ├── BeingHereOptionalScreen.js
+│   │       ├── BeingHereChoiceScreen.js
+│   │       ├── ObserveOnlyScreen.js
+│   │       ├── AwarenessClosedScreen.js
+│   │       ├── RequestClosedScreen.js
+│   │       ├── ThankYouClosingScreen.js
+│   │       ├── HighRiskAreaScreen.js
+│   │       ├── NearbyMapScreen.js
+│   │       ├── SituationSharedScreen.js
+│   │       ├── SomeoneConcernScreen.js
+│   │       ├── ViewDetailsIgnoreScreen.js
+│   │       ├── ReminderScreen.js
+│   │       ├── EmergencyHelpScreen.js
+│   │       └── CancelRequestModal.js
+│   │
+│   ├── services/               # Business logic
+│   │   ├── AuthService.js
+│   │   ├── LocationService.js
+│   │   ├── AwarenessService.js
+│   │   ├── CommunityService.js
+│   │   ├── NotificationService.js
+│   │   ├── PermissionService.js
+│   │   ├── StorageService.js
+│   │   ├── CameraService.js
+│   │   ├── AnalyticsService.js
+│   │   └── ValidationService.js
+│   │
+│   ├── store/                  # Redux state management
+│   │   ├── index.js            # Store setup
+│   │   ├── authSlice.js
+│   │   ├── userSlice.js
+│   │   ├── awarenessSlice.js
+│   │   ├── communitySlice.js
+│   │   ├── locationSlice.js
+│   │   ├── notificationSlice.js
+│   │   └── appSlice.js
+│   │
+│   ├── utils/                  # Helper utilities
+│   │   ├── validation.js
+│   │   ├── helpers.js
+│   │   ├── date.js
+│   │   ├── location.js
+│   │   ├── permissions.js
+│   │   ├── errorHandler.js
+│   │   └── formatters.js
+│   │
+│   └── App.js                  # Root component
+│
+├── .env
+├── .env.development
+├── .env.production
+├── app.json
+├── babel.config.js
+├── index.js
+├── metro.config.js
+├── package.json
+└── README.md

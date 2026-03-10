@@ -1,0 +1,61 @@
+# -------------------------------------------------------------------
+# 1. Node.js & Common Dependencies (Backend, Admin, Mobile)
+# -------------------------------------------------------------------
+**/node_modules/
+**/dist/
+**/build/
+.editorconfig
+*.log
+package-lock.json
+
+# -------------------------------------------------------------------
+# 2. React Native & Expo (Socius-Mobile)
+# -------------------------------------------------------------------
+.expo/
+web-build/
+cache/
+.npm
+.eslintcache
+.stylelintcache
+
+# -------------------------------------------------------------------
+# 3. Android Native (FCM/Google Services Safe)
+# -------------------------------------------------------------------
+**/android/.gradle/
+**/android/app/build/
+**/android/build/
+**/android/captures/
+**/android/app/src/main/assets/
+**/android/.cxx/
+**/android/.externalNativeBuild/
+*.iml
+.idea/
+local.properties
+*.keystore
+!debug.keystore
+# NOTE: google-services.json is NOT ignored to keep FCM working.
+
+# -------------------------------------------------------------------
+# 4. iOS Native (Socius-Mobile)
+# -------------------------------------------------------------------
+**/ios/build/
+**/ios/Pods/
+**/ios/DerivedData/
+**/ios/*.xcworkspace
+**/ios/.ls-remote
+.xcworkspace/
+xcuserdata/
+
+# -------------------------------------------------------------------
+# 5. Express.js & Security (Socius-Backend)
+# -------------------------------------------------------------------
+.env
+.env.*
+socius-backend/uploads/
+socius-backend/sociusapp-*.json
+
+# -------------------------------------------------------------------
+# 6. OS & IDE Related
+# -------------------------------------------------------------------
+.DS_Store
+.vscode/

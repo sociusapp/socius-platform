@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "Socius",
+    "slug": "Socius",
+    "scheme": "socius",
+    "version": "1.0.0",
+    "newArchEnabled": true,
+    "orientation": "portrait",
+    "icon": "./src/assets/icons/icon-03.png",
+    "splash": {
+      "image": "./src/assets/icons/splash.png",
+      "resizeMode": "cover",
+      "backgroundColor": "#FFFFFF"
+    },
+    "android": {
+      "package": "com.socius.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./src/assets/icons/icon-03.png",
+        "backgroundColor": "#FFFFFF"
+      },
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyAER5BC1gdUioBIU6RG0cnMDX3X0Acmk5M"
+        }
+      }
+    },
+    "androidStatusBar": {
+      "backgroundColor": "#FFFFFF",
+      "barStyle": "dark-content",
+      "translucent": true
+    },
+    "ios": {
+      "bundleIdentifier": "com.socius.app"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "cf150863-4fd3-40ea-acda-319b5a4ec2b9"
+      }
+    },
+    "runtimeVersion": "1.0.0",
+    "updates": {
+      "url": "https://u.expo.dev/cf150863-4fd3-40ea-acda-319b5a4ec2b9"
+    }
+  }
+}

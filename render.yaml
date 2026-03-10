@@ -1,0 +1,33 @@
+# ──── Render Blueprint (Deployment Configuration) ────
+# Use this file to automate deployment and fix routing issues on Render.
+
+services:
+  # 1. Backend Service (socius-platform)
+  - type: web
+    name: socius-platform
+    env: node
+    plan: free
+    region: ohio
+    buildCommand: npm install && cd socius-backend && npm install
+    startCommand: cd socius-backend && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+
+  # 2. Admin Portal (socius-admin)
+  - type: web
+    name: socius-admin
+    env: static
+    plan: free
+    region: ohio
+    buildCommand: cd socius-admin && npm install && npm run build
+    publishPath: socius-admin/build
+    # ── FIX FOR "NOT FOUND" ERROR ──
+    # This rule redirects all frontend routes (like /dashboard) to index.html
+    # so that React Router can handle them properly.
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

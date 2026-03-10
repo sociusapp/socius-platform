@@ -1,0 +1,17 @@
+const router = require('express').Router()
+
+router.use('/auth',               require('./auth.routes'))
+router.use('/user',               require('./user.routes'))
+router.use('/verification',       require('./verification.routes'))
+router.use('/subscription',       require('./subscription.routes'))
+router.use('/availability',       require('./availability.routes'))
+router.use('/help-request',       require('./helpRequest.routes'))
+router.use('/presence',           require('./presence.routes'))
+router.use('/chat',               require('./chat.routes'))
+router.use('/badges',             require('./badge.routes'))
+router.use('/emergency-contacts', require('./emergencyContacts.routes'))
+router.use('/reports',            require('./report.routes'))
+router.use('/admin',              require('./admin.routes'))
+router.use('/pages',              require('./staticPage.routes'))
+
+module.exports = router

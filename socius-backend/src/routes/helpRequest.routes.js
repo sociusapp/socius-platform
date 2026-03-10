@@ -1,0 +1,51 @@
+const router = require('express').Router()
+const {
+  createRequest,
+  getMyActiveRequest,
+  getRequestById,
+  acceptRequest,
+  declineRequest,
+  cancelRequest,
+  closeRequest,
+  markAsDelivered,
+  getNearbyRequests,
+} = require('../controllers/helpRequest.controller')
+const { authenticate, requireActive } = require('../middlewares/auth')
+const { validate, schemas } = require('../middlewares/validate')
+const { helpRequestLimiter } = require('../middlewares/rateLimiter')
+
+// GET /api/help-request/active
+router.get('/active', authenticate, getMyActiveRequest)
+
+// GET /api/help-request/nearby
+router.get('/nearby', authenticate, getNearbyRequests)
+
+// GET /api/help-request/:id
+router.get('/:id', authenticate, getRequestById)
+
+// POST /api/help-request
+router.post(
+  '/',
+  authenticate,
+  requireActive,
+  helpRequestLimiter,
+  validate(schemas.createHelpRequest),
+  createRequest
+)
+
+// PATCH /api/help-request/:id/accept  (helper)
+router.patch('/:id/accept', authenticate, requireActive, acceptRequest)
+
+// PATCH /api/help-request/:id/decline  (helper)
+router.patch('/:id/decline', authenticate, declineRequest)
+
+// PATCH /api/help-request/:id/delivered  (helper)
+router.patch('/:id/delivered', authenticate, markAsDelivered)
+
+// PATCH /api/help-request/:id/cancel  (requester)
+router.patch('/:id/cancel', authenticate, cancelRequest)
+
+// PATCH /api/help-request/:id/close
+router.patch('/:id/close', authenticate, validate(schemas.closeRequest), closeRequest)
+
+module.exports = router

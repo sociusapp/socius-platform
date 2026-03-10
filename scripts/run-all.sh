@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+RED='\033[0;31m'
+YELLOW='\033[0;33m'
+NC='\033[0m'
+
+API_HOST=${API_HOST:-127.0.0.1}
+API_PORT=${API_PORT:-48080}
+ADMIN_PORT=${ADMIN_PORT:-3000}
+PROXY_PORT=${PROXY_PORT:-8085}
+MOBILE_PLATFORM=${MOBILE_PLATFORM:-android}
+MONGO_URI_DEFAULT="mongodb://127.0.0.1:27017"
+DB_NAME_DEFAULT="socius"
+
+HOST_OVERRIDE=${1:-}
+if [[ -n "${HOST_OVERRIDE}" ]]; then
+  API_HOST="${HOST_OVERRIDE}"
+fi
+
+echo -e "${BLUE}🚀 Starting Socius (Admin + Backend)${NC}"
+echo -e "${YELLOW}Using host: ${API_HOST} | Backend:${API_PORT} | Admin:${ADMIN_PORT}${NC}"
+
+kill_if_port_in_use() {
+  local PORT=$1
+  local PIDS
+  PIDS=$(lsof -ti tcp:"${PORT}" 2>/dev/null || true)
+  if [[ -n "${PIDS}" ]]; then
+    echo -e "${YELLOW}⚠️  Port ${PORT} in use (PIDs: ${PIDS}). Terminating...${NC}"
+    kill -9 ${PIDS} 2>/dev/null || true
+    sleep 0.5
+  fi
+}
+
+cleanup() {
+  echo -e "${RED}\n🛑 Stopping all services...${NC}"
+  [[ -n "${BACKEND_PID:-}" ]] && kill "${BACKEND_PID}" 2>/dev/null || true
+  [[ -n "${ADMIN_PID:-}" ]] && kill "${ADMIN_PID}" 2>/dev/null || true
+  [[ -n "${MOBILE_PID:-}" ]] && kill "${MOBILE_PID}" 2>/dev/null || true
+  [[ -n "${MONGO_PID:-}" ]] && kill "${MONGO_PID}" 2>/dev/null || true
+}
+trap cleanup SIGINT SIGTERM
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${ROOT_DIR}"
+
+echo -e "${GREEN}0. Ensuring MongoDB (Port 27017)...${NC}"
+if ! lsof -ti tcp:27017 >/dev/null 2>&1; then
+  mkdir -p "${HOME}/mongo-data"
+  nohup mongod --dbpath "${HOME}/mongo-data" --bind_ip 127.0.0.1 --port 27017 > "${HOME}/mongod.log" 2>&1 &
+  MONGO_PID=$!
+  for i in {1..30}; do
+    sleep 0.2
+    lsof -ti tcp:27017 >/dev/null 2>&1 && break
+  done
+  if lsof -ti tcp:27017 >/dev/null 2>&1; then
+    echo "   ✅ MongoDB running at 127.0.0.1:27017"
+  else
+    echo -e "${YELLOW}⚠️  MongoDB did not start. Please ensure mongod is installed.${NC}"
+  fi
+else
+  echo "   ✅ MongoDB already running at 127.0.0.1:27017"
+fi
+
+echo -e "${GREEN}1. Starting Node Backend (Port ${API_PORT})...${NC}"
+kill_if_port_in_use "${API_PORT}"
+pushd socius-backend >/dev/null
+if [[ ! -d node_modules ]]; then
+  echo "   📦 Installing Backend dependencies..."
+  npm install >/dev/null 2>&1
+fi
+# Fallback envs if .env not present
+if [[ -z "${MONGO_URI:-}" ]]; then
+  export MONGO_URI="${MONGO_URI_DEFAULT}"
+fi
+if [[ -z "${DB_NAME:-}" ]]; then
+  export DB_NAME="${DB_NAME_DEFAULT}"
+fi
+PORT="${API_PORT}" npm run dev > ../backend.log 2>&1 &
+BACKEND_PID=$!
+popd >/dev/null
+echo "   ✅ Backend running (PID: ${BACKEND_PID}) at http://${API_HOST}:${API_PORT}"
+
+echo -e "${GREEN}2. Starting React Admin (Port ${ADMIN_PORT})...${NC}"
+kill_if_port_in_use "${ADMIN_PORT}"
+pushd socius-admin >/dev/null
+if [[ ! -d node_modules ]]; then
+  echo "   📦 Installing Admin dependencies..."
+  npm install >/dev/null 2>&1
+fi
+REACT_APP_SOCIUS_API_BASE="http://${API_HOST}:${API_PORT}/api" HOST="${API_HOST}" PORT="${ADMIN_PORT}" npm run start > ../admin.log 2>&1 &
+ADMIN_PID=$!
+popd >/dev/null
+echo "   ✅ Admin running (PID: ${ADMIN_PID}) at http://${API_HOST}:${ADMIN_PORT}"
+
+if [[ "${RUN_MOBILE:-false}" == "true" ]]; then
+  echo -e "${GREEN}3. Starting Mobile App (Expo) ...${NC}"
+  # Clean up typical Expo/Metro ports to avoid collisions
+  kill_if_port_in_use 8081
+  kill_if_port_in_use 19000
+  kill_if_port_in_use 19001
+  kill_if_port_in_use 19006
+  pushd socius-mobile >/dev/null
+  if [[ ! -d node_modules ]]; then
+    echo "   📦 Installing Mobile dependencies..."
+    npm install >/dev/null 2>&1
+  fi
+  # Choose API host for mobile: Android emulator uses 10.0.2.2 to reach host loopback
+  MOBILE_API_HOST="${API_HOST}"
+  if [[ "${MOBILE_PLATFORM}" == "android" ]]; then
+    MOBILE_API_HOST="10.0.2.2"
+  fi
+  # If an emulator/device is connected, expose Metro for physical devices; emulator doesn't need reverse for API
+  if command -v adb >/dev/null 2>&1; then
+    # Try to ensure at least one device/emulator
+    if ! adb devices | awk 'NR>1 {print $1}' | grep -q .; then
+      if command -v emulator >/dev/null 2>&1; then
+        AVD_TO_START=$(emulator -list-avds | head -n1)
+        if [[ -n "${AVD_TO_START}" ]]; then
+          nohup emulator -avd "${AVD_TO_START}" -netdelay none -netspeed full >/dev/null 2>&1 &
+          # wait a bit for device to appear
+          for i in {1..30}; do
+            sleep 0.5
+            adb devices | awk 'NR>1 {print $1}' | grep -q . && break || true
+          done
+        fi
+      fi
+    fi
+    # Enable Metro access for physical devices
+    adb reverse tcp:8081 tcp:8081 >/dev/null 2>&1 || true
+    adb reverse tcp:19000 tcp:19000 >/dev/null 2>&1 || true
+  fi
+  EXPO_PUBLIC_API_HOST="${MOBILE_API_HOST}" EXPO_PUBLIC_API_PORT="${API_PORT}" nohup npx expo start --android --clear > ../mobile.log 2>&1 &
+  MOBILE_PID=$!
+  popd >/dev/null
+  echo "   ✅ Mobile dev server (PID: ${MOBILE_PID}) | API http://${MOBILE_API_HOST}:${API_PORT}/api"
+else
+  echo -e "${GREEN}3. Skipping Mobile App (RUN_MOBILE=false)${NC}"
+  MOBILE_PID=""
+fi
+
+echo -e "\n${BLUE}Logs: backend.log • admin.log • mobile.log${NC}"
+echo -e "${BLUE}Press Ctrl+C to stop all services${NC}\n"
+
+# Check if processes are still running after 2 seconds
+sleep 2
+if ! kill -0 ${BACKEND_PID} 2>/dev/null; then
+  echo -e "${RED}❌ Backend failed to start. Check backend.log for details:${NC}"
+  tail -n 10 backend.log
+  exit 1
+fi
+if ! kill -0 ${ADMIN_PID} 2>/dev/null; then
+  echo -e "${RED}❌ Admin failed to start. Check admin.log for details:${NC}"
+  tail -n 10 admin.log
+  exit 1
+fi
+
+sleep 1
+if [[ -n "${MOBILE_PID:-}" ]] && ! kill -0 ${MOBILE_PID} 2>/dev/null; then
+  echo -e "${RED}❌ Mobile failed to start. Check mobile.log for details:${NC}"
+  tail -n 20 mobile.log
+  exit 1
+fi
+
+# Wait for all background processes to complete
+for pid in "${BACKEND_PID}" "${ADMIN_PID}" "${MOBILE_PID}" "${MONGO_PID:-}"; do
+  if [[ -n "${pid}" ]]; then
+    wait "${pid}" 2>/dev/null || true
+  fi
+done

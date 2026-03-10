@@ -1,0 +1,229 @@
+const Joi = require('joi')
+const { badRequest } = require('../utils/response')
+
+/**
+ * Validation middleware factory
+ * @param {Joi.Schema} schema
+ * @param {'body'|'query'|'params'} source
+ */
+const validate = (schema, source = 'body') => {
+  return (req, res, next) => {
+    const { error, value } = schema.validate(req[source], {
+      abortEarly: false,    // sab errors ek saath dikhao
+      stripUnknown: true,   // extra fields remove karo
+    })
+
+    if (error) {
+      const errors = error.details.map((d) => ({
+        field: d.path.join('.'),
+        message: d.message.replace(/['"]/g, ''),
+      }))
+      console.error('Validation failed for', req.originalUrl, ':', errors);
+      return badRequest(res, 'Validation failed', errors)
+    }
+
+    req[source] = value // cleaned/validated value replace karo
+    next()
+  }
+}
+
+// ─── Common reusable schemas ──────────────────────────────
+
+const schemas = {
+  // Auth
+  sendOtp: Joi.object({
+    phone: Joi.string()
+      .pattern(/^\d{7,11}$/)
+      .required()
+      .messages({
+        'string.pattern.base': 'Enter a valid mobile number (7-11 digits)',
+      }),
+    countryCode: Joi.string().default('+91'),
+  }),
+
+  verifyOtp: Joi.object({
+    phone: Joi.string().pattern(/^\d{7,11}$/).required(),
+    otp: Joi.string().length(6).pattern(/^\d+$/).required().messages({
+      'string.length': 'OTP must be 6 digits',
+      'string.pattern.base': 'OTP must be numeric',
+    }),
+    deviceToken: Joi.string().optional(),
+    platform: Joi.string().valid('android', 'ios').optional(),
+    deviceId: Joi.string().optional().allow(null, ''),
+    deviceModel: Joi.string().optional().allow(null, ''),
+    appVersion: Joi.string().optional().allow(null, ''),
+  }),
+
+  updateDeviceToken: Joi.object({
+    deviceToken: Joi.string().required(),
+    platform: Joi.string().valid('android', 'ios').required(),
+    deviceId: Joi.string().optional().allow(null, ''),
+    deviceModel: Joi.string().optional().allow(null, ''),
+    appVersion: Joi.string().optional().allow(null, ''),
+  }),
+
+  adminLogin: Joi.object({
+    email: Joi.string().email().required(),
+    password: Joi.string().min(6).max(128).required(),
+  }),
+
+  // User profile
+  updateProfile: Joi.object({
+    fullName: Joi.string().trim().min(2).max(100).optional(),
+    age: Joi.number().integer().min(13).max(120).optional(),
+    gender: Joi.string().valid('male', 'female', 'prefer_not_to_say').optional(),
+    cityArea: Joi.string().trim().max(200).optional(),
+    role: Joi.string().valid('community_member', 'available_to_help', 'both').optional(),
+    notificationPreferences: Joi.array()
+      .items(
+        Joi.string().valid(
+          'calm_presence', 'community_safety', 'elder_support',
+          'womens_safety', 'medical_assistance', 'language_help',
+          'blood_donation', 'general_support'
+        )
+      )
+      .optional(),
+    openTo: Joi.array()
+      .items(
+        Joi.string().valid(
+          'calm_presence', 'care_support', 'medical_awareness',
+          'language_support', 'elder_assistance', 'community_upkeep',
+          'print_document', 'tool_repair', 'carry_lift', 'transport_help',
+          'household_help', 'study_office_help', 'tech_help', 'general_help'
+        )
+      )
+      .optional(),
+    associations: Joi.object({
+      college: Joi.string().allow('', null).optional(),
+      religiousPlace: Joi.string().allow('', null).optional(),
+      workplace: Joi.string().allow('', null).optional(),
+      localGroup: Joi.string().allow('', null).optional(),
+    }).optional(),
+  }),
+
+  // Availability
+  updateAvailability: Joi.object({
+    isAvailable: Joi.boolean().required(),
+    location: Joi.object({
+      lng: Joi.number().min(-180).max(180).required(),
+      lat: Joi.number().min(-90).max(90).required(),
+    }).when('isAvailable', {
+      is: true,
+      then: Joi.required(),
+      otherwise: Joi.optional(),
+    }),
+  }),
+
+  // Help request
+  createHelpRequest: Joi.object({
+    category: Joi.string()
+      .valid(
+        'calm_presence', 'care_support', 'medical_awareness',
+        'language_support', 'elder_assistance', 'community_upkeep',
+        'print_document', 'tool_repair', 'carry_lift', 'transport_help',
+        'household_help', 'study_office_help', 'tech_help', 'general_help'
+      )
+      .required(),
+    description: Joi.string().trim().max(500).optional().allow(''),
+    location: Joi.object({
+      lng: Joi.number().min(-180).max(180).required(),
+      lat: Joi.number().min(-90).max(90).required(),
+      address: Joi.string().optional().allow(''),
+      whereToFindText: Joi.string().max(300).optional().allow(''),
+    }).required(),
+    itemReturnRequired: Joi.boolean().default(false),
+  }),
+
+  // Presence request
+  createPresenceRequest: Joi.object({
+    situationType: Joi.string()
+      .valid('need_calm_presence', 'being_followed', 'feeling_unsafe', 'other')
+      .required(),
+    description: Joi.string().trim().max(300).optional().allow(''),
+    location: Joi.object({
+      lng: Joi.number().min(-180).max(180).required(),
+      lat: Joi.number().min(-90).max(90).required(),
+      address: Joi.string().optional().allow(''),
+    }).required(),
+    maxHelpers: Joi.number().integer().min(2).max(5).default(3),
+  }),
+
+  // Close request
+  closeRequest: Joi.object({
+    wasResolved: Joi.boolean().required(),
+    accountability: Joi.string()
+      .valid(
+        'arrived_completed', 'needed_more_time', 'stepped_away',
+        'not_needed', 'other_option', 'concerned', 'completed_as_agreed'
+      )
+      .optional(),
+    rating: Joi.alternatives().try(
+      Joi.string().valid('good', 'okay', 'concern'),
+      Joi.number().min(1).max(5)
+    ).optional(),
+    feedback: Joi.string().optional().allow(''),
+  }),
+
+  // Chat message
+  sendMessage: Joi.object({
+    text: Joi.string().trim().min(1).max(1000).required(),
+    replyToId: Joi.string().optional().allow(null, ''),
+  }),
+
+  reactToMessage: Joi.object({
+    emoji: Joi.string()
+      .valid('❤️', '👍', '😂', '😮', '😢', '🙏')
+      .required(),
+  }),
+
+  // Report
+  createReport: Joi.object({
+    reportedRequestId: Joi.string().optional(),
+    reportedRequestType: Joi.string().valid('HelpRequest', 'PresenceRequest').optional(),
+    reportedUserId: Joi.string().optional(),
+    reporterRole: Joi.string().valid('requester', 'helper').optional(),
+    category: Joi.string()
+      .valid(
+        'felt_uncomfortable', 'personal_boundaries_crossed',
+        'misuse_of_platform', 'false_unnecessary_request', 'something_else'
+      )
+      .required(),
+    details: Joi.string().trim().max(1000).optional().allow(''),
+  }),
+
+  // Emergency contacts
+  addEmergencyContact: Joi.object({
+    contactName: Joi.string().trim().min(2).max(100).required(),
+    phoneNumber: Joi.string()
+      .pattern(/^[6-9]\d{9}$/)
+      .required()
+      .messages({ 'string.pattern.base': 'Enter a valid 10-digit mobile number' }),
+    relationship: Joi.string().trim().max(50).optional().allow(''),
+    notifyOnEscalation: Joi.boolean().default(true),
+  }),
+
+  // Subscription
+  updatePayment: Joi.object({
+    paymentMethod: Joi.object({
+      type: Joi.string().valid('upi', 'card').required(),
+      upiId: Joi.string().when('type', {
+        is: 'upi',
+        then: Joi.required(),
+        otherwise: Joi.optional(),
+      }),
+      cardLast4: Joi.string().length(4).when('type', {
+        is: 'card',
+        then: Joi.required(),
+        otherwise: Joi.optional(),
+      }),
+    }).required(),
+  }),
+
+  // Pagination query
+  pagination: Joi.object({
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(100).default(20),
+  }),
+}
+
+module.exports = { validate, schemas }

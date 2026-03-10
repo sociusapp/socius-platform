@@ -1,0 +1,25 @@
+# General
+.DS_Store
+.idea
+.vscode
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Expo
+.expo/
+dist/
+web-build/
+
+# Native
+android/app/build/
+android/build/
+ios/Pods/
+ios/build/
+*.jks
+*.keystore
+!debug.keystore
+
+# React Native
+# yarn.lock
+# package-lock.json
