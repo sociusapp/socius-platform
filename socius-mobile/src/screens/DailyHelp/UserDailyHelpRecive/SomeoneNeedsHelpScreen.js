@@ -431,27 +431,19 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
               },
             ]}
           >
-            <View style={[styles.trustRow, { justifyContent: 'space-between' }]}>
-              <Image
-                source={require('../../../assets/images/daily-4.png')}
-                style={[styles.trustIcon, { width: scale(48), height: scale(48) }]}
-                resizeMode="contain"
-              />
-              <Image
-                source={require('../../../assets/images/daily-3.png')}
-                style={[styles.trustIcon, { width: scale(48), height: scale(48) }]}
-                resizeMode="contain"
-              />
-              <Image
-                source={require('../../../assets/images/daily-2.png')}
-                style={[styles.trustIcon, { width: scale(48), height: scale(48) }]}
-                resizeMode="contain"
-              />
-              <Image
-                source={require('../../../assets/images/daily-1.png')}
-                style={[styles.trustIcon, { width: scale(48), height: scale(48) }]}
-                resizeMode="contain"
-              />
+            <View style={[styles.trustRow, { justifyContent: 'space-around' }]}>
+              <View style={styles.trustIconContainer}>
+                <Icon name="handshake-outline" size={scale(32)} color={trustSignals.closes_properly ? '#28C76F' : '#E0E0E0'} />
+              </View>
+              <View style={styles.trustIconContainer}>
+                <Icon name="clock-check-outline" size={scale(32)} color={trustSignals.returns_on_time ? '#28C76F' : '#E0E0E0'} />
+              </View>
+              <View style={styles.trustIconContainer}>
+                <Icon name="account-group-outline" size={scale(32)} color={trustSignals.helps_others ? '#007BFF' : '#E0E0E0'} />
+              </View>
+              <View style={styles.trustIconContainer}>
+                <Icon name="calendar-blank-outline" size={scale(32)} color={trustSignals.occasional_requester ? '#FFC107' : '#E0E0E0'} />
+              </View>
             </View>
           </View>
 

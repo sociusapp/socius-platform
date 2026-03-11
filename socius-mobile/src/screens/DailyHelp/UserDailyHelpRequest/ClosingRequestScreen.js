@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Button from '../../../components/common/Button';
@@ -7,17 +7,30 @@ import Header from '../../../components/common/Header';
 import CustomAlert from '../../../components/common/CustomAlert';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useResponsive } from '../../../utils/responsive';
-import { closeHelpRequest } from '../../../services/api/incident.api';
+import * as ImagePicker from 'expo-image-picker';
+import { submitClosure, uploadClosureEvidence } from '../../../services/api/incident.api';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
 
 const ClosingRequestScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
-  const [resolved, setResolved] = useState(null);
-  const [accountReturned, setAccountReturned] = useState(false);
-  const [needMoreTime, setNeedMoreTime] = useState(false);
-  const [reaction, setReaction] = useState(null);
+  const [starRating, setStarRating] = useState(0);
+  const [providedHelp, setProvidedHelp] = useState(null);
+  const [cancelledAfterAccept, setCancelledAfterAccept] = useState(false);
+  const [noReplyAfterAccept, setNoReplyAfterAccept] = useState(false);
+  const [itemIssue, setItemIssue] = useState(false);
+  const [itemIssueDescription, setItemIssueDescription] = useState('');
+  const [evidenceUris, setEvidenceUris] = useState([]);
+  const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const requestId = route?.params?.requestId;
+
+  useEffect(() => {
+    if (providedHelp === true) {
+      setCancelledAfterAccept(false);
+      setNoReplyAfterAccept(false);
+      setItemIssue(false);
+    }
+  }, [providedHelp]);
 
   // Custom Alert State
   const [alertVisible, setAlertVisible] = useState(false);
@@ -44,6 +57,28 @@ const ClosingRequestScreen = ({ navigation, route }) => {
     setAlertVisible(false);
   };
 
+  const pickEvidencePhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'We need media library permission to attach photos.');
+        return;
+        }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.8,
+        allowsMultipleSelection: true,
+        selectionLimit: 5,
+      });
+      if (!result.canceled) {
+        const assets = result.assets || [];
+        setEvidenceUris(prev => [...prev, ...assets.map(a => a.uri)].slice(0,5));
+      }
+    } catch (e) {
+      Alert.alert('Error', 'Unable to pick images.');
+    }
+  };
+
   const handleDone = async () => {
     if (submitting) {
       return;
@@ -52,6 +87,22 @@ const ClosingRequestScreen = ({ navigation, route }) => {
     if (!requestId) {
       showAlert('Request not found', 'Unable to identify the request to close.', [{ text: 'OK', onPress: closeAlert, type: 'destructive' }]);
       return;
+    }
+
+    if (!starRating || starRating < 1) {
+      showAlert('Rating required', 'Please rate your experience to continue.', [{ text: 'OK', onPress: closeAlert }]);
+      return;
+    }
+
+    if (itemIssue) {
+      if (!itemIssueDescription || itemIssueDescription.trim().length < 5) {
+        showAlert('More details', 'Please describe the issue with the item.', [{ text: 'OK', onPress: closeAlert }]);
+        return;
+      }
+      if (evidenceUris.length === 0) {
+        showAlert('Photo required', 'Please add at least one photo of the item issue.', [{ text: 'OK', onPress: closeAlert }]);
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -65,30 +116,60 @@ const ClosingRequestScreen = ({ navigation, route }) => {
         return;
       }
 
+      let evidencePhotos = [];
+      if (itemIssue && evidenceUris.length > 0) {
+        setUploading(true);
+        const formData = new FormData();
+        evidenceUris.forEach((uri, idx) => {
+          const name = `evidence_${idx}.jpg`;
+          formData.append('closure_evidence', { uri, name, type: 'image/jpeg' });
+        });
+        const uploadRes = await uploadClosureEvidence(token, formData);
+        evidencePhotos = uploadRes?.data?.files || uploadRes?.files || [];
+        setUploading(false);
+      }
+
       const payload = {
-        wasResolved: resolved === true,
-        accountability: accountReturned ? 'completed_as_agreed' : needMoreTime ? 'needed_more_time' : null,
-        rating: reaction === 'good' ? 5 : reaction === 'neutral' ? 3 : reaction === 'alert' ? 1 : null,
+        requestId,
+        rating: starRating,
+        feedback: {
+          providedHelp: providedHelp === true,
+          cancelledAfterAccept,
+          noReplyAfterAccept,
+          itemIssue,
+          itemIssueDescription: itemIssue ? itemIssueDescription : null,
+          evidencePhotos,
+        }
       };
 
-      const response = await closeHelpRequest(token, requestId, payload);
+      const response = await submitClosure(token, payload);
 
       if (response?.success) {
-        if (resolved === false && !accountReturned && !needMoreTime) {
-          navigation.navigate('CommunityBalanceNudge');
-          return;
-        }
-
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
-        });
+        showAlert(
+          'Submitted',
+          'Thanks. We’ll ask the other person to also rate and confirm closure. You can return home now.',
+          [
+            {
+              text: 'OK',
+              style: 'primary',
+              onPress: () => {
+                closeAlert();
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+                });
+              },
+            },
+          ],
+          'check-circle-outline',
+          '#28C76F'
+        );
         return;
       }
 
       showAlert(
         'Unable to close',
-        response?.message || 'Something went wrong while closing the request.',
+        response?.message || 'Something went wrong while submitting closure.',
         [{ text: 'OK', onPress: closeAlert, type: 'destructive' }]
       );
     } catch (error) {
@@ -99,7 +180,7 @@ const ClosingRequestScreen = ({ navigation, route }) => {
 
       showAlert(
         status ? `Error (${status})` : 'Error',
-        messageFromServer || 'Something went wrong while closing the request.',
+        messageFromServer || 'Something went wrong while submitting closure.',
         [{ text: 'OK', onPress: closeAlert, type: 'destructive' }]
       );
     } finally {
@@ -153,20 +234,31 @@ const ClosingRequestScreen = ({ navigation, route }) => {
           </View>
 
           <View style={[styles.section, { marginBottom: vscale(14) }]}>
-            <Text style={[styles.sectionHeading, { fontSize: ms(14), marginBottom: vscale(10) }]}>Was this resolved?</Text>
+            <Text style={[styles.sectionHeading, { fontSize: ms(14), marginBottom: vscale(10) }]}>Rate your experience</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              {[1,2,3,4,5].map(n => (
+                <TouchableOpacity key={n} onPress={() => setStarRating(n)} style={{ padding: spacing(6) }}>
+                  <Icon name={n <= starRating ? 'star' : 'star-outline'} size={scale(28)} color={n <= starRating ? '#F59E0B' : '#9CA3AF'} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <View style={[styles.section, { marginBottom: vscale(14) }]}>
+            <Text style={[styles.sectionHeading, { fontSize: ms(14), marginBottom: vscale(10) }]}>Did the helper provide help?</Text>
             <View style={[styles.rowButtons, { gap: spacing(10) }]}>
               <Button
-                title="Yes, it’s resolved"
-                onPress={() => setResolved(true)}
-                variant="gradient"
+                title="Yes"
+                onPress={() => setProvidedHelp(true)}
+                variant={providedHelp === true ? 'primary' : 'outline'}
                 size="large"
                 fullWidth={false}
-                style={[styles.halfButton, resolved === true && {}]}
+                style={styles.halfButton}
               />
               <Button
-                title="No, I’m stepping away"
-                onPress={() => setResolved(false)}
-                variant="white"
+                title="No"
+                onPress={() => setProvidedHelp(false)}
+                variant={providedHelp === false ? 'primary' : 'outline'}
                 size="large"
                 fullWidth={false}
                 style={styles.halfButton}
@@ -174,77 +266,86 @@ const ClosingRequestScreen = ({ navigation, route }) => {
             </View>
           </View>
 
-          <View style={[styles.section, { marginBottom: vscale(14) }]}>
-            <Text style={[styles.sectionHeading, { fontSize: ms(14), marginBottom: vscale(10) }]}>Accountability</Text>
-            <TouchableOpacity
-              style={[styles.checkboxRow, { marginBottom: vscale(8) }]}
-              onPress={() => setAccountReturned(!accountReturned)}
-              activeOpacity={0.85}
-            >
-              <View style={[styles.checkbox, {
-                width: scale(22),
-                height: scale(22),
-                borderRadius: scale(6),
-                borderWidth: scale(1),
-                marginRight: spacing(10)
-              }, accountReturned && styles.checkboxChecked]}>
-                {accountReturned && <Icon name="check" size={scale(16)} color="#FFFFFF" />}
+          {providedHelp === false && (
+            <View style={[styles.section, { marginBottom: vscale(14) }]}>
+              <Text style={[styles.sectionHeading, { fontSize: ms(14), marginBottom: vscale(10) }]}>What happened?</Text>
+              <TouchableOpacity
+                style={[styles.checkboxRow, { marginBottom: vscale(8) }]}
+                onPress={() => setCancelledAfterAccept(!cancelledAfterAccept)}
+                activeOpacity={0.85}
+              >
+                <View style={[styles.checkbox, {
+                  width: scale(22),
+                  height: scale(22),
+                  borderRadius: scale(6),
+                  borderWidth: scale(1),
+                  marginRight: spacing(10)
+                }, cancelledAfterAccept && styles.checkboxChecked]}>
+                  {cancelledAfterAccept && <Icon name="check" size={scale(16)} color="#FFFFFF" />}
+                </View>
+                <Text style={[styles.checkboxText, { fontSize: ms(14) }]}>Cancelled after accepting</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.checkboxRow, { marginBottom: vscale(8) }]}
+                onPress={() => setNoReplyAfterAccept(!noReplyAfterAccept)}
+                activeOpacity={0.85}
+              >
+                <View style={[styles.checkbox, {
+                  width: scale(22),
+                  height: scale(22),
+                  borderRadius: scale(6),
+                  borderWidth: scale(1),
+                  marginRight: spacing(10)
+                }, noReplyAfterAccept && styles.checkboxChecked]}>
+                  {noReplyAfterAccept && <Icon name="check" size={scale(16)} color="#FFFFFF" />}
+                </View>
+                <Text style={[styles.checkboxText, { fontSize: ms(14) }]}>No reply after accepting</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.checkboxRow, { marginBottom: vscale(8) }]}
+                onPress={() => setItemIssue(!itemIssue)}
+                activeOpacity={0.85}
+              >
+                <View style={[styles.checkbox, {
+                  width: scale(22),
+                  height: scale(22),
+                  borderRadius: scale(6),
+                  borderWidth: scale(1),
+                  marginRight: spacing(10)
+                }, itemIssue && styles.checkboxChecked]}>
+                  {itemIssue && <Icon name="check" size={scale(16)} color="#FFFFFF" />}
+                </View>
+                <Text style={[styles.checkboxText, { fontSize: ms(14) }]}>Issue with item</Text>
+              </TouchableOpacity>
+              <Text style={[styles.helperText, { fontSize: ms(12), marginTop: vscale(6) }]}>This helps build trust for future requests.</Text>
+            </View>
+          )}
+
+          {itemIssue && (
+            <View style={[styles.section, { marginBottom: vscale(14) }]}>
+              <Text style={[styles.sectionHeading, { fontSize: ms(14), marginBottom: vscale(10) }]}>Describe the issue</Text>
+              <TextInput
+                style={[styles.textInput, { borderRadius: scale(8), padding: spacing(12), height: vscale(80), fontSize: ms(14), marginBottom: vscale(8), borderWidth: scale(1), borderColor: '#E5E7EB' }]}
+                placeholder="Short description"
+                placeholderTextColor="#95A5A6"
+                value={itemIssueDescription}
+                onChangeText={setItemIssueDescription}
+                multiline
+              />
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Button title="Add Photos" onPress={pickEvidencePhoto} size="small" variant="white" />
+                <Text style={[styles.helperText, { fontSize: ms(12) }]}>{evidenceUris.length}/5</Text>
               </View>
-              <Text style={[styles.checkboxText, { fontSize: ms(14) }]}>Returned / completed as agreed</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.checkboxRow, { marginBottom: vscale(8) }]}
-              onPress={() => setNeedMoreTime(!needMoreTime)}
-              activeOpacity={0.85}
-            >
-              <View style={[styles.checkbox, {
-                width: scale(22),
-                height: scale(22),
-                borderRadius: scale(6),
-                borderWidth: scale(1),
-                marginRight: spacing(10)
-              }, needMoreTime && styles.checkboxChecked]}>
-                {needMoreTime && <Icon name="check" size={scale(16)} color="#FFFFFF" />}
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: vscale(8) }}>
+                {evidenceUris.map((uri, idx) => (
+                  <Image key={idx} source={{ uri }} style={{ width: scale(64), height: scale(64), borderRadius: scale(8), marginRight: spacing(8), marginBottom: vscale(8) }} />
+                ))}
               </View>
-              <Text style={[styles.checkboxText, { fontSize: ms(14) }]}>Needed more time</Text>
-            </TouchableOpacity>
-            <Text style={[styles.helperText, { fontSize: ms(12), marginTop: vscale(6) }]}>This helps build trust for future requests.</Text>
-          </View>
+            </View>
+          )}
 
           <View style={[styles.section, { marginBottom: vscale(14) }]}>
-            <Text style={[styles.sectionHeading, { fontSize: ms(14), marginBottom: vscale(10) }]}>How did this go?</Text>
-            <View style={[styles.reactionPill, {
-              borderRadius: scale(28),
-              borderWidth: scale(1),
-              paddingHorizontal: spacing(16),
-              paddingVertical: vscale(8),
-              marginBottom: vscale(8),
-              shadowOffset: { width: 0, height: vscale(2) },
-              shadowRadius: scale(6),
-              elevation: scale(2)
-            }]}>
-              <TouchableOpacity
-                style={[styles.reactionItem, { width: scale(44), height: scale(44), borderRadius: scale(22) }, reaction === 'good' && styles.reactionSelected]}
-                onPress={() => setReaction('good')}
-                activeOpacity={0.85}
-              >
-                <Icon name="thumb-up" size={scale(22)} color={reaction === 'good' ? '#DC5C69' : '#5A6F7D'} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.reactionItem, { width: scale(44), height: scale(44), borderRadius: scale(22) }, reaction === 'neutral' && styles.reactionSelected]}
-                onPress={() => setReaction('neutral')}
-                activeOpacity={0.85}
-              >
-                <Icon name="emoticon-outline" size={scale(22)} color={reaction === 'neutral' ? '#DC5C69' : '#5A6F7D'} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.reactionItem, { width: scale(44), height: scale(44), borderRadius: scale(22) }, reaction === 'alert' && styles.reactionSelected]}
-                onPress={() => setReaction('alert')}
-                activeOpacity={0.85}
-              >
-                <Icon name="alert-circle-outline" size={scale(22)} color={reaction === 'alert' ? '#DC5C69' : '#5A6F7D'} />
-              </TouchableOpacity>
-            </View>
+            <Text style={[styles.sectionHeading, { fontSize: ms(14), marginBottom: vscale(10) }]}>Need to report a concern?</Text>
             <TouchableOpacity style={[styles.linkRow, { gap: spacing(4) }]} onPress={handleReportConcern} activeOpacity={0.85}>
               <Text style={[styles.linkText, { fontSize: ms(14) }]}>Report a Concern</Text>
               <Icon name="chevron-right" size={scale(20)} color="#DC5C69" />
@@ -277,13 +378,13 @@ const ClosingRequestScreen = ({ navigation, route }) => {
           </View>
 
           <Button
-            title="Done"
+            title={uploading ? "Uploading..." : "Submit Closure"}
             onPress={handleDone}
             variant="gradient"
             size="large"
             fullWidth
-            loading={submitting}
-            disabled={submitting}
+            loading={submitting || uploading}
+            disabled={submitting || uploading}
           />
           <View style={[styles.footerNote, { marginTop: vscale(8) }]}>
             <Text style={[styles.footerNoteText, { fontSize: ms(12) }]}>
@@ -385,7 +486,7 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#9CA3AF',
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',

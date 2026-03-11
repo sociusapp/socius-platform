@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Keyboard, Platform, ToastAndroid, KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Keyboard, Platform, ToastAndroid, KeyboardAvoidingView, PermissionsAndroid } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useResponsive } from '../../utils/responsive';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -118,6 +118,19 @@ const PhoneVerificationScreen = ({ navigation }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
 
   useEffect(() => {
+    const requestNotificationPermission = async () => {
+      if (Platform.OS === 'android' && Platform.Version >= 33) {
+        try {
+          await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+          );
+        } catch (err) {
+          console.warn('Post notification permission error:', err);
+        }
+      }
+    };
+    requestNotificationPermission();
+
     const timeout = setTimeout(() => {
       if (phoneInputRef.current) {
         phoneInputRef.current.focus();

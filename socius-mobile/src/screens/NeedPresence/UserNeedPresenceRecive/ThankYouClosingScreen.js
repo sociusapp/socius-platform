@@ -3,9 +3,10 @@ import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Activi
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../../components/common/Header';
 import Button from '../../../components/common/Button';
-import { closeHelpRequest } from '../../../services/api/incident.api';
+import { submitClosure } from '../../../services/api/incident.api';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
 import CustomAlert from '../../../components/common/CustomAlert';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 import { useResponsive } from '../../../utils/responsive';
 
@@ -13,6 +14,7 @@ const ThankYouClosingScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
   const [selectedOutcome, setSelectedOutcome] = useState(null);
   const [feedback, setFeedback] = useState('');
+  const [stars, setStars] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const requestId = route?.params?.requestId;
 
@@ -57,6 +59,11 @@ const ThankYouClosingScreen = ({ navigation, route }) => {
       return;
     }
 
+    if (!stars || stars < 1) {
+      showAlert('Rating required', 'Please rate your experience to continue.', [{ text: 'OK', onPress: closeAlert }]);
+      return;
+    }
+
     setSubmitting(true);
     try {
       const auth = await loadAuth();
@@ -67,20 +74,18 @@ const ThankYouClosingScreen = ({ navigation, route }) => {
         return;
       }
 
-      // Map outcomes to API payload
-      const wasResolved = selectedOutcome === 'Resolved calmly';
-      const accountability = selectedOutcome === 'No longer needed' ? 'not_needed' : 
-                            selectedOutcome === 'Chose another option' ? 'other_option' : 
-                            selectedOutcome === 'Still concerned' ? 'concerned' : 'completed_as_agreed';
-      
       const payload = {
-        wasResolved,
-        accountability,
-        rating: 'good', 
-        feedback
+        requestId,
+        rating: stars,
+        feedback: {
+          providedHelp: selectedOutcome === 'Resolved calmly',
+          requesterUnavailable: selectedOutcome === 'No longer needed',
+          safetyConcerns: selectedOutcome === 'Still concerned',
+          notes: feedback || null,
+        }
       };
 
-      const response = await closeHelpRequest(token, requestId, payload);
+      const response = await submitClosure(token, payload);
 
       if (response?.success) {
         navigation.reset({
@@ -121,6 +126,18 @@ const ThankYouClosingScreen = ({ navigation, route }) => {
 
           {/* Outcome Selection */}
           <View style={[styles.card, { borderRadius: scale(12), padding: spacing(16), marginBottom: vscale(24), shadowRadius: scale(4), elevation: scale(2), borderWidth: scale(1) }]}>
+            <Text style={[styles.cardTitle, { fontSize: ms(16), marginBottom: vscale(12) }]}>Rate this experience</Text>
+            <View style={{ flexDirection: 'row', marginBottom: vscale(16) }}>
+              {[1,2,3,4,5].map(n => (
+                <TouchableOpacity key={n} onPress={() => setStars(n)} style={{ padding: spacing(6) }}>
+                  <Icon
+                    name={n <= stars ? 'star' : 'star-outline'}
+                    size={scale(26)}
+                    color={n <= stars ? '#F59E0B' : '#9CA3AF'}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
             <Text style={[styles.cardTitle, { fontSize: ms(16), marginBottom: vscale(16) }]}>How did this situation end?</Text>
             <View style={[styles.chipContainer, { gap: spacing(10) }]}>
               {outcomes.map((outcome) => (

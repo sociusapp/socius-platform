@@ -12,6 +12,10 @@ const { connectRedis } = require('./src/config/redis')
 const routes = require('./src/routes')
 const { notFoundHandler, errorHandler } = require('./src/middlewares/errorHandler')
 const User = require('./src/models/User')
+const cron = require('node-cron')
+const { runAutoCloseJobs } = require('./src/jobs/autoClose.job')
+const { cleanupOldChats } = require('./src/jobs/cleanup.job')
+const { runSubscriptionCheck } = require('./src/jobs/subscriptionCheck.job')
 
 const app = express()
 
@@ -124,6 +128,36 @@ const start = async () => {
 
   server.listen(port, () => {
     console.log(`Socius backend listening on port ${port}`)
+    
+    // Schedule background jobs
+    // Auto-close jobs every 5 minutes
+    cron.schedule('*/5 * * * *', async () => {
+      try {
+        await runAutoCloseJobs()
+      } catch (err) {
+        console.error('Auto-close job failed:', err)
+      }
+    })
+    
+    // Cleanup old chats daily at 2 AM
+    cron.schedule('0 2 * * *', async () => {
+      try {
+        await cleanupOldChats()
+      } catch (err) {
+        console.error('Cleanup job failed:', err)
+      }
+    })
+    
+    // Subscription check every hour
+    cron.schedule('0 * * * *', async () => {
+      try {
+        await runSubscriptionCheck()
+      } catch (err) {
+        console.error('Subscription check job failed:', err)
+      }
+    })
+    
+    console.log('Background jobs scheduled successfully')
   })
 }
 

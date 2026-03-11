@@ -126,9 +126,6 @@ const BottomTabNavigator = () => {
         }
 
         setHasLocationPermissionFlag(hasLoc);
-        if (verified && !hasLoc) {
-          setShowLocationModal(true);
-        }
       } else {
         setIsVerified(false);
       }
@@ -213,80 +210,6 @@ const BottomTabNavigator = () => {
 
   return (
     <>
-      <Modal
-        transparent
-        visible={showLocationModal && isVerified && !hasLocationPermissionFlag}
-        animationType="slide"
-        onRequestClose={handleSkipLocation}
-      >
-        <View style={styles.fullscreenBackdrop}>
-          <View style={styles.fullscreenCard}>
-            <View style={styles.fullscreenHeader}>
-              <Text style={styles.fullscreenTitle}>Stay aware with Socius</Text>
-              <Text style={styles.fullscreenSubtitle}>
-                To show nearby awareness and alerts, Socius needs a few permissions from you.
-              </Text>
-            </View>
-
-            <View style={styles.permissionList}>
-              <View style={styles.permissionRow}>
-                <View style={[styles.permissionIconWrapper, styles.locationIconBg]}>
-                  <Icon name="map-marker-radius" size={24} color="#EC6E63" />
-                </View>
-                <View style={styles.permissionTextBlock}>
-                  <Text style={styles.permissionTitle}>Location</Text>
-                  <Text style={styles.permissionDescription}>
-                    Share your approximate location so we can show what is happening near you.
-                  </Text>
-                </View>
-              </View>
-              <TouchableOpacity
-                activeOpacity={0.9}
-                onPress={handleAllowLocation}
-                style={styles.primaryCtaWrapper}
-              >
-                <LinearGradient
-                  colors={['#EC6E63', '#D84D42']}
-                  start={{ x: 0.1, y: 0.0 }}
-                  end={{ x: 0.9, y: 1.0 }}
-                  style={styles.primaryCta}
-                >
-                  <Text style={styles.primaryCtaText}>Allow location</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.permissionList}>
-              <View style={styles.permissionRow}>
-                <View style={[styles.permissionIconWrapper, styles.notificationIconBg]}>
-                  <Icon name="bell-ring" size={24} color="#2563EB" />
-                </View>
-                <View style={styles.permissionTextBlock}>
-                  <Text style={styles.permissionTitle}>Notifications</Text>
-                  <Text style={styles.permissionDescription}>
-                    Get alerts when there is important activity nearby or when someone needs awareness.
-                  </Text>
-                </View>
-              </View>
-              <TouchableOpacity
-                activeOpacity={0.9}
-                onPress={requestNotificationPermission}
-                style={styles.secondaryCta}
-              >
-                <Text style={styles.secondaryCtaText}>Allow notifications</Text>
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={handleSkipLocation}
-              style={styles.skipButton}
-            >
-              <Text style={styles.skipButtonText}>Not now</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
       <Modal
         transparent
         visible={showReviewAlert}
@@ -640,4 +563,3 @@ const styles = StyleSheet.create({
 });
 
 export default BottomTabNavigator;
-

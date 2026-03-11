@@ -1,11 +1,11 @@
-import React, { useEffect } from 'react';
-import { View, Text, Image, StyleSheet, Dimensions, Animated, Platform } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, Image, StyleSheet, Dimensions, Animated, Platform, TouchableOpacity, ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useResponsive } from '../../utils/responsive';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loadAuth } from '../../services/storage/asyncStorage.service';
 import { getHome } from '../../services/api/user.api';
-import { getMyActiveHelpRequest } from '../../services/api/incident.api';
+import { getMyActiveHelpRequest, getActivePresenceRequest } from '../../services/api/incident.api';
 import notifee from '@notifee/react-native';
 
 import * as ExpoSplashScreen from 'expo-splash-screen';
@@ -15,7 +15,12 @@ const { width, height } = Dimensions.get('window');
 const SplashScreen = () => {
   const navigation = useNavigation();
   const { scale, ms, spacing } = useResponsive();
-  const fadeAnim = new Animated.Value(0);
+  const fadeAnim = useMemo(() => new Animated.Value(0), []);
+  const [logs, setLogs] = useState([]);
+  const addLog = (m) => {
+    setLogs((prev) => [...prev.slice(-8), `${new Date().toISOString().split('T')[1]?.slice(0,8)} ${m}`]);
+    console.log('[Splash]', m);
+  };
 
   useEffect(() => {
     const checkInitialNotification = async () => {
@@ -25,124 +30,159 @@ const SplashScreen = () => {
           const { notification } = initialNotification;
           if (notification.data && (notification.data.type === 'PRESENCE_ALARM' || notification.data.type === 'HELP_REQUEST')) {
             // Let AppNavigator handle it, but we can speed up the splash
+            addLog('initial notif present');
             return true;
           }
         }
       } catch (e) {
-        console.warn('Error checking initial notification:', e);
+        addLog(`initial notif error: ${String(e?.message || e)}`);
       }
       return false;
     };
 
     const hideNativeSplash = async () => {
       try {
-        await ExpoSplashScreen.hideAsync();
-      } catch (e) {
-        console.warn('Error hiding native splash:', e);
-      }
+        // We will call this right before navigating, 
+        // or after a fail-safe timeout
+      } catch (e) { }
     };
-    hideNativeSplash();
 
     Animated.timing(fadeAnim, {
       toValue: 1,
-      duration: 1000,
+      duration: 800,
       useNativeDriver: true,
     }).start();
 
     const init = async () => {
-      // Check if we have a critical notification pending
-      const hasCriticalNotification = await checkInitialNotification();
-      
-      // If we have a critical notification, we should not delay
-      const delay = hasCriticalNotification ? 0 : 3000;
+      const startTime = Date.now();
 
-      const timer = setTimeout(async () => {
-        try {
-          const { accessToken } = await loadAuth();
+      try {
+        // Fail-safe: Hide native splash after 6 seconds no matter what
+        const failSafeTimer = setTimeout(() => {
+          ExpoSplashScreen.hideAsync().catch(() => { });
+        }, 6000);
 
+        addLog('loading token');
+        const { accessToken } = await loadAuth();
+        addLog(`token ${accessToken ? 'present' : 'missing'}`);
+        let navigated = false;
+        const navigateNow = async (route, params) => {
+          if (navigated) return;
+          navigated = true;
+          await ExpoSplashScreen.hideAsync().catch(() => { });
+          clearTimeout(failSafeTimer);
+          navigation.reset({ index: 0, routes: [{ name: route, params }] });
+        };
+        const fallbackTimer = setTimeout(() => {
+          addLog('fallback navigate');
           if (accessToken) {
-            // Check for active help request
-            try {
-              const activeRequestResponse = await getMyActiveHelpRequest(accessToken);
-              if (activeRequestResponse?.success && activeRequestResponse?.data) {
-                let request = activeRequestResponse.data;
-                // Handle nested activeRequest object if present
-                if (request.activeRequest) {
-                    request = request.activeRequest;
-                }
+            navigateNow('MainApp', { screen: 'HomeTab' });
+          } else {
+            navigateNow('PhoneVerification');
+          }
+        }, 4000);
 
-                const activeStatuses = ['PENDING', 'SEARCHING', 'ACCEPTED', 'IN_PROGRESS', 'matched'];
-                
-                if (request && activeStatuses.includes(request.status)) {
-                  navigation.reset({
-                    index: 0,
-                    routes: [{ name: 'RequestActive' }],
-                  });
-                  return;
-                }
+        if (accessToken) {
+          // 1. Check for active help request or presence request
+          try {
+            addLog('checking active requests');
+            const [helpRes, presenceRes] = await Promise.allSettled([
+              getMyActiveHelpRequest(accessToken),
+              getActivePresenceRequest(accessToken)
+            ]);
+
+            // Handle Help Request
+            if (helpRes.status === 'fulfilled' && helpRes.value?.success && helpRes.value?.data) {
+              let request = helpRes.value.data;
+              if (request.activeRequest) request = request.activeRequest;
+              const activeStatuses = ['PENDING', 'SEARCHING', 'ACCEPTED', 'IN_PROGRESS', 'matched'];
+
+              if (request && activeStatuses.includes(request.status)) {
+                clearTimeout(fallbackTimer);
+                await ExpoSplashScreen.hideAsync().catch(() => { });
+                navigation.reset({ index: 0, routes: [{ name: 'RequestActive' }] });
+                clearTimeout(failSafeTimer);
+                return;
               }
-            } catch (e) {
-              console.log('No active request or error checking:', e);
             }
 
-            let shouldShowProfileReview = false;
+            // Handle Presence Request
+            if (presenceRes.status === 'fulfilled') {
+              const pData = presenceRes.value?.data || presenceRes.value;
+              const activePresenceId = pData?._id || pData?.id || pData?.requestId || pData?.request?._id || pData?.presenceRequestId;
 
-            try {
-              const homeResponse = await getHome(accessToken);
-              const { success: homeSuccess, data: homeData } = homeResponse || {};
-              if (homeSuccess && homeData?.verificationStatus) {
-                const status = homeData.verificationStatus;
-                const pendingStatuses = ['pending', 'review_requested', 'not_submitted'];
-                if (pendingStatuses.includes(status)) {
-                  shouldShowProfileReview = true;
-                }
+              if (activePresenceId) {
+                clearTimeout(fallbackTimer);
+                await ExpoSplashScreen.hideAsync().catch(() => { });
+                navigation.reset({ index: 0, routes: [{ name: 'AwarenessShared', params: { requestId: activePresenceId } }] });
+                clearTimeout(failSafeTimer);
+                return;
               }
-            } catch (e) {
             }
-
-            if (shouldShowProfileReview) {
-              navigation.reset({
-                index: 0,
-                routes: [{ name: 'ProfileReview' }],
-              });
-            } else {
-              navigation.reset({
-                index: 0,
-                routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
-              });
-            }
-            return;
+          } catch (e) {
+            addLog(`active req error: ${String(e?.message || e)}`);
           }
 
-          navigation.reset({
-            index: 0,
-            routes: [{ name: 'PhoneVerification' }],
-          });
-        } catch (e) {
-          navigation.reset({
-            index: 0,
-            routes: [{ name: 'PhoneVerification' }],
-          });
+          // 2. Check profile review status
+          let shouldShowProfileReview = false;
+          try {
+            addLog('fetching home');
+            const homeResponse = await getHome(accessToken);
+            if (homeResponse?.success && homeResponse?.data?.verificationStatus) {
+              const status = homeResponse.data.verificationStatus;
+              if (['pending', 'review_requested', 'not_submitted'].includes(status)) {
+                shouldShowProfileReview = true;
+              }
+            }
+          } catch (e) { addLog(`home error: ${String(e?.message || e)}`); }
+
+          // Wait at least 2 seconds for branding
+          const elapsed = Date.now() - startTime;
+          if (elapsed < 2000) await new Promise(r => setTimeout(r, 2000 - elapsed));
+
+          clearTimeout(fallbackTimer);
+          await ExpoSplashScreen.hideAsync().catch(() => { });
+          clearTimeout(failSafeTimer);
+
+          if (shouldShowProfileReview) {
+            addLog('navigate profile review');
+            navigation.reset({ index: 0, routes: [{ name: 'ProfileReview' }] });
+          } else {
+            addLog('navigate main app');
+            navigation.reset({ index: 0, routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }] });
+          }
+        } else {
+          // No token, go to logic but wait for branding
+          const elapsed = Date.now() - startTime;
+          if (elapsed < 2000) await new Promise(r => setTimeout(r, 2000 - elapsed));
+
+          clearTimeout(fallbackTimer);
+          await ExpoSplashScreen.hideAsync().catch(() => { });
+          clearTimeout(failSafeTimer);
+          addLog('navigate phone verification');
+          navigation.reset({ index: 0, routes: [{ name: 'PhoneVerification' }] });
         }
-      }, delay);
-      
-      return () => clearTimeout(timer);
+      } catch (e) {
+        addLog(`init error: ${String(e?.message || e)}`);
+        await ExpoSplashScreen.hideAsync().catch(() => { });
+        navigation.reset({ index: 0, routes: [{ name: 'PhoneVerification' }] });
+      }
     };
 
     init();
-  }, []);
+  }, [navigation, fadeAnim]);
 
   return (
     <View style={styles.container}>
       <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
         <View style={styles.logoContainer}>
-          <Image 
+          <Image
             source={require('../../assets/icons/icon-03.png')}
             style={{ width: scale(150), height: scale(150) }}
             resizeMode="contain"
           />
         </View>
-        
+
         <View style={styles.textContainer}>
           <Text style={[styles.title, { fontSize: ms(48) }]}>
             Socius
@@ -152,6 +192,23 @@ const SplashScreen = () => {
           </Text>
         </View>
       </Animated.View>
+      {__DEV__ && (
+        <View style={styles.debugBox}>
+          <ScrollView style={{ maxHeight: 120 }}>
+            {logs.map((l, i) => (
+              <Text key={i} style={styles.debugText}>{l}</Text>
+            ))}
+          </ScrollView>
+          <View style={styles.debugRow}>
+            <TouchableOpacity onPress={() => navigation.reset({ index: 0, routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }] })} style={styles.debugBtn}>
+              <Text style={styles.debugBtnText}>Continue</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => navigation.reset({ index: 0, routes: [{ name: 'PhoneVerification' }] })} style={styles.debugBtn}>
+              <Text style={styles.debugBtnText}>Sign In</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </View>
   );
 };
@@ -186,7 +243,37 @@ const styles = StyleSheet.create({
   subtitle: {
     fontWeight: '400',
     color: '#000000',
-    marginTop:10
+    marginTop: 10
+  },
+  debugBox: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    right: 20,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    padding: 10,
+    borderRadius: 8,
+  },
+  debugText: {
+    color: '#fff',
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  debugRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  debugBtn: {
+    backgroundColor: '#1e88e5',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  debugBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
 

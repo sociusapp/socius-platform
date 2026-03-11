@@ -45,7 +45,7 @@ const createRequest = async (requesterId, { category, description, location, ite
   const autoCloseAt = new Date(Date.now() + AUTO_CLOSE.HELP_REQUEST_MINUTES * 60 * 1000)
 
   // Nearby helpers dhundho
-  const helpers = await findHelpersForRequest({
+  let helpers = await findHelpersForRequest({
     lng: location.lng,
     lat: location.lat,
     category,
@@ -53,6 +53,19 @@ const createRequest = async (requesterId, { category, description, location, ite
   })
 
   logger.info(`Helpers found: ${helpers.length} for potential req`)
+
+  // Blacklist filter: previous negative/penalized helpers should not get repeat notifications
+  try {
+    const { getBlacklistedHelpersForRequester } = require('./requestClosure.service')
+    const blacklistedIds = await getBlacklistedHelpersForRequester(requesterId)
+    if (blacklistedIds.length > 0) {
+      const before = helpers.length
+      helpers = helpers.filter(h => !blacklistedIds.includes(String(h._id)))
+      logger.info(`Filtered ${before - helpers.length} blacklisted helpers for requester ${requesterId}`)
+    }
+  } catch (e) {
+    logger.error('Blacklist filter failed', e)
+  }
 
   if (helpers.length === 0) {
     // Logic moved after creation

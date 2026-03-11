@@ -58,10 +58,14 @@ const uploadGovId = upload.single('government_id')
 const uploadSelfie = upload.single('selfie')
 
 // Dono ek saath (verification submit)
+// Closure evidence uploads (1-5 photos)
+const uploadClosureEvidence = upload.array('closure_evidence', 5)
+
 const uploadVerificationDocs = upload.fields([
   { name: 'government_id', maxCount: 1 },
   { name: 'selfie', maxCount: 1 },
 ])
+
 
 // Review request re-upload
 const uploadReviewDocs = upload.fields([
@@ -92,6 +96,7 @@ const handleUploadError = (uploadMiddleware) => {
 module.exports = {
   uploadGovId: handleUploadError(uploadGovId),
   uploadSelfie: handleUploadError(uploadSelfie),
+  uploadClosureEvidence: handleUploadError(uploadClosureEvidence),
   uploadVerificationDocs: handleUploadError(uploadVerificationDocs),
   uploadReviewDocs: handleUploadError(uploadReviewDocs),
 }

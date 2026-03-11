@@ -57,6 +57,36 @@ const markRequestDelivered = (token, id) => {
     .then((response) => response.data);
 };
 
+// New closure flow
+const submitClosure = (token, payload) => {
+  return api
+    .post('/request/close', payload, authConfig(token))
+    .then((response) => response.data);
+};
+
+const getClosureFeedback = (token, requestId) => {
+  return api
+    .get(`/request/closure-feedback/${encodeURIComponent(requestId)}`, authConfig(token))
+    .then((response) => response.data);
+};
+
+const finalizeClosure = (token, payload) => {
+  return api
+    .put('/request/finalize-closure', payload, authConfig(token))
+    .then((response) => response.data);
+};
+
+const uploadClosureEvidence = (token, formData) => {
+  const cfg = {
+    ...authConfig(token),
+    headers: {
+      ...(authConfig(token)?.headers || {}),
+      'Content-Type': 'multipart/form-data',
+    },
+  };
+  return api.post('/closure-upload', formData, cfg).then((r) => r.data);
+};
+
 const getNearbyHelpRequests = (token, coords) => {
   const params = coords ? { latitude: coords.latitude, longitude: coords.longitude } : {};
   return api
@@ -121,6 +151,10 @@ export {
   cancelHelpRequest,
   closeHelpRequest,
   markRequestDelivered,
+  submitClosure,
+  getClosureFeedback,
+  finalizeClosure,
+  uploadClosureEvidence,
   getNearbyHelpRequests,
   getActivePresenceRequest,
   createPresenceRequest,

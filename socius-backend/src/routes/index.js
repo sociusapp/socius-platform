@@ -13,5 +13,7 @@ router.use('/emergency-contacts', require('./emergencyContacts.routes'))
 router.use('/reports',            require('./report.routes'))
 router.use('/admin',              require('./admin.routes'))
 router.use('/pages',              require('./staticPage.routes'))
+router.use('/request',            require('./requestClosure.routes'))
+router.use('/',                   require('./closureUpload.routes'))
 
 module.exports = router

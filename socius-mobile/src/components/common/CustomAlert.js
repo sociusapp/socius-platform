@@ -80,9 +80,19 @@ const CustomAlert = ({
   if (!showModal) return null;
 
   // Default button if none provided
-  const actionButtons = buttons.length > 0 ? buttons : [
+  let actionButtons = buttons.length > 0 ? buttons : [
     { text: 'OK', onPress: () => toggleModal(false), style: 'primary' }
   ];
+
+  // When exactly two buttons are provided, prefer showing the primary on top and cancel below
+  // to avoid cramped horizontal layout and ensure consistent tap targets across devices.
+  if (actionButtons.length === 2) {
+    const primary = actionButtons.find(b => b.style !== 'cancel');
+    const cancel = actionButtons.find(b => b.style === 'cancel');
+    if (primary && cancel) {
+      actionButtons = [primary, cancel];
+    }
+  }
 
   return (
     <Modal
@@ -123,7 +133,8 @@ const CustomAlert = ({
 
           <View style={[
             styles.buttonContainer,
-            actionButtons.length > 2 ? { flexDirection: 'column' } : { flexDirection: 'row' }
+            // Use vertical layout for 1-2 buttons for better readability and consistent widths
+            actionButtons.length <= 2 ? { flexDirection: 'column' } : { flexDirection: 'column' }
           ]}>
             {actionButtons.map((btn, index) => (
               <TouchableOpacity
@@ -133,9 +144,7 @@ const CustomAlert = ({
                   styles.button,
                   btn.style === 'cancel' ? styles.cancelButton : styles.primaryButton,
                   btn.style === 'destructive' ? styles.destructiveButton : {},
-                  actionButtons.length > 2 ? { width: '100%', marginBottom: 10 } : { flex: 1, marginHorizontal: 6 },
-                  // If it's the only button, give it some margin to look centered/nice
-                  actionButtons.length === 1 ? { marginHorizontal: 20 } : {}
+                  { width: '100%', marginBottom: 12 }
                 ]}
                 onPress={() => handleButtonPress(btn.onPress)}
               >
