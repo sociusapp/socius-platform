@@ -24,6 +24,14 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
     area: paramArea
   });
 
+  // Placeholder for trust signals
+  const [trustSignals, setTrustSignals] = useState({
+    closes_properly: true,
+    returns_on_time: true,
+    helps_others: true,
+    occasional_requester: true,
+  });
+
   const requestId = paramRequestId || requestData?.id || requestData?._id;
 
   // Custom Alert State
@@ -432,16 +440,16 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
             ]}
           >
             <View style={[styles.trustRow, { justifyContent: 'space-around' }]}>
-              <View style={styles.trustIconContainer}>
+              <View style={[styles.trustIconContainer, { width: scale(56), height: scale(56), borderRadius: scale(28) }]}>
                 <Icon name="handshake-outline" size={scale(32)} color={trustSignals.closes_properly ? '#28C76F' : '#E0E0E0'} />
               </View>
-              <View style={styles.trustIconContainer}>
+              <View style={[styles.trustIconContainer, { width: scale(56), height: scale(56), borderRadius: scale(28) }]}>
                 <Icon name="clock-check-outline" size={scale(32)} color={trustSignals.returns_on_time ? '#28C76F' : '#E0E0E0'} />
               </View>
-              <View style={styles.trustIconContainer}>
+              <View style={[styles.trustIconContainer, { width: scale(56), height: scale(56), borderRadius: scale(28) }]}>
                 <Icon name="account-group-outline" size={scale(32)} color={trustSignals.helps_others ? '#007BFF' : '#E0E0E0'} />
               </View>
-              <View style={styles.trustIconContainer}>
+              <View style={[styles.trustIconContainer, { width: scale(56), height: scale(56), borderRadius: scale(28) }]}>
                 <Icon name="calendar-blank-outline" size={scale(32)} color={trustSignals.occasional_requester ? '#FFC107' : '#E0E0E0'} />
               </View>
             </View>
@@ -546,7 +554,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  trustIcon: {
+  trustIconContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
   },
   trustInfoText: {
     fontFamily: 'Inter-Regular',

@@ -21,14 +21,27 @@ class NotificationReceiver : BroadcastReceiver() {
             val reactNativeHost = reactApplication.reactNativeHost
             val reactContext = reactNativeHost.reactInstanceManager.currentReactContext
 
-            if (reactContext != null) {
+            val requestId = intent.getStringExtra("call_uuid")
+
+            if (reactContext != null && reactContext.hasActiveCatalystInstance()) {
                 val params = Arguments.createMap()
-                params.putString("requestId", intent.getStringExtra("call_uuid"))
+                params.putString("requestId", requestId)
                 params.putString("action", "decline")
                 
                 reactContext
                     .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
                     .emit("CallDeclined", params)
+            } else if (!requestId.isNullOrEmpty()) {
+                val launchIntent = Intent(context, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                        Intent.FLAG_ACTIVITY_NO_ANIMATION or
+                        Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
+                    putExtra("call_uuid", requestId)
+                    putExtra("action", "decline")
+                }
+                context.startActivity(launchIntent)
             }
         } catch (e: Exception) {
             e.printStackTrace()

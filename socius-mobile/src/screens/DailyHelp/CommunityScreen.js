@@ -15,7 +15,7 @@ import CustomAlert from '../../components/common/CustomAlert';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-const CommunityScreen = ({ navigation }) => {
+const CommunityScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
   const cardWidth = (contentWidth - spacing(24)) / 3;
   const isFocused = useIsFocused();
@@ -234,6 +234,15 @@ const CommunityScreen = ({ navigation }) => {
     flatListRef.current?.scrollToIndex({ index, animated: true });
   };
 
+  useEffect(() => {
+    const initialTab = route?.params?.initialTab;
+    if (!initialTab) return;
+    const tabs = ['community', 'requests', 'history'];
+    const idx = tabs.indexOf(String(initialTab));
+    if (idx === -1) return;
+    onTabPress(tabs[idx], idx);
+  }, [route?.params?.initialTab]);
+
   const onMomentumScrollEnd = (event) => {
     const index = Math.round(event.nativeEvent.contentOffset.x / SCREEN_WIDTH);
     const tabs = ['community', 'requests', 'history'];
@@ -443,7 +452,7 @@ const CommunityScreen = ({ navigation }) => {
                   {item.title || (isMyRequest ? 'Help Request' : 'Help Provided')}
                 </Text>
                 {item.category && (
-                  <Text style={{ fontSize: ms(12), color: '#64748B', marginTop: 2 }}>
+                  <Text style={{ fontSize: ms(12), color: '#64748B', marginTop: 2, textTransform: 'uppercase' }}>
                     {item.category}
                   </Text>
                 )}
@@ -498,7 +507,7 @@ const CommunityScreen = ({ navigation }) => {
                   {isMyRequest ? 'You Requested' : 'You Helped'}
                 </Text>
               </View>
-              <Text style={{ fontSize: ms(11), color: '#94A3B8' }}>{getTimeDisplay()}</Text>
+              <Text style={{ color: '#94A3B8', fontSize: ms(11) }}>{getTimeDisplay()}</Text>
             </View>
           </View>
         </View>

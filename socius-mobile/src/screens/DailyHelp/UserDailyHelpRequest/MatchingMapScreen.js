@@ -399,6 +399,107 @@ const MatchingMapScreen = ({ navigation, route }) => {
     };
   }, [sessionId, currentUserId]);
 
+  useEffect(() => {
+    let isMounted = true;
+    let socket;
+
+    const handleClosureInitiated = (data) => {
+      if (!isMounted) return;
+      if (String(data?.requestId) !== String(requestId)) return;
+
+      const initiatedBy = String(data?.initiatedBy || '');
+      if (initiatedBy === 'helper') {
+        showAlert(
+          'Request closing started',
+          'Helper ne request close start kar di hai. Kya aapka help pura hua? Agar haan, ab closure complete karein. Agar nahi, aap naya request bana sakte hain.',
+          [
+            {
+              text: 'Close Now',
+              onPress: () => {
+                closeAlert();
+                navigation.navigate('ClosingRequest', { requestId });
+              },
+              style: 'primary',
+            },
+            {
+              text: 'Request Again',
+              onPress: () => {
+                closeAlert();
+                navigation.navigate('HelpType');
+              },
+            },
+            { text: 'Later', onPress: closeAlert },
+          ],
+          'alert-circle-outline',
+          '#DC5C69'
+        );
+      } else {
+        showAlert(
+          'Request closing started',
+          'Samne wale ne request close start kar di hai. Please closure complete karein.',
+          [
+            {
+              text: 'Close Now',
+              onPress: () => {
+                closeAlert();
+                navigation.navigate('ClosingRequest', { requestId });
+              },
+              style: 'primary',
+            },
+            { text: 'OK', onPress: closeAlert },
+          ],
+          'alert-circle-outline',
+          '#DC5C69'
+        );
+      }
+    };
+
+    const handleRequestClosed = (data) => {
+      if (!isMounted) return;
+      if (String(data?.requestId) !== String(requestId)) return;
+      showAlert(
+        'Request closed',
+        'Ye request close ho gayi hai.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              closeAlert();
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+              });
+            },
+            style: 'primary',
+          },
+        ],
+        'check-circle',
+        '#28C76F'
+      );
+    };
+
+    const setupSocket = async () => {
+      const s = await connectSocket();
+      if (isMounted && s) {
+        socket = s;
+        socket.on('help:closure_initiated', handleClosureInitiated);
+        socket.on('help:request_closed', handleRequestClosed);
+      }
+    };
+
+    if (requestId) {
+      setupSocket();
+    }
+
+    return () => {
+      isMounted = false;
+      if (socket) {
+        socket.off('help:closure_initiated', handleClosureInitiated);
+        socket.off('help:request_closed', handleRequestClosed);
+      }
+    };
+  }, [requestId, navigation]);
+
   if (loading) {
     return (
       <View style={styles.loaderContainer}>

@@ -15,6 +15,7 @@ import { markRequestDelivered } from '../api/incident.api';
 export const CHANNELS = {
   PRESENCE_ALARM: 'socius_presence_alarm',
   HELP_ALARM:     'socius_help_alarm',
+  UPDATES:        'socius_updates',
 };
 
 let initialized = false;
@@ -48,6 +49,16 @@ export const initNotifeeChannels = async () => {
         vibrationPattern: [100, 300, 150, 300],
         lights: true,
         lightColor: '#3b82f6',
+        badge: true,
+        visibility: AndroidVisibility.PUBLIC,
+      }),
+
+      notifee.createChannel({
+        id: CHANNELS.UPDATES,
+        name: '📌 Socius Updates',
+        description: 'Request updates, closures, and important activity',
+        importance: AndroidImportance.HIGH,
+        lights: true,
         badge: true,
         visibility: AndroidVisibility.PUBLIC,
       }),

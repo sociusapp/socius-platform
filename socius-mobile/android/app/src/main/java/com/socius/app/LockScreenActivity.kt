@@ -120,7 +120,7 @@ class LockScreenActivity : AppCompatActivity() {
             manager.cancel(uuid.hashCode())
         }
         
-        // Launch Main Activity with action
+        // Send event to React Native
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("call_uuid", callUuid)
@@ -128,6 +128,14 @@ class LockScreenActivity : AppCompatActivity() {
             putExtra("payload", payload)
         }
         startActivity(intent)
+
+        // Also send a broadcast to handle in RN
+        val broadcastIntent = Intent("com.socius.app.ACCEPT_CALL").apply {
+            putExtra("call_uuid", callUuid)
+            putExtra("payload", payload)
+        }
+        sendBroadcast(broadcastIntent)
+
         finish()
     }
 

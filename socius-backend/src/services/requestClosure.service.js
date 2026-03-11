@@ -3,6 +3,17 @@ const HelpMatch = require('../models/HelpMatch')
 const ClosureStatus = require('../models/ClosureStatus')
 const logger = require('../utils/logger')
 const { HELP_REQUEST_STATUS, HELP_MATCH_STATUS } = require('../utils/constants')
+const { emitToUser } = require('../config/socket')
+const { sendHelpClosureInitiatedNotification, sendHelpRequestClosedNotification } = require('./notification.service')
+
+const safeEmitToUser = (userId, event, data) => {
+  try {
+    if (!userId) return
+    emitToUser(String(userId), event, data)
+  } catch (e) {
+    logger.error('Socket emit failed', e)
+  }
+}
 
 const ensureAcceptedMatch = async (requestId) => {
   return HelpMatch.findOne({
@@ -101,6 +112,17 @@ const initiateClosure = async (userId, { requestId, rating, feedback }) => {
       request.status = HELP_REQUEST_STATUS.CLOSING || 'closing'
       await request.save()
     }
+
+    const otherUserId = isRequester ? match.helperId : request.requesterId
+    safeEmitToUser(otherUserId, 'help:closure_initiated', {
+      requestId: String(requestId),
+      initiatedBy: isRequester ? 'requester' : 'helper',
+      status: String(request.status || 'closing'),
+    })
+    sendHelpClosureInitiatedNotification(String(otherUserId), {
+      requestId,
+      initiatedBy: isRequester ? 'requester' : 'helper',
+    }).catch(() => {})
   }
 
   return closure.toObject()
@@ -146,6 +168,26 @@ const finalizeClosureInternal = async (closure, actorUserId) => {
 
   closure.finalizedBy = actorUserId || null
   await closure.save()
+
+  safeEmitToUser(request.requesterId, 'help:request_closed', {
+    requestId: String(closure.requestId),
+    closedBy: actorUserId ? String(actorUserId) : null,
+    reason: 'finalized',
+  })
+  safeEmitToUser(closure.helperId, 'help:request_closed', {
+    requestId: String(closure.requestId),
+    closedBy: actorUserId ? String(actorUserId) : null,
+    reason: 'finalized',
+  })
+  sendHelpRequestClosedNotification(String(request.requesterId), {
+    requestId: closure.requestId,
+    reason: 'finalized',
+  }).catch(() => {})
+  sendHelpRequestClosedNotification(String(closure.helperId), {
+    requestId: closure.requestId,
+    reason: 'finalized',
+  }).catch(() => {})
+
   return request
 }
 

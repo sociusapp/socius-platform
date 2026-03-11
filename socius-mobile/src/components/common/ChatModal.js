@@ -58,6 +58,9 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser }) =>
   const localTypingTimeoutRef = useRef(null);
   const [replyingTo, setReplyingTo] = useState(null);
   const [reactionPicker, setReactionPicker] = useState(null);
+  const [chatBlocked, setChatBlocked] = useState(false);
+  const [chatBlockedReason, setChatBlockedReason] = useState('');
+  const chatBlockedRef = useRef(false);
   const lastRequestIdRef = useRef(null);
 
   const scrollToLatest = () => {
@@ -89,10 +92,27 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser }) =>
   }, [visible, requestId]);
 
   useEffect(() => {
+    chatBlockedRef.current = chatBlocked;
+  }, [chatBlocked]);
+
+  useEffect(() => {
     let socket = getSocket();
     
     const setupListeners = (s) => {
       if (!s) return;
+
+      const addSystemMessage = (text) => {
+        const systemMessage = {
+          _id: null,
+          localId: `system_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+          text,
+          senderId: null,
+          createdAt: new Date().toISOString(),
+          isSystem: true,
+        };
+        setMessages((prev) => [...prev, systemMessage]);
+        scrollToLatest();
+      };
       
       const handleNewMessage = (data) => {
         if (data.sessionId === session?._id) {
@@ -194,10 +214,40 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser }) =>
 
       const handleError = (data) => {
         console.error('Chat socket error:', data);
+        const code = String(data?.code || '').toUpperCase();
+        const errorText = String(data?.error || data?.message || '');
+        const isClosed =
+          code === 'SESSION_CLOSED' ||
+          errorText.toLowerCase().includes('chat session is not active') ||
+          errorText.toLowerCase().includes('chat is closed');
+
+        if (isClosed && !chatBlockedRef.current) {
+          setChatBlocked(true);
+          setChatBlockedReason('closed');
+          addSystemMessage('Request close ho chuki hai. Ab aap message nahi bhej sakte.');
+        }
         if (Platform.OS === 'android') {
           ToastAndroid.show(data.message || 'Chat error', ToastAndroid.LONG);
         }
         // Revert optimistic updates if needed
+      };
+
+      const handleClosureInitiated = (data) => {
+        if (String(data?.requestId) !== String(requestId)) return;
+        if (!chatBlockedRef.current) {
+          setChatBlocked(true);
+          setChatBlockedReason('closing');
+          addSystemMessage('Samne wale ne request close start kar di hai. Please meeting screen par closure complete karein.');
+        }
+      };
+
+      const handleRequestClosed = (data) => {
+        if (String(data?.requestId) !== String(requestId)) return;
+        if (!chatBlockedRef.current) {
+          setChatBlocked(true);
+          setChatBlockedReason('closed');
+          addSystemMessage('Request close ho gayi hai.');
+        }
       };
 
       s.on('chat:new_message', handleNewMessage);
@@ -209,6 +259,8 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser }) =>
       s.on('chat:stop_typing', handleStopTyping);
       s.on('chat:reaction_updated', handleReactionUpdated);
       s.on('chat:error', handleError);
+      s.on('help:closure_initiated', handleClosureInitiated);
+      s.on('help:request_closed', handleRequestClosed);
       
       // Load messages via socket when connected
       if (session?._id) {
@@ -226,6 +278,8 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser }) =>
         s.off('chat:stop_typing', handleStopTyping);
         s.off('chat:reaction_updated', handleReactionUpdated);
         s.off('chat:error', handleError);
+        s.off('help:closure_initiated', handleClosureInitiated);
+        s.off('help:request_closed', handleRequestClosed);
         if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       };
     };
@@ -252,6 +306,8 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser }) =>
     // Reset state for new request or refresh
     setMessages([]);
     setLoading(true);
+    setChatBlocked(false);
+    setChatBlockedReason('');
 
     try {
       const auth = await loadAuth();
@@ -517,6 +573,15 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser }) =>
   };
 
   const renderMessage = ({ item }) => {
+    if (item.isSystem) {
+      return (
+        <View style={styles.systemMessageRow}>
+          <View style={styles.systemMessageBubble}>
+            <Text style={styles.systemMessageText}>{item.text}</Text>
+          </View>
+        </View>
+      );
+    }
     // If we have duplicate keys in data, React might warn. 
     // But our keyExtractor handles item._id || item.localId || random.
     // However, if we have two items with same ID, key warning occurs.
@@ -704,15 +769,16 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser }) =>
                         style={styles.input}
                         value={inputText}
                         onChangeText={handleTextChange}
-                        placeholder="Message"
+                        placeholder={chatBlocked ? 'Chat closed' : 'Message'}
                         placeholderTextColor="#888"
                         multiline
+                        editable={!chatBlocked}
                       />
                     </View>
 
                     <TouchableOpacity
                       onPress={handleSend}
-                      disabled={!inputText.trim() && !sending}
+                      disabled={chatBlocked || (!inputText.trim() && !sending)}
                       style={styles.sendButton}
                     >
                       <Icon name="send" size={24} color="#fff" />
@@ -827,6 +893,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 10,
     paddingBottom: 20,
+  },
+  systemMessageRow: {
+    width: '100%',
+    alignItems: 'center',
+    marginVertical: 6,
+  },
+  systemMessageBubble: {
+    backgroundColor: 'rgba(15, 23, 42, 0.08)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    maxWidth: '85%',
+  },
+  systemMessageText: {
+    color: '#334155',
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
   },
   messageContainer: {
     marginBottom: 4,

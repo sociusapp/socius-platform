@@ -8,6 +8,17 @@ const { awardBadgeIfEarned } = require('./badge.service')
 const { HELP_REQUEST_STATUS, HELP_MATCH_STATUS, PRESENCE_STATUS, PRESENCE_MATCH_STATUS } = require('../utils/constants')
 const logger = require('../utils/logger')
 const { removeHelpRequestLocation } = require('../config/redis')
+const { emitToUser } = require('../config/socket')
+const { sendHelpRequestClosedNotification } = require('./notification.service')
+
+const safeEmitToUser = (userId, event, data) => {
+  try {
+    if (!userId) return
+    emitToUser(String(userId), event, data)
+  } catch (e) {
+    logger.error('Socket emit failed', e)
+  }
+}
 
 // ─── Help Request Close ───────────────────────────────────
 
@@ -66,6 +77,20 @@ const closeHelpRequest = async (requestId, closedBy, { wasResolved, accountabili
   }
 
   logger.info(`Help request closed: ${requestId} by ${closedBy}`)
+  safeEmitToUser(request.requesterId, 'help:request_closed', {
+    requestId: String(requestId),
+    closedBy: closedBy ? String(closedBy) : null,
+    reason: 'closed',
+  })
+  sendHelpRequestClosedNotification(String(request.requesterId), { requestId, reason: 'closed' }).catch(() => {})
+  if (match?.helperId) {
+    safeEmitToUser(match.helperId, 'help:request_closed', {
+      requestId: String(requestId),
+      closedBy: closedBy ? String(closedBy) : null,
+      reason: 'closed',
+    })
+    sendHelpRequestClosedNotification(String(match.helperId), { requestId, reason: 'closed' }).catch(() => {})
+  }
   return request
 }
 
@@ -134,6 +159,11 @@ const autoCloseInactiveHelpRequests = async () => {
 
   let count = 0
   for (const request of staleRequests) {
+    const activeMatch = await HelpMatch.findOne({
+      requestId: request._id,
+      status: { $in: ['notified', 'accepted'] },
+    }).select('helperId')
+
     request.status = HELP_REQUEST_STATUS.AUTO_CLOSED
     request.autoClosedAt = now
     await request.save()
@@ -148,6 +178,21 @@ const autoCloseInactiveHelpRequests = async () => {
     const ChatSession = require('../models/ChatSession')
     const session = await ChatSession.findOne({ requestId: request._id })
     if (session) await closeSession(session._id)
+
+    safeEmitToUser(request.requesterId, 'help:request_closed', {
+      requestId: String(request._id),
+      closedBy: null,
+      reason: 'auto_closed',
+    })
+    sendHelpRequestClosedNotification(String(request.requesterId), { requestId: request._id, reason: 'auto_closed' }).catch(() => {})
+    if (activeMatch?.helperId) {
+      safeEmitToUser(activeMatch.helperId, 'help:request_closed', {
+        requestId: String(request._id),
+        closedBy: null,
+        reason: 'auto_closed',
+      })
+      sendHelpRequestClosedNotification(String(activeMatch.helperId), { requestId: request._id, reason: 'auto_closed' }).catch(() => {})
+    }
 
     count++
   }

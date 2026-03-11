@@ -206,7 +206,7 @@ const acceptRequest = async (helperId, requestId) => {
 
   // Requester ko notification
   const helper = await require('../models/User').findById(helperId).select('fullName')
-  await sendMatchedNotification(request.requesterId, helper?.fullName || 'Someone')
+  await sendMatchedNotification(request.requesterId, helper?.fullName || 'Someone', requestId)
 
   // Chat session create karo
   console.log('[HelpRequestService] Creating chat session with params:', {

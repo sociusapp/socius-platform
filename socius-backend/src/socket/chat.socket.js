@@ -26,7 +26,16 @@ module.exports = (io, socket) => {
     } catch (err) {
       logger.error('chat:send handler error:', err)
       console.error('chat:send handler detailed error:', err);
-      socket.emit('chat:error', { message: 'Unable to send message', error: err.message })
+      const raw = String(err?.message || '')
+      const isSessionClosed =
+        raw.toLowerCase().includes('chat session is not active') ||
+        raw.toLowerCase().includes('not active')
+
+      socket.emit('chat:error', {
+        code: isSessionClosed ? 'SESSION_CLOSED' : 'SEND_FAILED',
+        message: isSessionClosed ? 'Chat is closed' : 'Unable to send message',
+        error: raw,
+      })
     }
   })
 

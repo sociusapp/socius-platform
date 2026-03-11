@@ -149,11 +149,11 @@ const sendPresenceAlarm = async (helperIds, presenceRequest) => {
 /**
  * Request matched notification — requester ko
  */
-const sendMatchedNotification = async (requesterId, helperName) => {
+const sendMatchedNotification = async (requesterId, helperName, requestId) => {
   await notifyUser(requesterId, {
     title: '✅ Someone is coming to help',
     body: `${helperName} has accepted your request`,
-    data: { type: NOTIFICATION_TYPE.REQUEST_STATUS, status: 'matched' },
+    data: { type: NOTIFICATION_TYPE.REQUEST_STATUS, status: 'matched', requestId: String(requestId) },
   })
 }
 
@@ -165,6 +165,40 @@ const sendChatNotification = async (receiverId, senderName, messagePreview) => {
     title: `💬 Message from ${senderName}`,
     body: messagePreview.length > 50 ? messagePreview.slice(0, 50) + '...' : messagePreview,
     data: { type: NOTIFICATION_TYPE.CHAT_MESSAGE },
+  })
+}
+
+const sendHelpClosureInitiatedNotification = async (receiverId, { requestId, initiatedBy }) => {
+  const who = initiatedBy === 'requester' ? 'Requester' : initiatedBy === 'helper' ? 'Helper' : 'Someone'
+  await notifyUser(receiverId, {
+    title: '🧾 Request closing started',
+    body: `${who} has started closing this request. Tap to review and finish.`,
+    data: {
+      type: NOTIFICATION_TYPE.REQUEST_STATUS,
+      status: 'closing',
+      requestId: String(requestId),
+      initiatedBy: initiatedBy ? String(initiatedBy) : '',
+    },
+    priority: NOTIFICATION_PRIORITY.NORMAL,
+  })
+}
+
+const sendHelpRequestClosedNotification = async (receiverId, { requestId, reason }) => {
+  const label =
+    reason === 'auto_closed' ? 'auto closed' :
+    reason === 'cancelled' ? 'cancelled' :
+    'closed'
+
+  await notifyUser(receiverId, {
+    title: '✅ Request closed',
+    body: `This request was ${label}. Tap to view details.`,
+    data: {
+      type: NOTIFICATION_TYPE.REQUEST_STATUS,
+      status: 'closed',
+      requestId: String(requestId),
+      reason: reason ? String(reason) : '',
+    },
+    priority: NOTIFICATION_PRIORITY.NORMAL,
   })
 }
 
@@ -228,6 +262,8 @@ module.exports = {
   sendPresenceAlarm,
   sendMatchedNotification,
   sendChatNotification,
+  sendHelpClosureInitiatedNotification,
+  sendHelpRequestClosedNotification,
   sendAccountUpdateNotification,
   sendVerificationResultNotification,
   sendCancelAlert,
