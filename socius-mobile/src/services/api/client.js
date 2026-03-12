@@ -49,4 +49,153 @@ const api = axios.create({
   },
 });
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const cacheStore = new Map();
+const buildCacheKey = (config) => {
+  const method = String(config?.method || 'get').toLowerCase();
+  const base = String(config?.baseURL || '');
+  const url = String(config?.url || '');
+  const params = config?.params ? JSON.stringify(config.params) : '';
+  return `${method}:${base}${url}?${params}`;
+};
+
+const getCacheEntry = (key) => {
+  const entry = cacheStore.get(key);
+  if (!entry) return null;
+  if (entry.expiresAt && Date.now() > entry.expiresAt) {
+    cacheStore.delete(key);
+    return null;
+  }
+  return entry;
+};
+
+const shouldRetry = (error, config) => {
+  const method = String(config?.method || '').toLowerCase();
+  const allowedMethods = config?.retry?.methods || ['get', 'head', 'options'];
+  if (!allowedMethods.includes(method)) return false;
+
+  if (axios.isCancel(error)) return false;
+
+  const status = error?.response?.status;
+  const code = String(error?.code || '');
+
+  if (!status) {
+    return (
+      ['ECONNABORTED', 'ERR_NETWORK', 'ETIMEDOUT'].includes(code) ||
+      String(error?.message || '').toLowerCase().includes('network')
+    );
+  }
+
+  if (status === 408) return true;
+  if (status === 429) return true;
+  if (status >= 500) return true;
+  return false;
+};
+
+api.interceptors.request.use(async (config) => {
+  const cfg = config || {};
+
+  cfg.metadata = {
+    startAt: Date.now(),
+  };
+
+  const debugDelayMs = Number(process.env.EXPO_PUBLIC_API_DEBUG_DELAY_MS || 0) || 0;
+  if (__DEV__ && debugDelayMs > 0) {
+    await sleep(debugDelayMs);
+  }
+
+  const method = String(cfg.method || 'get').toLowerCase();
+  const cacheTtlMs = Number(cfg.cacheTtlMs || 0) || 0;
+
+  if (method === 'get' && cacheTtlMs > 0) {
+    const cacheKey = buildCacheKey(cfg);
+    const cached = getCacheEntry(cacheKey);
+    if (cached) {
+      cfg.adapter = async () => ({
+        data: cached.data,
+        status: cached.status,
+        statusText: cached.statusText,
+        headers: cached.headers,
+        config: cfg,
+        request: null,
+      });
+      cfg.__fromCache = true;
+      return cfg;
+    }
+    cfg.__cacheKey = cacheKey;
+  }
+
+  cfg.retry = cfg.retry || {};
+  if (cfg.retry.retries === undefined) {
+    cfg.retry.retries = method === 'get' ? 2 : 0;
+  }
+  cfg.retry.baseDelayMs = Number(cfg.retry.baseDelayMs || 250) || 250;
+  cfg.retry.maxDelayMs = Number(cfg.retry.maxDelayMs || 2000) || 2000;
+
+  return cfg;
+});
+
+api.interceptors.response.use(
+  (response) => {
+    const cfg = response?.config || {};
+    const startAt = cfg?.metadata?.startAt;
+    const durationMs = typeof startAt === 'number' ? Date.now() - startAt : null;
+
+    if (__DEV__ && durationMs !== null && durationMs > 300) {
+      const method = String(cfg.method || '').toUpperCase();
+      const url = String(cfg.url || '');
+      console.log('[API] slow', `${method} ${url}`, `${durationMs}ms`, cfg.__fromCache ? '(cache)' : '');
+    }
+
+    if (cfg.__cacheKey && !cfg.__fromCache) {
+      const ttlMs = Number(cfg.cacheTtlMs || 0) || 0;
+      if (ttlMs > 0) {
+        cacheStore.set(cfg.__cacheKey, {
+          expiresAt: Date.now() + ttlMs,
+          data: response.data,
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers,
+        });
+      }
+    }
+    return response;
+  },
+  async (error) => {
+    const cfg = error?.config;
+    if (!cfg) {
+      return Promise.reject(error);
+    }
+
+    cfg.__retryCount = Number(cfg.__retryCount || 0) || 0;
+    const retries = Number(cfg?.retry?.retries || 0) || 0;
+
+    if (cfg.__retryCount >= retries) {
+      return Promise.reject(error);
+    }
+
+    if (!shouldRetry(error, cfg)) {
+      return Promise.reject(error);
+    }
+
+    cfg.__retryCount += 1;
+
+    const baseDelayMs = Number(cfg?.retry?.baseDelayMs || 250) || 250;
+    const maxDelayMs = Number(cfg?.retry?.maxDelayMs || 2000) || 2000;
+    const exp = Math.min(maxDelayMs, baseDelayMs * Math.pow(2, cfg.__retryCount - 1));
+    const jitter = Math.floor(Math.random() * 120);
+    const delay = exp + jitter;
+
+    if (__DEV__) {
+      const method = String(cfg.method || '').toUpperCase();
+      const url = String(cfg.url || '');
+      console.log('[API] retry', `${method} ${url}`, `#${cfg.__retryCount} in ${delay}ms`);
+    }
+
+    await sleep(delay);
+    return api(cfg);
+  }
+);
+
 export { api, baseURL };

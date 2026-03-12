@@ -10,11 +10,11 @@ const authConfig = (token) =>
     : undefined;
 
 const getHome = (token) => {
-  return api.get('/user/home', authConfig(token)).then((response) => response.data);
+  return api.get('/user/home', { ...authConfig(token), cacheTtlMs: 15000 }).then((response) => response.data);
 };
 
 const getProfile = (token) => {
-  return api.get('/user/profile', authConfig(token)).then((response) => response.data);
+  return api.get('/user/profile', { ...authConfig(token), cacheTtlMs: 10000 }).then((response) => response.data);
 };
 
 const updateProfile = (token, payload) => {
@@ -25,7 +25,7 @@ const updateProfile = (token, payload) => {
 
 const getEmergencyContacts = (token) => {
   return api
-    .get('/user/emergency-contacts', authConfig(token))
+    .get('/user/emergency-contacts', { ...authConfig(token), cacheTtlMs: 15000 })
     .then((response) => response.data);
 };
 
@@ -54,7 +54,7 @@ const deleteAccount = (token) => {
 
 const getHistory = (token, { page = 1, limit = 20 } = {}) => {
   return api
-    .get(`/user/history?page=${page}&limit=${limit}`, authConfig(token))
+    .get(`/user/history?page=${page}&limit=${limit}`, { ...authConfig(token), cacheTtlMs: 15000 })
     .then((response) => response.data);
 };
 

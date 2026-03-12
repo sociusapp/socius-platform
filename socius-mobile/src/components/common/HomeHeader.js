@@ -15,7 +15,7 @@ const HomeHeader = ({ onSettingsPress, onLogoPress, locationLabel }) => {
           {locationLabel ? (
             <View style={styles.locationRow}>
               <Icon name="map-marker" size={14} color="#EC6E63" />
-              <Text style={styles.locationText} numberOfLines={1}>
+              <Text style={styles.locationText} numberOfLines={2}>
                 {locationLabel}
               </Text>
             </View>
@@ -78,13 +78,14 @@ const styles = StyleSheet.create({
     marginTop: 2,
     flexDirection: 'row',
     alignItems: 'center',
-    maxWidth: 180,
+    maxWidth: 260,
   },
 
   locationText: {
     marginLeft: 6,
     fontSize: 12,
     color: '#6B7280',
+    flexShrink: 1,
   },
 });
 

@@ -6,7 +6,7 @@ import Header from '../../../components/common/Header';
 import Button from '../../../components/common/Button';
 import { useResponsive } from '../../../utils/responsive';
 import { api } from '../../../services/api/client';
-import { reverseGeocode } from '../../../services/location/geolocation.service';
+import { reverseGeocode, formatLocationLabel } from '../../../services/location/geolocation.service';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
 
 const AddDetailsScreen = ({ navigation, route }) => {
@@ -92,23 +92,7 @@ const AddDetailsScreen = ({ navigation, route }) => {
             latitude: location.lat,
             longitude: location.lng,
           });
-
-          if (place) {
-            const parts = [];
-            if (place.subLocality) {
-              parts.push(place.subLocality);
-            } else if (place.district) {
-              parts.push(place.district);
-            } else if (place.city) {
-              parts.push(place.city);
-            }
-            if (place.region) {
-              parts.push(place.region);
-            }
-            if (parts.length) {
-              label = parts.join(', ');
-            }
-          }
+          label = formatLocationLabel(place, { fallback: label });
         } catch (e) {
         }
 
@@ -308,7 +292,7 @@ const AddDetailsScreen = ({ navigation, route }) => {
       <Modal
         visible={customTimeVisible}
         transparent
-        animationType="fade"
+        animationType="none"
         onRequestClose={() => setCustomTimeVisible(false)}
       >
         <View style={styles.customModalOverlay}>

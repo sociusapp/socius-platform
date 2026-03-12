@@ -11,13 +11,13 @@ const authConfig = (token) =>
 
 const getMyActiveHelpRequest = (token) => {
   return api
-    .get('/help-request/active', authConfig(token))
+    .get('/help-request/active', { ...authConfig(token), cacheTtlMs: 5000 })
     .then((response) => response.data);
 };
 
 const getHelpRequestById = (token, id) => {
   return api
-    .get(`/help-request/${encodeURIComponent(id)}`, authConfig(token))
+    .get(`/help-request/${encodeURIComponent(id)}`, { ...authConfig(token), cacheTtlMs: 15000 })
     .then((response) => response.data);
 };
 
@@ -66,7 +66,7 @@ const submitClosure = (token, payload) => {
 
 const getClosureFeedback = (token, requestId) => {
   return api
-    .get(`/request/closure-feedback/${encodeURIComponent(requestId)}`, authConfig(token))
+    .get(`/request/closure-feedback/${encodeURIComponent(requestId)}`, { ...authConfig(token), cacheTtlMs: 15000 })
     .then((response) => response.data);
 };
 
@@ -90,13 +90,13 @@ const uploadClosureEvidence = (token, formData) => {
 const getNearbyHelpRequests = (token, coords) => {
   const params = coords ? { latitude: coords.latitude, longitude: coords.longitude } : {};
   return api
-    .get('/help-request/nearby', { ...authConfig(token), params })
+    .get('/help-request/nearby', { ...authConfig(token), params, cacheTtlMs: 5000 })
     .then((response) => response.data);
 };
 
 const getActivePresenceRequest = (token) => {
   return api
-    .get('/presence/active', authConfig(token))
+    .get('/presence/active', { ...authConfig(token), cacheTtlMs: 5000 })
     .then((response) => response.data);
 };
 

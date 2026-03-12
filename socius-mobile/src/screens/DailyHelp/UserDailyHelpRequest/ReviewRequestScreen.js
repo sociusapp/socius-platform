@@ -7,7 +7,7 @@ import Button from '../../../components/common/Button';
 import CustomAlert from '../../../components/common/CustomAlert';
 import { useResponsive } from '../../../utils/responsive';
 import { createHelpRequest } from '../../../services/api/incident.api';
-import { requestLocationPermission, getCurrentPosition, reverseGeocode } from '../../../services/location/geolocation.service';
+import { requestLocationPermission, getCurrentPosition, reverseGeocode, formatLocationLabel } from '../../../services/location/geolocation.service';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
 
 const ReviewRequestScreen = ({ navigation, route }) => {
@@ -85,23 +85,7 @@ const ReviewRequestScreen = ({ navigation, route }) => {
           latitude: location.lat,
           longitude: location.lng,
         });
-
-        if (place) {
-          const parts = [];
-          if (place.subLocality) {
-            parts.push(place.subLocality);
-          } else if (place.district) {
-            parts.push(place.district);
-          } else if (place.city) {
-            parts.push(place.city);
-          }
-          if (place.region) {
-            parts.push(place.region);
-          }
-          if (parts.length) {
-            label = parts.join(', ');
-          }
-        }
+        label = formatLocationLabel(place, { fallback: label });
       } catch (e) {
       }
 

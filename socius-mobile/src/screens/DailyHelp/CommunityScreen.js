@@ -6,6 +6,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import moment from 'moment';
 import Header from '../../components/common/Header';
 import Button from '../../components/common/Button';
+import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { useResponsive } from '../../utils/responsive';
 import { getMyActiveHelpRequest, getNearbyHelpRequests } from '../../services/api/incident.api';
 import { getHistory } from '../../services/api/user.api';
@@ -857,7 +858,7 @@ const CommunityScreen = ({ navigation, route }) => {
 
                   {loadingNearby ? (
                     <View style={{ minHeight: vscale(280), alignItems: 'center', justifyContent: 'center' }}>
-                      <ActivityIndicator size="large" color="#DC5C69" />
+                      <LoadingSpinner visible={loadingNearby} delayMs={300} message="Loading nearby requests…" />
                     </View>
                   ) : nearbyRequests.length > 0 ? (
                     nearbyRequests.map((req, index) => (
@@ -1052,7 +1053,9 @@ const CommunityScreen = ({ navigation, route }) => {
                 </View>
 
                 {loadingHistory ? (
-                  <ActivityIndicator size="large" color="#DC5C69" style={{ marginTop: vscale(20) }} />
+                  <View style={{ marginTop: vscale(20) }}>
+                    <LoadingSpinner visible={loadingHistory} delayMs={300} message="Loading history…" />
+                  </View>
                 ) : (
                   <FlatList
                     data={getFilteredHistory()}

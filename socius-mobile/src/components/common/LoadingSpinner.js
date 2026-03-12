@@ -1,7 +1,7 @@
 // src/components/common/LoadingSpinner.js
 // Full screen loading indicator
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   ActivityIndicator,
@@ -16,11 +16,30 @@ const LoadingSpinner = ({
   fullScreen = false,
   color = '#A83A30',
   size = 'large',
+  delayMs = 0,
 }) => {
+  const [shouldShow, setShouldShow] = useState(false);
+
+  useEffect(() => {
+    if (!visible) {
+      setShouldShow(false);
+      return;
+    }
+
+    const ms = Number(delayMs || 0) || 0;
+    if (ms <= 0) {
+      setShouldShow(true);
+      return;
+    }
+
+    const t = setTimeout(() => setShouldShow(true), ms);
+    return () => clearTimeout(t);
+  }, [visible, delayMs]);
+
   if (fullScreen) {
     return (
       <Modal
-        visible={visible}
+        visible={visible && shouldShow}
         transparent={true}
         statusBarTranslucent={true}
         animationType="fade"
@@ -33,6 +52,10 @@ const LoadingSpinner = ({
         </View>
       </Modal>
     );
+  }
+
+  if (!visible || !shouldShow) {
+    return null;
   }
 
   return (

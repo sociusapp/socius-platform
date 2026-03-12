@@ -3,11 +3,12 @@ import { declineHelpAsVolunteer } from '../../../services/api/volunteer.api';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
 import { getSocket } from '../../../services/socket/socket.service';
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../../components/common/Header';
 import Button from '../../../components/common/Button';
+import LoadingSpinner from '../../../components/common/LoadingSpinner';
 import CustomAlert from '../../../components/common/CustomAlert';
 import { useResponsive } from '../../../utils/responsive';
 
@@ -356,7 +357,9 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
           </Text>
 
           {loading ? (
-            <ActivityIndicator size="large" color="#DC5C69" style={{ marginBottom: vscale(20) }} />
+            <View style={{ marginBottom: vscale(20) }}>
+              <LoadingSpinner visible={loading} delayMs={300} message="Loading request…" />
+            </View>
           ) : (
             <View
               style={[

@@ -12,7 +12,7 @@ import { loadAuth, loadAvailabilityPreference, saveAvailabilityPreference } from
 import { updateDeviceToken } from '../../services/api/auth.api';
 import * as Device from 'expo-device';
 import * as Application from 'expo-application';
-import { reverseGeocode, requestLocationPermission, getCurrentPosition } from '../../services/location/geolocation.service';
+import { reverseGeocode, requestLocationPermission, getCurrentPosition, formatLocationLabel, getNearbyPlaceName } from '../../services/location/geolocation.service';
 import { updateAvailabilityLocation, toggleAvailability, getMyActiveHelpRequest } from '../../services/api/incident.api';
 import { getProfile } from '../../services/api/user.api';
 
@@ -114,31 +114,38 @@ const HomeScreen = ({ navigation }) => {
         return;
       }
 
+      if (__DEV__) {
+        console.log('[Location] coords', {
+          latitude,
+          longitude,
+          accuracy: position?.coords?.accuracy,
+          altitude: position?.coords?.altitude,
+          altitudeAccuracy: position?.coords?.altitudeAccuracy,
+          heading: position?.coords?.heading,
+          speed: position?.coords?.speed,
+          timestamp: position?.timestamp,
+        });
+      }
+
       let label = 'Location on';
+      let place = null;
 
       try {
-        const place = await reverseGeocode({
+        place = await reverseGeocode({
           latitude,
           longitude,
         });
-
-        if (place) {
-          const parts = [];
-          if (place.subLocality) {
-            parts.push(place.subLocality);
-          } else if (place.district) {
-            parts.push(place.district);
-          } else if (place.city) {
-            parts.push(place.city);
-          }
-          if (place.region) {
-            parts.push(place.region);
-          }
-          if (parts.length) {
-            label = parts.join(', ');
-          }
+        const nearbyName = await getNearbyPlaceName({ latitude, longitude });
+        if (nearbyName) {
+          place = place ? { ...place, name: nearbyName } : { name: nearbyName };
         }
+        label = formatLocationLabel(place, { fallback: label });
       } catch (e) {
+      }
+
+      if (__DEV__) {
+        console.log('[Location] reverseGeocode', place);
+        console.log('[Location] label', label);
       }
 
       setLocationLabel(label);
@@ -177,9 +184,19 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
-  const applyAvailability = (value) => {
-    setIsAvailable(!!value);
-    toggleAnim.setValue(value ? 0 : 1);
+  const applyAvailability = (value, { animate = false } = {}) => {
+    const nextValue = !!value;
+    setIsAvailable(nextValue);
+    if (animate) {
+      Animated.timing(toggleAnim, {
+        toValue: nextValue ? 0 : 1,
+        duration: 220,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }).start();
+    } else {
+      toggleAnim.setValue(nextValue ? 0 : 1);
+    }
   };
 
   useEffect(() => {
@@ -288,16 +305,16 @@ const HomeScreen = ({ navigation }) => {
       } catch (e) { }
     }
 
-    applyAvailability(value);
+    applyAvailability(value, { animate: true });
+    setIsToggling(true);
     try {
       await saveAvailabilityPreference(value);
     } catch (e) { }
 
-    setIsToggling(true);
     try {
       const { accessToken } = await loadAuth();
       if (!accessToken) {
-        applyAvailability(previousValue);
+        applyAvailability(previousValue, { animate: true });
         try {
           await saveAvailabilityPreference(previousValue);
         } catch (e) { }
@@ -324,7 +341,7 @@ const HomeScreen = ({ navigation }) => {
       }
     } catch (error) {
       console.error('Error toggling availability:', error);
-      applyAvailability(previousValue);
+      applyAvailability(previousValue, { animate: true });
       try {
         await saveAvailabilityPreference(previousValue);
       } catch (e) { }
@@ -442,6 +459,7 @@ const HomeScreen = ({ navigation }) => {
                   end={{ x: 0.8, y: 1.0 }}
                   style={[styles.availabilitySliderGradient, { justifyContent: 'center', alignItems: 'flex-end', paddingRight: spacing(10) }]}
                 >
+                  {isToggling ? <ActivityIndicator size="small" color="#FFFFFF" /> : null}
                 </LinearGradient>
               </Animated.View>
             )}

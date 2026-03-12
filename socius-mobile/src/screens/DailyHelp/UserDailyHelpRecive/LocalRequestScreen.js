@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../../components/common/Header';
 import Button from '../../../components/common/Button';
+import LoadingSpinner from '../../../components/common/LoadingSpinner';
 import { useResponsive } from '../../../utils/responsive';
 import { getHelpRequestById } from '../../../services/api/incident.api';
 import { acceptHelpAsVolunteer, declineHelpAsVolunteer } from '../../../services/api/volunteer.api';
@@ -370,7 +371,7 @@ const LocalRequestScreen = ({ navigation, route }) => {
       >
         {loading ? (
           <View style={[styles.loaderContainer, { width: contentWidth }]}>
-            <ActivityIndicator size="large" color="#DC5C69" />
+            <LoadingSpinner visible={loading} delayMs={300} message="Loading request…" />
           </View>
         ) : (
         <View style={{ width: contentWidth }}>

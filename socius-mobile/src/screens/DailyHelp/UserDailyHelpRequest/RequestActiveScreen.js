@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, BackHandler, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, BackHandler, Modal } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Header from '../../../components/common/Header';
 import Button from '../../../components/common/Button';
+import LoadingSpinner from '../../../components/common/LoadingSpinner';
 import { useResponsive } from '../../../utils/responsive';
 import { getMyActiveHelpRequest, cancelHelpRequest } from '../../../services/api/incident.api';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
@@ -602,9 +603,11 @@ const RequestSuccessScreen = ({ navigation, route }) => {
       />
 
       {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#DC5C69" />
-        </View>
+        <LoadingSpinner
+          visible={loading}
+          delayMs={300}
+          message="Loading request…"
+        />
       ) : (
       <ScrollView 
         contentContainerStyle={[styles.scrollContent, { alignItems: 'center' }]}
@@ -627,7 +630,7 @@ const RequestSuccessScreen = ({ navigation, route }) => {
       <Modal
         visible={noHelpersModalVisible}
         transparent={true}
-        animationType="fade"
+        animationType="none"
         onRequestClose={() => setNoHelpersModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
