@@ -133,6 +133,14 @@ const MainLayout = () => {
           </svg>
         }>Live Awareness</NavLink>
 
+        <NavLink to="/daily-help" icon={
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c1.657 0 3-1.343 3-3S13.657 2 12 2 9 3.343 9 5s1.343 3 3 3z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 21v-1a4 4 0 00-4-4H8a4 4 0 00-4 4v1" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 12v4" />
+          </svg>
+        }>DailyHelp</NavLink>
+
         <NavLink to="/incident-review" icon={
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />

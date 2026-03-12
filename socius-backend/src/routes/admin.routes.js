@@ -22,6 +22,12 @@ const {
   attachDeviceToken,
   claimLatestUnassignedToken,
   getRequestAttempts,
+  getHelpRequests,
+  getHelpRequestDetails,
+  getPresenceRequests,
+  getPresenceRequestDetails,
+  getClosures,
+  getClosureDetails,
 } = require('../controllers/admin.controller')
 const { authenticate } = require('../middlewares/auth')
 const { requireAdmin } = require('../middlewares/admin')
@@ -98,5 +104,23 @@ router.patch('/reports/:reportId/resolve', resolveReport)
 // ─── Request Attempts ─────────────────────────────────────
 // GET /api/admin/request-attempts
 router.get('/request-attempts', getRequestAttempts)
+
+// ─── DailyHelp (Help Requests) ────────────────────────────
+// GET /api/admin/help-requests
+router.get('/help-requests', getHelpRequests)
+// GET /api/admin/help-requests/:id
+router.get('/help-requests/:id', getHelpRequestDetails)
+
+// ─── DailyHelp (Presence Requests) ─────────────────────────
+// GET /api/admin/presence-requests
+router.get('/presence-requests', getPresenceRequests)
+// GET /api/admin/presence-requests/:id
+router.get('/presence-requests/:id', getPresenceRequestDetails)
+
+// ─── DailyHelp (Closures) ─────────────────────────────────
+// GET /api/admin/closures
+router.get('/closures', getClosures)
+// GET /api/admin/closures/:id
+router.get('/closures/:id', getClosureDetails)
 
 module.exports = router

@@ -208,6 +208,48 @@ const getRequestAttempts = async (req, res, next) => {
   } catch (err) { next(err) }
 }
 
+const getHelpRequests = async (req, res, next) => {
+  try {
+    const data = await adminService.getHelpRequests(req.query)
+    return success(res, data)
+  } catch (err) { next(err) }
+}
+
+const getHelpRequestDetails = async (req, res, next) => {
+  try {
+    const data = await adminService.getHelpRequestDetails(req.params.id)
+    return success(res, data)
+  } catch (err) { next(err) }
+}
+
+const getPresenceRequests = async (req, res, next) => {
+  try {
+    const data = await adminService.getPresenceRequests(req.query)
+    return success(res, data)
+  } catch (err) { next(err) }
+}
+
+const getPresenceRequestDetails = async (req, res, next) => {
+  try {
+    const data = await adminService.getPresenceRequestDetails(req.params.id)
+    return success(res, data)
+  } catch (err) { next(err) }
+}
+
+const getClosures = async (req, res, next) => {
+  try {
+    const data = await adminService.getClosures(req.query)
+    return success(res, data)
+  } catch (err) { next(err) }
+}
+
+const getClosureDetails = async (req, res, next) => {
+  try {
+    const data = await adminService.getClosureDetails(req.params.id)
+    return success(res, data)
+  } catch (err) { next(err) }
+}
+
 module.exports = {
   getPendingVerifications,
   getVerificationDetails,
@@ -231,4 +273,10 @@ module.exports = {
   attachDeviceToken,
   claimLatestUnassignedToken,
   getRequestAttempts,
+  getHelpRequests,
+  getHelpRequestDetails,
+  getPresenceRequests,
+  getPresenceRequestDetails,
+  getClosures,
+  getClosureDetails,
 }

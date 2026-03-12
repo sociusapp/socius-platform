@@ -30,6 +30,7 @@ import RiskTiersPage from './pages/RiskTiersPage';
 import SubscriptionSettingsPage from './pages/SubscriptionSettingsPage';
 import ScenarioConfigPage from './pages/ScenarioConfigPage';
 import AccountSettingsPage from './pages/AccountSettingsPage';
+import DailyHelpPage from './pages/DailyHelpPage';
 
 const PublicRoute = ({ children }) => {
   const { user } = useAuth();
@@ -99,6 +100,7 @@ function App() {
             <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/live-awareness" element={<LiveAwarenessPage />} />
           <Route path="/live-awareness/:id" element={<LiveAwarenessDetailsPage />} />
+          <Route path="/daily-help" element={<DailyHelpPage />} />
           <Route path="/incident-review" element={<IncidentReviewPage />} />
           <Route path="/users" element={<UsersVolunteersPage />} />
           <Route path="/users/:userId" element={<UserProfilePage />} />

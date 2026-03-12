@@ -11,6 +11,14 @@ const {
   PRESENCE_STATUS,
 } = require('../utils/constants')
 
+const isObjectIdLike = (value) => /^[a-f0-9]{24}$/i.test(String(value || '').trim())
+const roundCoord = (n, decimals = 3) => {
+  const num = Number(n)
+  if (!Number.isFinite(num)) return null
+  const p = Math.pow(10, decimals)
+  return Math.round(num * p) / p
+}
+
 const getPendingVerifications = async ({ page = 1, limit = 20, status, rangeDays } = {}) => {
   const skip = (Number(page) - 1) * Number(limit)
 
@@ -567,6 +575,364 @@ const getRequestAttempts = async ({
   }
 }
 
+const getHelpRequests = async ({
+  page = 1,
+  limit = 20,
+  status,
+  category,
+  from,
+  to,
+  q,
+  requesterId,
+  helperId,
+} = {}) => {
+  const HelpMatch = require('../models/HelpMatch')
+
+  const safeLimit = Math.min(100, Math.max(1, Number(limit) || 20))
+  const safePage = Math.max(1, Number(page) || 1)
+  const skip = (safePage - 1) * safeLimit
+
+  const query = {}
+
+  if (status) {
+    query.status = String(status).toLowerCase()
+  }
+
+  if (category) {
+    query.category = String(category).toLowerCase()
+  }
+
+  if (requesterId && isObjectIdLike(requesterId)) {
+    query.requesterId = String(requesterId)
+  }
+
+  const cleanFrom = from ? new Date(from) : null
+  const cleanTo = to ? new Date(to) : null
+  if (cleanFrom && !Number.isNaN(cleanFrom.getTime())) {
+    query.createdAt = { ...(query.createdAt || {}), $gte: cleanFrom }
+  }
+  if (cleanTo && !Number.isNaN(cleanTo.getTime())) {
+    query.createdAt = { ...(query.createdAt || {}), $lte: cleanTo }
+  }
+
+  const search = String(q || '').trim()
+  if (search) {
+    if (isObjectIdLike(search)) {
+      query._id = search
+    } else {
+      const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const re = new RegExp(escaped, 'i')
+      const or = [{ description: re }]
+      const userMatches = await User.find({
+        isDeleted: false,
+        isAdmin: { $ne: true },
+        $or: [
+          { fullName: re },
+          { phone: re },
+        ],
+      })
+        .select('_id')
+        .limit(50)
+        .lean()
+      if (userMatches.length > 0) {
+        or.push({ requesterId: { $in: userMatches.map((u) => u._id) } })
+      }
+      query.$or = or
+    }
+  }
+
+  if (helperId && isObjectIdLike(helperId)) {
+    const matched = await HelpMatch.find({
+      helperId: String(helperId),
+    })
+      .select('requestId')
+      .limit(500)
+      .lean()
+    const ids = matched.map((m) => m.requestId)
+    query._id = query._id ? query._id : { $in: ids.length ? ids : [] }
+  }
+
+  const [items, total] = await Promise.all([
+    HelpRequest.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(safeLimit)
+      .populate('requesterId', 'fullName phone accountStatus')
+      .lean(),
+    HelpRequest.countDocuments(query),
+  ])
+
+  const requestIds = items.map((r) => r._id)
+  const acceptedMatches = await HelpMatch.find({
+    requestId: { $in: requestIds },
+    status: 'accepted',
+  })
+    .populate('helperId', 'fullName phone accountStatus')
+    .select('requestId helperId status acceptedAt respondedAt createdAt')
+    .lean()
+
+  const acceptedMap = new Map()
+  for (const m of acceptedMatches) {
+    acceptedMap.set(String(m.requestId), m)
+  }
+
+  const mapped = items.map((r) => {
+    const coords = r?.location?.coordinates || []
+    const lng = coords[0]
+    const lat = coords[1]
+    const accepted = acceptedMap.get(String(r._id)) || null
+    return {
+      id: r._id,
+      createdAt: r.createdAt,
+      status: r.status,
+      category: r.category,
+      description: r.description,
+      requester: r.requesterId
+        ? {
+            id: r.requesterId._id,
+            fullName: r.requesterId.fullName,
+            phone: r.requesterId.phone,
+            accountStatus: r.requesterId.accountStatus,
+          }
+        : null,
+      acceptedHelper: accepted?.helperId
+        ? {
+            id: accepted.helperId._id,
+            fullName: accepted.helperId.fullName,
+            phone: accepted.helperId.phone,
+            accountStatus: accepted.helperId.accountStatus,
+          }
+        : null,
+      location: {
+        address: r?.location?.address || null,
+        whereToFindText: r?.location?.whereToFindText || null,
+        coordinatesApprox: [
+          roundCoord(lng, 3),
+          roundCoord(lat, 3),
+        ],
+      },
+    }
+  })
+
+  return { items: mapped, total, page: safePage, limit: safeLimit }
+}
+
+const getHelpRequestDetails = async (id) => {
+  const HelpMatch = require('../models/HelpMatch')
+  const ClosureStatus = require('../models/ClosureStatus')
+
+  if (!id || !isObjectIdLike(id)) {
+    const err = new Error('Invalid request id')
+    err.statusCode = 400
+    throw err
+  }
+
+  const request = await HelpRequest.findById(id)
+    .populate('requesterId', 'fullName phone accountStatus isAvailable createdAt')
+    .lean()
+
+  if (!request) {
+    const err = new Error('Help request not found')
+    err.statusCode = 404
+    throw err
+  }
+
+  const matches = await HelpMatch.find({ requestId: id })
+    .sort({ createdAt: -1 })
+    .populate('helperId', 'fullName phone accountStatus isAvailable createdAt')
+    .lean()
+
+  const closure = await ClosureStatus.find({ requestId: id })
+    .sort({ createdAt: -1 })
+    .populate('requesterId', 'fullName phone accountStatus')
+    .populate('helperId', 'fullName phone accountStatus')
+    .lean()
+
+  const coords = request?.location?.coordinates || []
+  const lng = coords[0]
+  const lat = coords[1]
+
+  const reqSafe = {
+    ...request,
+    location: {
+      ...request.location,
+      coordinatesApprox: [roundCoord(lng, 3), roundCoord(lat, 3)],
+      coordinates: undefined,
+    },
+  }
+
+  return { request: reqSafe, matches, closure }
+}
+
+const getPresenceRequests = async ({
+  page = 1,
+  limit = 20,
+  status,
+  situationType,
+  from,
+  to,
+  requesterId,
+} = {}) => {
+  const safeLimit = Math.min(100, Math.max(1, Number(limit) || 20))
+  const safePage = Math.max(1, Number(page) || 1)
+  const skip = (safePage - 1) * safeLimit
+
+  const query = {}
+  if (status) query.status = String(status).toLowerCase()
+  if (situationType) query.situationType = String(situationType).toLowerCase()
+  if (requesterId && isObjectIdLike(requesterId)) query.requesterId = String(requesterId)
+
+  const cleanFrom = from ? new Date(from) : null
+  const cleanTo = to ? new Date(to) : null
+  if (cleanFrom && !Number.isNaN(cleanFrom.getTime())) {
+    query.createdAt = { ...(query.createdAt || {}), $gte: cleanFrom }
+  }
+  if (cleanTo && !Number.isNaN(cleanTo.getTime())) {
+    query.createdAt = { ...(query.createdAt || {}), $lte: cleanTo }
+  }
+
+  const [items, total] = await Promise.all([
+    PresenceRequest.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(safeLimit)
+      .populate('requesterId', 'fullName phone accountStatus')
+      .lean(),
+    PresenceRequest.countDocuments(query),
+  ])
+
+  const mapped = items.map((r) => {
+    const coords = r?.location?.coordinates || []
+    const lng = coords[0]
+    const lat = coords[1]
+    return {
+      id: r._id,
+      createdAt: r.createdAt,
+      status: r.status,
+      situationType: r.situationType,
+      description: r.description,
+      requester: r.requesterId
+        ? { id: r.requesterId._id, fullName: r.requesterId.fullName, phone: r.requesterId.phone, accountStatus: r.requesterId.accountStatus }
+        : null,
+      totals: {
+        totalNotified: r.totalNotified || 0,
+        totalAccepted: r.totalAccepted || 0,
+      },
+      location: {
+        address: r?.location?.address || null,
+        coordinatesApprox: [roundCoord(lng, 3), roundCoord(lat, 3)],
+      },
+    }
+  })
+
+  return { items: mapped, total, page: safePage, limit: safeLimit }
+}
+
+const getPresenceRequestDetails = async (id) => {
+  if (!id || !isObjectIdLike(id)) {
+    const err = new Error('Invalid presence id')
+    err.statusCode = 400
+    throw err
+  }
+
+  const request = await PresenceRequest.findById(id)
+    .populate('requesterId', 'fullName phone accountStatus isAvailable createdAt')
+    .lean()
+
+  if (!request) {
+    const err = new Error('Presence request not found')
+    err.statusCode = 404
+    throw err
+  }
+
+  const coords = request?.location?.coordinates || []
+  const lng = coords[0]
+  const lat = coords[1]
+
+  return {
+    ...request,
+    location: {
+      ...request.location,
+      coordinatesApprox: [roundCoord(lng, 3), roundCoord(lat, 3)],
+      coordinates: undefined,
+    },
+  }
+}
+
+const getClosures = async ({ page = 1, limit = 20, status, from, to, requesterId, helperId } = {}) => {
+  const ClosureStatus = require('../models/ClosureStatus')
+
+  const safeLimit = Math.min(100, Math.max(1, Number(limit) || 20))
+  const safePage = Math.max(1, Number(page) || 1)
+  const skip = (safePage - 1) * safeLimit
+
+  const query = {}
+  if (status) query.status = String(status).toLowerCase()
+  if (requesterId && isObjectIdLike(requesterId)) query.requesterId = String(requesterId)
+  if (helperId && isObjectIdLike(helperId)) query.helperId = String(helperId)
+
+  const cleanFrom = from ? new Date(from) : null
+  const cleanTo = to ? new Date(to) : null
+  if (cleanFrom && !Number.isNaN(cleanFrom.getTime())) {
+    query.createdAt = { ...(query.createdAt || {}), $gte: cleanFrom }
+  }
+  if (cleanTo && !Number.isNaN(cleanTo.getTime())) {
+    query.createdAt = { ...(query.createdAt || {}), $lte: cleanTo }
+  }
+
+  const [items, total] = await Promise.all([
+    ClosureStatus.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(safeLimit)
+      .populate('requestId', 'category description status createdAt')
+      .populate('requesterId', 'fullName phone accountStatus')
+      .populate('helperId', 'fullName phone accountStatus')
+      .lean(),
+    ClosureStatus.countDocuments(query),
+  ])
+
+  const mapped = items.map((c) => ({
+    id: c._id,
+    status: c.status,
+    createdAt: c.createdAt,
+    request: c.requestId
+      ? { id: c.requestId._id, category: c.requestId.category, description: c.requestId.description, status: c.requestId.status, createdAt: c.requestId.createdAt }
+      : null,
+    requester: c.requesterId ? { id: c.requesterId._id, fullName: c.requesterId.fullName, phone: c.requesterId.phone } : null,
+    helper: c.helperId ? { id: c.helperId._id, fullName: c.helperId.fullName, phone: c.helperId.phone } : null,
+    flags: c.flags || {},
+    ghostingDeadlineAt: c.ghostingDeadlineAt || null,
+    closedAt: c.closedAt || null,
+  }))
+
+  return { items: mapped, total, page: safePage, limit: safeLimit }
+}
+
+const getClosureDetails = async (id) => {
+  const ClosureStatus = require('../models/ClosureStatus')
+
+  if (!id || !isObjectIdLike(id)) {
+    const err = new Error('Invalid closure id')
+    err.statusCode = 400
+    throw err
+  }
+
+  const closure = await ClosureStatus.findById(id)
+    .populate('requestId', 'category description status createdAt')
+    .populate('requesterId', 'fullName phone accountStatus')
+    .populate('helperId', 'fullName phone accountStatus')
+    .lean()
+
+  if (!closure) {
+    const err = new Error('Closure not found')
+    err.statusCode = 404
+    throw err
+  }
+
+  return closure
+}
+
 module.exports = {
   getPendingVerifications,
   getVerificationDetails,
@@ -577,6 +943,12 @@ module.exports = {
   resolveReport,
   getDashboardStats,
   getLiveAwareness,
+  getHelpRequests,
+  getHelpRequestDetails,
+  getPresenceRequests,
+  getPresenceRequestDetails,
+  getClosures,
+  getClosureDetails,
   sendAdminNotification,
   getDeviceTokenCounts,
   getDeviceTokensForUser,
