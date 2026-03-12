@@ -4,6 +4,7 @@ const AUTH_TOKEN_KEY = 'authToken';
 const REFRESH_TOKEN_KEY = 'refreshToken';
 const USER_ROLE_KEY = 'userRole';
 const USER_ID_KEY = 'userId';
+const AVAILABILITY_PREFERENCE_KEY = 'availabilityPreference.isAvailable';
 
 const saveAuth = async ({ accessToken, refreshToken, role, userId }) => {
   const tasks = [];
@@ -36,7 +37,18 @@ const clearAuth = async () => {
     AsyncStorage.removeItem(REFRESH_TOKEN_KEY),
     AsyncStorage.removeItem(USER_ROLE_KEY),
     AsyncStorage.removeItem(USER_ID_KEY),
+    AsyncStorage.removeItem(AVAILABILITY_PREFERENCE_KEY),
   ]);
 };
 
-export { saveAuth, loadAuth, clearAuth };
+const saveAvailabilityPreference = async (isAvailable) => {
+  await AsyncStorage.setItem(AVAILABILITY_PREFERENCE_KEY, isAvailable ? '1' : '0');
+};
+
+const loadAvailabilityPreference = async () => {
+  const value = await AsyncStorage.getItem(AVAILABILITY_PREFERENCE_KEY);
+  if (value === null) return null;
+  return value === '1' || value === 'true';
+};
+
+export { saveAuth, loadAuth, clearAuth, saveAvailabilityPreference, loadAvailabilityPreference };

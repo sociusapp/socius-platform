@@ -4,7 +4,13 @@ const { success, created } = require('../utils/response')
 
 const createPresenceRequest = async (req, res, next) => {
   try {
-    const request = await presenceService.createPresenceRequest(req.user._id, req.body)
+    const request = await presenceService.createPresenceRequest(req.user._id, req.body, {
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+      platform: req.headers['x-platform'],
+      deviceId: req.headers['x-device-id'],
+      appVersion: req.headers['x-app-version'],
+    })
     return created(res, request, 'Presence request created. Nearby people are being alerted.')
   } catch (err) {
     next(err)

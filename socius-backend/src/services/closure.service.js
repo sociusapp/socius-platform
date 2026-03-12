@@ -77,19 +77,24 @@ const closeHelpRequest = async (requestId, closedBy, { wasResolved, accountabili
   }
 
   logger.info(`Help request closed: ${requestId} by ${closedBy}`)
+  const occurredAt = new Date().toISOString()
   safeEmitToUser(request.requesterId, 'help:request_closed', {
     requestId: String(requestId),
+    requestType: request?.category || 'help_request',
     closedBy: closedBy ? String(closedBy) : null,
     reason: 'closed',
+    occurredAt,
   })
-  sendHelpRequestClosedNotification(String(request.requesterId), { requestId, reason: 'closed' }).catch(() => {})
+  sendHelpRequestClosedNotification(String(request.requesterId), { requestId, requestType: request?.category || 'help_request', reason: 'closed', occurredAt }).catch(() => {})
   if (match?.helperId) {
     safeEmitToUser(match.helperId, 'help:request_closed', {
       requestId: String(requestId),
+      requestType: request?.category || 'help_request',
       closedBy: closedBy ? String(closedBy) : null,
       reason: 'closed',
+      occurredAt,
     })
-    sendHelpRequestClosedNotification(String(match.helperId), { requestId, reason: 'closed' }).catch(() => {})
+    sendHelpRequestClosedNotification(String(match.helperId), { requestId, requestType: request?.category || 'help_request', reason: 'closed', occurredAt }).catch(() => {})
   }
   return request
 }
@@ -179,19 +184,24 @@ const autoCloseInactiveHelpRequests = async () => {
     const session = await ChatSession.findOne({ requestId: request._id })
     if (session) await closeSession(session._id)
 
+    const occurredAt = new Date().toISOString()
     safeEmitToUser(request.requesterId, 'help:request_closed', {
       requestId: String(request._id),
+      requestType: request?.category || 'help_request',
       closedBy: null,
       reason: 'auto_closed',
+      occurredAt,
     })
-    sendHelpRequestClosedNotification(String(request.requesterId), { requestId: request._id, reason: 'auto_closed' }).catch(() => {})
+    sendHelpRequestClosedNotification(String(request.requesterId), { requestId: request._id, requestType: request?.category || 'help_request', reason: 'auto_closed', occurredAt }).catch(() => {})
     if (activeMatch?.helperId) {
       safeEmitToUser(activeMatch.helperId, 'help:request_closed', {
         requestId: String(request._id),
+        requestType: request?.category || 'help_request',
         closedBy: null,
         reason: 'auto_closed',
+        occurredAt,
       })
-      sendHelpRequestClosedNotification(String(activeMatch.helperId), { requestId: request._id, reason: 'auto_closed' }).catch(() => {})
+      sendHelpRequestClosedNotification(String(activeMatch.helperId), { requestId: request._id, requestType: request?.category || 'help_request', reason: 'auto_closed', occurredAt }).catch(() => {})
     }
 
     count++

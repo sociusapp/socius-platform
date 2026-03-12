@@ -114,14 +114,19 @@ const initiateClosure = async (userId, { requestId, rating, feedback }) => {
     }
 
     const otherUserId = isRequester ? match.helperId : request.requesterId
+    const occurredAt = new Date().toISOString()
     safeEmitToUser(otherUserId, 'help:closure_initiated', {
       requestId: String(requestId),
+      requestType: request?.category || 'help_request',
       initiatedBy: isRequester ? 'requester' : 'helper',
       status: String(request.status || 'closing'),
+      occurredAt,
     })
     sendHelpClosureInitiatedNotification(String(otherUserId), {
       requestId,
+      requestType: request?.category || 'help_request',
       initiatedBy: isRequester ? 'requester' : 'helper',
+      occurredAt,
     }).catch(() => {})
   }
 
@@ -169,23 +174,32 @@ const finalizeClosureInternal = async (closure, actorUserId) => {
   closure.finalizedBy = actorUserId || null
   await closure.save()
 
+  const occurredAt = new Date().toISOString()
   safeEmitToUser(request.requesterId, 'help:request_closed', {
     requestId: String(closure.requestId),
+    requestType: request?.category || 'help_request',
     closedBy: actorUserId ? String(actorUserId) : null,
     reason: 'finalized',
+    occurredAt,
   })
   safeEmitToUser(closure.helperId, 'help:request_closed', {
     requestId: String(closure.requestId),
+    requestType: request?.category || 'help_request',
     closedBy: actorUserId ? String(actorUserId) : null,
     reason: 'finalized',
+    occurredAt,
   })
   sendHelpRequestClosedNotification(String(request.requesterId), {
     requestId: closure.requestId,
+    requestType: request?.category || 'help_request',
     reason: 'finalized',
+    occurredAt,
   }).catch(() => {})
   sendHelpRequestClosedNotification(String(closure.helperId), {
     requestId: closure.requestId,
+    requestType: request?.category || 'help_request',
     reason: 'finalized',
+    occurredAt,
   }).catch(() => {})
 
   return request

@@ -21,6 +21,7 @@ const {
   getDeviceTokensForUser,
   attachDeviceToken,
   claimLatestUnassignedToken,
+  getRequestAttempts,
 } = require('../controllers/admin.controller')
 const { authenticate } = require('../middlewares/auth')
 const { requireAdmin } = require('../middlewares/admin')
@@ -93,5 +94,9 @@ router.get('/reports', getReports)
 
 // PATCH /api/admin/reports/:reportId/resolve
 router.patch('/reports/:reportId/resolve', resolveReport)
+
+// ─── Request Attempts ─────────────────────────────────────
+// GET /api/admin/request-attempts
+router.get('/request-attempts', getRequestAttempts)
 
 module.exports = router

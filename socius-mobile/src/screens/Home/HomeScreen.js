@@ -8,7 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useResponsive } from '../../utils/responsive';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getFcmToken } from '../../services/firebase/config';
-import { loadAuth } from '../../services/storage/asyncStorage.service';
+import { loadAuth, loadAvailabilityPreference, saveAvailabilityPreference } from '../../services/storage/asyncStorage.service';
 import { updateDeviceToken } from '../../services/api/auth.api';
 import * as Device from 'expo-device';
 import * as Application from 'expo-application';
@@ -155,12 +155,16 @@ const HomeScreen = ({ navigation }) => {
 
   const fetchAvailabilityStatus = async () => {
     try {
+      if (isToggling) return;
       const { accessToken } = await loadAuth();
       if (!accessToken) return;
       const response = await getProfile(accessToken);
       if (response?.success && response?.data) {
         const { isAvailable } = response.data;
         setIsAvailable(!!isAvailable);
+        try {
+          await saveAvailabilityPreference(!!isAvailable);
+        } catch (e) { }
         Animated.timing(toggleAnim, {
           toValue: isAvailable ? 0 : 1,
           duration: 220,
@@ -173,12 +177,42 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
+  const applyAvailability = (value) => {
+    setIsAvailable(!!value);
+    toggleAnim.setValue(value ? 0 : 1);
+  };
+
   useEffect(() => {
     checkOnboardingStatus();
     checkAndSyncDeviceToken();
     syncCurrentLocationToDb();
-    fetchAvailabilityStatus();
+    (async () => {
+      try {
+        const localValue = await loadAvailabilityPreference();
+        if (typeof localValue === 'boolean') {
+          applyAvailability(localValue);
+        }
+      } catch (e) { }
+      fetchAvailabilityStatus();
+    })();
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        try {
+          const localValue = await loadAvailabilityPreference();
+          if (!cancelled && typeof localValue === 'boolean') {
+            applyAvailability(localValue);
+          }
+        } catch (e) { }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
 
   const checkAndSyncDeviceToken = async () => {
     try {
@@ -242,19 +276,35 @@ const HomeScreen = ({ navigation }) => {
     if (isToggling) return;
     if (value === isAvailable) return;
 
-    setIsToggling(true);
-    try {
-      const { accessToken } = await loadAuth();
-      if (!accessToken) return;
+    const previousValue = isAvailable;
 
-      if (value === true) {
+    if (value === true) {
+      try {
         const hasCompleted = await AsyncStorage.getItem('HAS_COMPLETED_ONBOARDING');
         if (!hasCompleted) {
           navigation.navigate('AvailabilityRoles');
-          setIsToggling(false);
           return;
         }
+      } catch (e) { }
+    }
 
+    applyAvailability(value);
+    try {
+      await saveAvailabilityPreference(value);
+    } catch (e) { }
+
+    setIsToggling(true);
+    try {
+      const { accessToken } = await loadAuth();
+      if (!accessToken) {
+        applyAvailability(previousValue);
+        try {
+          await saveAvailabilityPreference(previousValue);
+        } catch (e) { }
+        return;
+      }
+
+      if (value === true) {
         // Get location if turning ON
         const hasPermission = await requestLocationPermission();
         let location = null;
@@ -272,17 +322,12 @@ const HomeScreen = ({ navigation }) => {
       } else {
         await toggleAvailability(accessToken, { isAvailable: false });
       }
-
-      setIsAvailable(value);
-      Animated.timing(toggleAnim, {
-        toValue: value ? 0 : 1,
-        duration: 220,
-        easing: Easing.out(Easing.ease),
-        useNativeDriver: true,
-      }).start();
     } catch (error) {
       console.error('Error toggling availability:', error);
-      // No need to revert since we haven't changed local state yet
+      applyAvailability(previousValue);
+      try {
+        await saveAvailabilityPreference(previousValue);
+      } catch (e) { }
     } finally {
       setIsToggling(false);
     }
@@ -397,7 +442,6 @@ const HomeScreen = ({ navigation }) => {
                   end={{ x: 0.8, y: 1.0 }}
                   style={[styles.availabilitySliderGradient, { justifyContent: 'center', alignItems: 'flex-end', paddingRight: spacing(10) }]}
                 >
-                  {isToggling && <ActivityIndicator size="small" color="#FFFFFF" />}
                 </LinearGradient>
               </Animated.View>
             )}

@@ -1,6 +1,7 @@
 const HelpRequest = require('../models/HelpRequest')
 const HelpMatch = require('../models/HelpMatch')
 const Verification = require('../models/Verification')
+const PresenceRequest = require('../models/PresenceRequest')
 const { findHelpersForRequest } = require('./location.service')
 const { sendHelpRequestAlert, sendMatchedNotification, sendCancelAlert } = require('./notification.service')
 const {
@@ -22,22 +23,60 @@ const normalizeProfileImage = (path) => {
 const { updateCommunityBalance } = require('./communityBalance.service')
 const chatService = require('./chat.service')
 const { emitToUser } = require('../config/socket')
-const { HELP_REQUEST_STATUS, HELP_MATCH_STATUS, AUTO_CLOSE } = require('../utils/constants')
+const { HELP_REQUEST_STATUS, HELP_MATCH_STATUS, PRESENCE_STATUS, GEO, AUTO_CLOSE } = require('../utils/constants')
 const logger = require('../utils/logger')
+const { logRequestAttempt } = require('./requestAttempt.service')
 
 /**
  * Naya help request create karo + helpers notify karo
  */
-const createRequest = async (requesterId, { category, description, location, itemReturnRequired }) => {
+const createRequest = async (requesterId, { category, description, location, itemReturnRequired }, meta = null) => {
   // Active request check — ek time pe ek hi request
   const activeRequest = await HelpRequest.findOne({
     requesterId,
-    status: { $in: ['open', 'matching', 'matched', 'active'] },
+    status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING, HELP_REQUEST_STATUS.MATCHED, HELP_REQUEST_STATUS.ACTIVE, HELP_REQUEST_STATUS.CLOSING] },
   })
 
   if (activeRequest) {
+    logRequestAttempt({
+      requesterId,
+      requestKind: 'help_request',
+      outcome: 'blocked_active_request',
+      reason: 'active_help_request',
+      category,
+      description,
+      itemReturnRequired: itemReturnRequired || false,
+      location,
+      radiusMeters: GEO.DEFAULT_RADIUS_METERS,
+      meta,
+    }).catch(() => {})
     const err = new Error('You already have an active request')
     err.statusCode = 409
+    err.code = 'ACTIVE_REQUEST_EXISTS'
+    throw err
+  }
+
+  const activePresence = await PresenceRequest.findOne({
+    requesterId,
+    status: { $in: [PRESENCE_STATUS.ACTIVE, PRESENCE_STATUS.HELPERS_NOTIFIED, PRESENCE_STATUS.HELPERS_ACCEPTED] },
+  }).select('_id status')
+
+  if (activePresence) {
+    logRequestAttempt({
+      requesterId,
+      requestKind: 'help_request',
+      outcome: 'blocked_active_request',
+      reason: 'active_presence_request',
+      category,
+      description,
+      itemReturnRequired: itemReturnRequired || false,
+      location,
+      radiusMeters: GEO.DEFAULT_RADIUS_METERS,
+      meta,
+    }).catch(() => {})
+    const err = new Error('You already have an active request')
+    err.statusCode = 409
+    err.code = 'ACTIVE_REQUEST_EXISTS'
     throw err
   }
 
@@ -68,7 +107,24 @@ const createRequest = async (requesterId, { category, description, location, ite
   }
 
   if (helpers.length === 0) {
-    // Logic moved after creation
+    const attempt = await logRequestAttempt({
+      requesterId,
+      requestKind: 'help_request',
+      outcome: 'no_helpers_found',
+      reason: 'no_helpers_in_radius',
+      category,
+      description,
+      itemReturnRequired: itemReturnRequired || false,
+      location,
+      radiusMeters: GEO.DEFAULT_RADIUS_METERS,
+      helpersFound: 0,
+      meta,
+    })
+    const err = new Error('No available helpers nearby right now. Please try again later.')
+    err.statusCode = 404
+    err.code = 'NO_HELPERS_FOUND'
+    err.data = { attemptId: attempt?._id ? String(attempt._id) : null }
+    throw err
   }
 
   const request = await HelpRequest.create({
@@ -91,20 +147,6 @@ const createRequest = async (requesterId, { category, description, location, ite
 
   // Community balance update
   await updateCommunityBalance(requesterId, 'request_sent')
-
-  if (helpers.length === 0) {
-    // Record created, now notify frontend about "No helpers"
-    // Instead of throwing an error that might be caught as generic,
-    // we return the request but add a flag. Or throw a specific error with data.
-    // If I throw here, the transaction is already committed (mongoose default).
-
-    // User wants "404" behavior but with custom modal.
-    const err = new Error('No helpers found nearby')
-    err.statusCode = 404
-    err.code = 'NO_HELPERS_FOUND'
-    err.data = { request } // Pass created request so frontend can use it (e.g. to cancel later)
-    throw err
-  }
 
   if (helpers.length > 0) {
     const helperIds = helpers.map((h) => h._id)
@@ -135,15 +177,25 @@ const createRequest = async (requesterId, { category, description, location, ite
  * Helper ne accept kiya
  */
 const acceptRequest = async (helperId, requestId) => {
-  const match = await HelpMatch.findOne({
-    requestId,
-    helperId,
-    status: { $in: [HELP_MATCH_STATUS.PENDING, HELP_MATCH_STATUS.NOTIFIED] },
-  })
+  const busyRequester = await HelpRequest.findOne({
+    requesterId: helperId,
+    status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING, HELP_REQUEST_STATUS.MATCHED, HELP_REQUEST_STATUS.ACTIVE, HELP_REQUEST_STATUS.CLOSING] },
+  }).select('_id status')
 
-  if (!match) {
-    const err = new Error('Request not found or already responded')
-    err.statusCode = 404
+  if (busyRequester) {
+    const err = new Error('You have an active request. Please close it first.')
+    err.statusCode = 409
+    throw err
+  }
+
+  const busyPresenceRequester = await PresenceRequest.findOne({
+    requesterId: helperId,
+    status: { $in: [PRESENCE_STATUS.ACTIVE, PRESENCE_STATUS.HELPERS_NOTIFIED, PRESENCE_STATUS.HELPERS_ACCEPTED] },
+  }).select('_id status')
+
+  if (busyPresenceRequester) {
+    const err = new Error('You have an active request. Please close it first.')
+    err.statusCode = 409
     throw err
   }
 
@@ -152,6 +204,44 @@ const acceptRequest = async (helperId, requestId) => {
     const err = new Error('Request is no longer available')
     err.statusCode = 409
     throw err
+  }
+
+  if (String(request.requesterId) === String(helperId)) {
+    const err = new Error('You cannot accept your own request')
+    err.statusCode = 403
+    throw err
+  }
+
+  const existingAccepted = await HelpMatch.findOne({
+    requestId,
+    status: HELP_MATCH_STATUS.ACCEPTED,
+  }).select('helperId status')
+
+  if (existingAccepted && String(existingAccepted.helperId) !== String(helperId)) {
+    const err = new Error('Request is no longer available')
+    err.statusCode = 409
+    throw err
+  }
+
+  let match = await HelpMatch.findOne({ requestId, helperId })
+
+  if (match && [HELP_MATCH_STATUS.DECLINED, HELP_MATCH_STATUS.NOT_AVAILABLE, HELP_MATCH_STATUS.COMPLETED].includes(match.status)) {
+    const err = new Error('Request not found or already responded')
+    err.statusCode = 409
+    throw err
+  }
+
+  if (!match) {
+    match = await HelpMatch.create({
+      requestId,
+      helperId,
+      status: HELP_MATCH_STATUS.PENDING,
+      notifiedAt: new Date(),
+    })
+  }
+
+  if (match.status === HELP_MATCH_STATUS.ACCEPTED) {
+    return { request, match }
   }
 
   // REDIS REMOVE
@@ -180,8 +270,6 @@ const acceptRequest = async (helperId, requestId) => {
     matchedAt: new Date(),
   })
 
-  // NOTE: We no longer auto-cancel other helpers to allow multiple volunteers as per request
-  /*
   const otherHelpers = await HelpMatch.find({
     requestId,
     helperId: { $ne: helperId },
@@ -202,7 +290,6 @@ const acceptRequest = async (helperId, requestId) => {
     { requestId, helperId: { $ne: helperId }, status: { $in: [HELP_MATCH_STATUS.PENDING, HELP_MATCH_STATUS.NOTIFIED] } },
     { status: HELP_MATCH_STATUS.CANCELLED }
   )
-  */
 
   // Requester ko notification
   const helper = await require('../models/User').findById(helperId).select('fullName')
@@ -530,14 +617,21 @@ const getNearbyHelpRequests = async (userId, coords = null) => {
     const requests = await HelpRequest.find({
       _id: { $in: redisRequestIds },
       requesterId: { $ne: userId },
-      status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING, HELP_REQUEST_STATUS.MATCHED, HELP_REQUEST_STATUS.ACTIVE] },
+      status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING] },
     }).populate('requesterId', 'fullName profileImage')
 
     if (requests.length > 0) {
+      const acceptedMatches = await HelpMatch.find({
+        requestId: { $in: requests.map((r) => r._id) },
+        status: HELP_MATCH_STATUS.ACCEPTED,
+      }).select('requestId')
+      const acceptedSet = new Set(acceptedMatches.map((m) => String(m.requestId)))
+
       const filtered = []
       for (const req of requests) {
+        if (acceptedSet.has(String(req._id))) continue
         const match = await HelpMatch.findOne({ requestId: req._id, helperId: userId })
-        if (match && ['declined', 'not_available', 'accepted', 'completed'].includes(match.status)) continue
+        if (match && ['declined', 'not_available', 'accepted', 'completed', 'cancelled'].includes(match.status)) continue
 
         const reqObj = req.toObject()
         if (reqObj.requesterId && reqObj.requesterId.profileImage) {
@@ -553,7 +647,7 @@ const getNearbyHelpRequests = async (userId, coords = null) => {
   // 2. Fallback to MongoDB
   const query = {
     requesterId: { $ne: userId },
-    status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING, HELP_REQUEST_STATUS.MATCHED, HELP_REQUEST_STATUS.ACTIVE] },
+    status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING] },
     location: {
       $near: {
         $geometry: {
@@ -569,12 +663,19 @@ const getNearbyHelpRequests = async (userId, coords = null) => {
     .populate('requesterId', 'fullName profileImage')
     .limit(20)
 
+  const acceptedMatches = await HelpMatch.find({
+    requestId: { $in: requests.map((r) => r._id) },
+    status: HELP_MATCH_STATUS.ACCEPTED,
+  }).select('requestId')
+  const acceptedSet = new Set(acceptedMatches.map((m) => String(m.requestId)))
+
   const filtered = []
   for (const req of requests) {
+    if (acceptedSet.has(String(req._id))) continue
     const match = await HelpMatch.findOne({ requestId: req._id, helperId: userId })
 
     // Agar helper ne pehle hi mana kar diya hai ya accept kar liya hai toh mat dikhao
-    if (match && ['declined', 'not_available', 'accepted', 'completed'].includes(match.status)) {
+    if (match && ['declined', 'not_available', 'accepted', 'completed', 'cancelled'].includes(match.status)) {
       continue
     }
 

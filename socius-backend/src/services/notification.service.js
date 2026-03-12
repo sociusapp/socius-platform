@@ -168,35 +168,43 @@ const sendChatNotification = async (receiverId, senderName, messagePreview) => {
   })
 }
 
-const sendHelpClosureInitiatedNotification = async (receiverId, { requestId, initiatedBy }) => {
+const sendHelpClosureInitiatedNotification = async (receiverId, { requestId, requestType, initiatedBy, occurredAt }) => {
   const who = initiatedBy === 'requester' ? 'Requester' : initiatedBy === 'helper' ? 'Helper' : 'Someone'
+  const when = occurredAt ? new Date(occurredAt).toLocaleString('en-US') : null
+  const typeLabel = String(requestType || 'help_request').replace(/_/g, ' ')
   await notifyUser(receiverId, {
     title: '🧾 Request closing started',
-    body: `${who} has started closing this request. Tap to review and finish.`,
+    body: `${who} started closing ${typeLabel} (${String(requestId)}).${when ? ` Time: ${when}.` : ''}`,
     data: {
       type: NOTIFICATION_TYPE.REQUEST_STATUS,
       status: 'closing',
       requestId: String(requestId),
+      requestType: requestType ? String(requestType) : '',
       initiatedBy: initiatedBy ? String(initiatedBy) : '',
+      occurredAt: occurredAt ? String(occurredAt) : '',
     },
     priority: NOTIFICATION_PRIORITY.NORMAL,
   })
 }
 
-const sendHelpRequestClosedNotification = async (receiverId, { requestId, reason }) => {
+const sendHelpRequestClosedNotification = async (receiverId, { requestId, requestType, reason, occurredAt }) => {
   const label =
     reason === 'auto_closed' ? 'auto closed' :
     reason === 'cancelled' ? 'cancelled' :
     'closed'
+  const when = occurredAt ? new Date(occurredAt).toLocaleString('en-US') : null
+  const typeLabel = String(requestType || 'help_request').replace(/_/g, ' ')
 
   await notifyUser(receiverId, {
     title: '✅ Request closed',
-    body: `This request was ${label}. Tap to view details.`,
+    body: `${typeLabel} (${String(requestId)}) was ${label}.${when ? ` Time: ${when}.` : ''}`,
     data: {
       type: NOTIFICATION_TYPE.REQUEST_STATUS,
       status: 'closed',
       requestId: String(requestId),
+      requestType: requestType ? String(requestType) : '',
       reason: reason ? String(reason) : '',
+      occurredAt: occurredAt ? String(occurredAt) : '',
     },
     priority: NOTIFICATION_PRIORITY.NORMAL,
   })

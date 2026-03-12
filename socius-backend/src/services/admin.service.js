@@ -536,6 +536,37 @@ const claimLatestUnassignedToken = async ({ userId, platform = 'android' }) => {
   return { token: updated.token, platform: updated.platform, isActive: updated.isActive }
 }
 
+const getRequestAttempts = async ({
+  page = 1,
+  limit = 50,
+  requestKind,
+  outcome,
+  requesterId,
+} = {}) => {
+  const RequestAttempt = require('../models/RequestAttempt')
+  const query = {}
+  if (requestKind) query.requestKind = String(requestKind)
+  if (outcome) query.outcome = String(outcome)
+  if (requesterId) query.requesterId = String(requesterId)
+
+  const skip = (Number(page) - 1) * Number(limit)
+  const [items, total] = await Promise.all([
+    RequestAttempt.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(Number(limit))
+      .populate('requesterId', 'fullName phone'),
+    RequestAttempt.countDocuments(query),
+  ])
+
+  return {
+    items,
+    total,
+    page: Number(page),
+    limit: Number(limit),
+  }
+}
+
 module.exports = {
   getPendingVerifications,
   getVerificationDetails,
@@ -551,4 +582,5 @@ module.exports = {
   getDeviceTokensForUser,
   attachDeviceTokenToUser,
   claimLatestUnassignedToken,
+  getRequestAttempts,
 }

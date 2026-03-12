@@ -201,6 +201,13 @@ const claimLatestUnassignedToken = async (req, res, next) => {
   } catch (err) { next(err) }
 }
 
+const getRequestAttempts = async (req, res, next) => {
+  try {
+    const data = await adminService.getRequestAttempts(req.query)
+    return success(res, data)
+  } catch (err) { next(err) }
+}
+
 module.exports = {
   getPendingVerifications,
   getVerificationDetails,
@@ -223,4 +230,5 @@ module.exports = {
   getDeviceTokensForUser,
   attachDeviceToken,
   claimLatestUnassignedToken,
+  getRequestAttempts,
 }

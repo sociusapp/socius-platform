@@ -6,6 +6,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Button from '../../components/common/Button';
 import Header from '../../components/common/Header';
 import CustomAlert from '../../components/common/CustomAlert';
+import BottomActionBar from '../../components/common/BottomActionBar';
 import { sendOtp } from '../../services/api/auth.api';
 
 const PhoneVerificationScreen = ({ navigation }) => {
@@ -141,7 +142,7 @@ const PhoneVerificationScreen = ({ navigation }) => {
   }, []);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <Header
         title=""
         onBackPress={() => navigation.goBack()}
@@ -256,7 +257,7 @@ const PhoneVerificationScreen = ({ navigation }) => {
               </View>
             </View>
           </ScrollView>
-          <View style={{ paddingHorizontal: spacing(20), paddingVertical: vscale(16), paddingBottom: vscale(24), backgroundColor: '#FFFFFF' }}>
+          <BottomActionBar style={{ paddingHorizontal: spacing(20) }}>
             <Button
               title="Send OTP"
               onPress={handleSendOTP}
@@ -264,7 +265,7 @@ const PhoneVerificationScreen = ({ navigation }) => {
               disabled={isLoading}
               fullWidth
             />
-          </View>
+          </BottomActionBar>
         </View>
       </KeyboardAvoidingView>
       <CustomAlert

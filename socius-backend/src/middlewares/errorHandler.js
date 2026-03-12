@@ -69,9 +69,18 @@ const errorHandler = (err, req, res, next) => {
   // Default 500
   const statusCode = err.statusCode || err.status || 500
   const message =
-    process.env.NODE_ENV === 'production'
+    statusCode >= 500 && process.env.NODE_ENV === 'production'
       ? 'Something went wrong'
       : err.message || 'Something went wrong'
+
+  if (err.code || err.data) {
+    return res.status(statusCode).json({
+      success: false,
+      message,
+      ...(err.code ? { code: err.code } : {}),
+      ...(err.data ? { data: err.data } : {}),
+    })
+  }
 
   return error(res, message, statusCode)
 }

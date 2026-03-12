@@ -7,6 +7,7 @@ import { useResponsive } from '../../utils/responsive';
 import Button from '../../components/common/Button';
 import Header from '../../components/common/Header';
 import CustomAlert from '../../components/common/CustomAlert';
+import BottomActionBar from '../../components/common/BottomActionBar';
 import { verifyOtp as verifyOtpApi, sendOtp as sendOtpApi } from '../../services/api/auth.api';
 import notifee from '@notifee/react-native';
 import { saveAuth } from '../../services/storage/asyncStorage.service';
@@ -374,7 +375,7 @@ const OTPVerificationScreen = ({ navigation, route }) => {
   return (
     <View style={{ flex: 1 }}>
       {renderDevOtpOverlay()}
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
         <Header
           title=""
           onBackPress={() => navigation.goBack()}
@@ -462,7 +463,7 @@ const OTPVerificationScreen = ({ navigation, route }) => {
               </View>
             </View>
           </ScrollView>
-          <View style={[styles.footer, { paddingHorizontal: spacing(20), paddingVertical: vscale(16), paddingBottom: vscale(24), backgroundColor: '#FFFFFF' }]}>
+          <BottomActionBar style={{ paddingHorizontal: spacing(20) }}>
             <Button
               title="Verify"
               onPress={handleVerify}
@@ -470,7 +471,7 @@ const OTPVerificationScreen = ({ navigation, route }) => {
               disabled={!otpFilled || isVerifying || isResending}
               fullWidth
             />
-          </View>
+          </BottomActionBar>
         </KeyboardAvoidingView>
       </SafeAreaView>
       <CustomAlert

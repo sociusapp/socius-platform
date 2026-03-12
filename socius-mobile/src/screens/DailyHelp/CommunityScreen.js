@@ -7,7 +7,7 @@ import moment from 'moment';
 import Header from '../../components/common/Header';
 import Button from '../../components/common/Button';
 import { useResponsive } from '../../utils/responsive';
-import { getMyActiveHelpRequest, getNearbyHelpRequests, acceptHelpRequest } from '../../services/api/incident.api';
+import { getMyActiveHelpRequest, getNearbyHelpRequests } from '../../services/api/incident.api';
 import { getHistory } from '../../services/api/user.api';
 import { loadAuth } from '../../services/storage/asyncStorage.service';
 import { getCurrentPosition } from '../../services/location/geolocation.service';
@@ -112,57 +112,15 @@ const CommunityScreen = ({ navigation, route }) => {
     }
   };
 
-  const [isAccepting, setIsAccepting] = useState(false);
-  const handleAcceptRequest = async (requestId) => {
-    if (isAccepting) return;
-    showAlert(
-      "Confirm Help",
-      "Are you sure you want to accept this request? The requester will be notified immediately.",
-      [
-        { text: "Cancel", style: "cancel", onPress: closeAlert },
-        {
-          text: "Yes, I'll Help",
-          style: 'primary',
-          onPress: async () => {
-            closeAlert();
-            try {
-              setIsAccepting(true);
-              const auth = await loadAuth();
-              if (auth?.accessToken) {
-                const res = await acceptHelpRequest(auth.accessToken, requestId);
-                if (res && res.success) {
-                  showAlert(
-                    "Request Accepted",
-                    "Thank you for helping! Please proceed to the location.",
-                    [{ text: "OK", style: 'primary', onPress: closeAlert }]
-                  );
-                  fetchNearbyRequests(); // Refresh list
-                  navigation.navigate('MatchingMap', { requestId });
-                } else {
-                  showAlert(
-                    "Unable to Accept",
-                    res?.message || "This request may have been taken or cancelled.",
-                    [{ text: "OK", style: 'destructive', onPress: closeAlert }]
-                  );
-                  fetchNearbyRequests(); // Refresh to update status
-                }
-              }
-            } catch (err) {
-              console.log('Error accepting request:', err);
-              showAlert(
-                "Error",
-                "An unexpected error occurred. Please check your connection.",
-                [{ text: "OK", style: 'destructive', onPress: closeAlert }]
-              );
-            } finally {
-              setIsAccepting(false);
-            }
-          }
-        }
-      ],
-      'hand-heart',
-      '#DC5C69'
-    );
+  const handleViewAndAcceptRequest = (req) => {
+    if (!req?._id) return;
+    navigation.navigate('SomeoneNeedsHelp', {
+      requestId: req._id,
+      category: req.category,
+      description: req.description,
+      distanceMeters: req.distanceMeters,
+      area: req?.location?.address || req?.location?.whereToFindText || null,
+    });
   };
 
   useEffect(() => {
@@ -972,7 +930,7 @@ const CommunityScreen = ({ navigation, route }) => {
                         {/* Footer: Actions */}
                         <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: vscale(12), borderTopWidth: 1, borderTopColor: '#F1F5F9' }}>
                           <TouchableOpacity
-                            onPress={() => handleAcceptRequest(req._id)}
+                            onPress={() => handleViewAndAcceptRequest(req)}
                             style={{
                               flex: 1,
                               backgroundColor: '#DC5C69',
@@ -984,7 +942,7 @@ const CommunityScreen = ({ navigation, route }) => {
                               justifyContent: 'center'
                             }}
                           >
-                            <Text style={{ color: '#FFF', fontSize: ms(13), fontWeight: '600', marginRight: spacing(6) }}>Accept Request</Text>
+                            <Text style={{ color: '#FFF', fontSize: ms(13), fontWeight: '600', marginRight: spacing(6) }}>View & Accept</Text>
                             <Icon name="arrow-right" size={scale(16)} color="#FFF" />
                           </TouchableOpacity>
 

@@ -12,7 +12,13 @@ const createRequest = async (req, res, next) => {
       return success(res, { showNudge: true }, 'Community balance nudge')
     }
 
-    const request = await helpRequestService.createRequest(req.user._id, req.body)
+    const request = await helpRequestService.createRequest(req.user._id, req.body, {
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+      platform: req.headers['x-platform'],
+      deviceId: req.headers['x-device-id'],
+      appVersion: req.headers['x-app-version'],
+    })
     return created(res, request, 'Help request created')
   } catch (err) {
     next(err)

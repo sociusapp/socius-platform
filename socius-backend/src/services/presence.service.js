@@ -1,16 +1,41 @@
 const PresenceRequest = require('../models/PresenceRequest')
 const PresenceMatch = require('../models/PresenceMatch')
+const HelpRequest = require('../models/HelpRequest')
 const { findHelpersForPresence } = require('./location.service')
 const { sendPresenceAlarm } = require('./notification.service')
-const { PRESENCE_STATUS, PRESENCE_MATCH_STATUS, AUTO_CLOSE } = require('../utils/constants')
+const { PRESENCE_STATUS, PRESENCE_MATCH_STATUS, HELP_REQUEST_STATUS, GEO, AUTO_CLOSE } = require('../utils/constants')
 const logger = require('../utils/logger')
+const { logRequestAttempt } = require('./requestAttempt.service')
 
 /**
  * Presence request create karo + alarm bhejo
  */
-const createPresenceRequest = async (requesterId, { situationType, description, location, maxHelpers }) => {
+const createPresenceRequest = async (requesterId, { situationType, description, location, maxHelpers }, meta = null) => {
   logger.info(`--- NEW CODE RUNNING --- createPresenceRequest for ${requesterId}`)
   
+  const activeHelp = await HelpRequest.findOne({
+    requesterId,
+    status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING, HELP_REQUEST_STATUS.MATCHED, HELP_REQUEST_STATUS.ACTIVE, HELP_REQUEST_STATUS.CLOSING] },
+  }).select('_id status')
+
+  if (activeHelp) {
+    logRequestAttempt({
+      requesterId,
+      requestKind: 'presence_request',
+      outcome: 'blocked_active_request',
+      reason: 'active_help_request',
+      situationType,
+      description,
+      location,
+      radiusMeters: GEO.PRESENCE_RADIUS_METERS,
+      meta,
+    }).catch(() => {})
+    const err = new Error('You already have an active request')
+    err.statusCode = 409
+    err.code = 'ACTIVE_REQUEST_EXISTS'
+    throw err
+  }
+
   // Active presence request check
   const existing = await PresenceRequest.findOne({
     requesterId,
@@ -18,8 +43,20 @@ const createPresenceRequest = async (requesterId, { situationType, description, 
   })
 
   if (existing) {
+    logRequestAttempt({
+      requesterId,
+      requestKind: 'presence_request',
+      outcome: 'blocked_active_request',
+      reason: 'active_presence_request',
+      situationType,
+      description,
+      location,
+      radiusMeters: GEO.PRESENCE_RADIUS_METERS,
+      meta,
+    }).catch(() => {})
     const err = new Error('You already have an active presence request')
     err.statusCode = 409
+    err.code = 'ACTIVE_REQUEST_EXISTS'
     throw err
   }
 
@@ -36,7 +73,23 @@ const createPresenceRequest = async (requesterId, { situationType, description, 
   logger.info(`Helpers found: ${helpers.length}`)
 
   if (helpers.length === 0) {
-    // Logic moved after creation
+    const attempt = await logRequestAttempt({
+      requesterId,
+      requestKind: 'presence_request',
+      outcome: 'no_helpers_found',
+      reason: 'no_helpers_in_radius',
+      situationType,
+      description,
+      location,
+      radiusMeters: GEO.PRESENCE_RADIUS_METERS,
+      helpersFound: 0,
+      meta,
+    })
+    const err = new Error('No available helpers nearby right now. Please try again later.')
+    err.statusCode = 404
+    err.code = 'NO_HELPERS_FOUND'
+    err.data = { attemptId: attempt?._id ? String(attempt._id) : null }
+    throw err
   }
 
   const request = await PresenceRequest.create({
@@ -52,14 +105,6 @@ const createPresenceRequest = async (requesterId, { situationType, description, 
     status: PRESENCE_STATUS.ACTIVE,
     autoCloseScheduledAt: autoCloseAt,
   })
-
-  if (helpers.length === 0) {
-     const err = new Error('No helpers found within 500m')
-     err.statusCode = 404
-     err.code = 'NO_HELPERS_FOUND'
-     err.data = { request }
-     throw err
-  }
 
   if (helpers.length > 0) {
     const helperIds = helpers.map((h) => h._id)
@@ -92,6 +137,28 @@ const createPresenceRequest = async (requesterId, { situationType, description, 
  * Helper ne presence accept kiya
  */
 const acceptPresence = async (helperId, presenceRequestId) => {
+  const busyHelpRequester = await HelpRequest.findOne({
+    requesterId: helperId,
+    status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING, HELP_REQUEST_STATUS.MATCHED, HELP_REQUEST_STATUS.ACTIVE, HELP_REQUEST_STATUS.CLOSING] },
+  }).select('_id status')
+
+  if (busyHelpRequester) {
+    const err = new Error('You have an active request. Please close it first.')
+    err.statusCode = 409
+    throw err
+  }
+
+  const busyPresenceRequester = await PresenceRequest.findOne({
+    requesterId: helperId,
+    status: { $in: [PRESENCE_STATUS.ACTIVE, PRESENCE_STATUS.HELPERS_NOTIFIED, PRESENCE_STATUS.HELPERS_ACCEPTED] },
+  }).select('_id status')
+
+  if (busyPresenceRequester) {
+    const err = new Error('You have an active request. Please close it first.')
+    err.statusCode = 409
+    throw err
+  }
+
   const match = await PresenceMatch.findOne({
     presenceRequestId,
     helperId,

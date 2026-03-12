@@ -39,6 +39,7 @@ import { loadAuth } from '../../services/storage/asyncStorage.service';
 import { getSessionByRequest, getMessages, markMessagesRead, sendMessage, reactToMessage } from '../../services/api/chat.api';
 import { getSocket, connectSocket } from '../../services/socket/socket.service';
 import { baseURL } from '../../services/api/client';
+import { buildChatBlockedCopy } from '../../utils/closureMessages';
 
 const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser }) => {
   const insets = useSafeAreaInsets();
@@ -224,7 +225,12 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser }) =>
         if (isClosed && !chatBlockedRef.current) {
           setChatBlocked(true);
           setChatBlockedReason('closed');
-          addSystemMessage('Request close ho chuki hai. Ab aap message nahi bhej sakte.');
+          addSystemMessage(buildChatBlockedCopy({
+            requestId: data?.requestId || requestId,
+            requestType: data?.requestType || 'Help request',
+            reason: data?.reason || 'closed',
+            occurredAt: data?.occurredAt || null,
+          }));
         }
         if (Platform.OS === 'android') {
           ToastAndroid.show(data.message || 'Chat error', ToastAndroid.LONG);
@@ -237,7 +243,12 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser }) =>
         if (!chatBlockedRef.current) {
           setChatBlocked(true);
           setChatBlockedReason('closing');
-          addSystemMessage('Samne wale ne request close start kar di hai. Please meeting screen par closure complete karein.');
+          addSystemMessage(buildChatBlockedCopy({
+            requestId: data?.requestId || requestId,
+            requestType: data?.requestType || 'Help request',
+            reason: 'closing started',
+            occurredAt: data?.occurredAt || null,
+          }));
         }
       };
 
@@ -246,7 +257,12 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser }) =>
         if (!chatBlockedRef.current) {
           setChatBlocked(true);
           setChatBlockedReason('closed');
-          addSystemMessage('Request close ho gayi hai.');
+          addSystemMessage(buildChatBlockedCopy({
+            requestId: data?.requestId || requestId,
+            requestType: data?.requestType || 'Help request',
+            reason: data?.reason || 'closed',
+            occurredAt: data?.occurredAt || null,
+          }));
         }
       };
 

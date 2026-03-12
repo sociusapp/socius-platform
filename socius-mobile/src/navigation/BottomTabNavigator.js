@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
@@ -33,6 +34,7 @@ const Tab = createBottomTabNavigator();
 
 const BottomTabNavigator = () => {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const [isVerified, setIsVerified] = useState(true);
   const [checkedVerification, setCheckedVerification] = useState(false);
   const [showReviewAlert, setShowReviewAlert] = useState(false);
@@ -250,18 +252,16 @@ const BottomTabNavigator = () => {
             position: 'absolute',
             left: 10,
             right: 10,
-            bottom: 6,
+            bottom: Math.max(6, Platform.OS === 'android' ? 10 : 0, insets?.bottom || 0),
             height: 72,
             backgroundColor: '#FFFFFF',
             borderRadius: 28,
             borderWidth: 1,
             borderColor: '#E8EAED',
             paddingVertical: 8,
-            elevation: 20,
-            shadowColor: '#000000',
-            shadowOffset: { width: 0, height: -2 },
-            shadowOpacity: 0.12,
-            shadowRadius: 12,
+            paddingBottom: 8,
+            elevation: 0,
+            shadowOpacity: 0,
           },
           tabBarBackground: () => (
             <LinearGradient

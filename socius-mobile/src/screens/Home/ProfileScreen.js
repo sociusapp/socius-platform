@@ -6,7 +6,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Button from '../../components/common/Button';
 import { useResponsive } from '../../utils/responsive';
 import { LinearGradient } from 'expo-linear-gradient';
-import { clearAuth, loadAuth } from '../../services/storage/asyncStorage.service';
+import { clearAuth, loadAuth, loadAvailabilityPreference, saveAvailabilityPreference } from '../../services/storage/asyncStorage.service';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getProfile, getHome, updateProfile, getEmergencyContacts, deleteEmergencyContact as apiDeleteEmergencyContact } from '../../services/api/user.api';
 import { toggleAvailability } from '../../services/api/incident.api';
@@ -73,6 +73,11 @@ const ProfileScreen = ({ navigation }) => {
 
   const closeAlert = () => {
     setAlertVisible(false);
+  };
+
+  const applyAvailability = (value) => {
+    setIsAvailable(!!value);
+    toggleAnim.setValue(value ? 0 : 1);
   };
 
   const performLogout = async () => {
@@ -194,8 +199,13 @@ const ProfileScreen = ({ navigation }) => {
       return;
     }
 
+    const previousValue = isAvailable;
+
     // Optimistic update
-    setIsAvailable(value);
+    applyAvailability(value);
+    try {
+      await saveAvailabilityPreference(value);
+    } catch (e) { }
     Animated.timing(toggleAnim, {
       toValue: value ? 0 : 1,
       duration: 220,
@@ -205,7 +215,13 @@ const ProfileScreen = ({ navigation }) => {
 
     try {
       const { accessToken } = await loadAuth();
-      if (!accessToken) return;
+      if (!accessToken) {
+        applyAvailability(previousValue);
+        try {
+          await saveAvailabilityPreference(previousValue);
+        } catch (e) { }
+        return;
+      }
 
       if (value) {
         // Get location if turning ON
@@ -227,9 +243,12 @@ const ProfileScreen = ({ navigation }) => {
     } catch (error) {
       console.error('Error toggling availability:', error);
       // Revert on error
-      setIsAvailable(!value);
+      applyAvailability(previousValue);
+      try {
+        await saveAvailabilityPreference(previousValue);
+      } catch (e) { }
       Animated.timing(toggleAnim, {
-        toValue: !value ? 0 : 1,
+        toValue: previousValue ? 0 : 1,
         duration: 220,
         easing: Easing.out(Easing.ease),
         useNativeDriver: true,
@@ -289,8 +308,10 @@ const ProfileScreen = ({ navigation }) => {
       if (success && data) {
         setProfile(data);
         if (typeof data.isAvailable === 'boolean') {
-          setIsAvailable(data.isAvailable);
-          toggleAnim.setValue(data.isAvailable ? 0 : 1);
+          applyAvailability(data.isAvailable);
+          try {
+            await saveAvailabilityPreference(!!data.isAvailable);
+          } catch (e) { }
         }
         if (data.associations) {
           const assoc = data.associations || {};
@@ -386,12 +407,28 @@ const ProfileScreen = ({ navigation }) => {
   }, [toggleAnim]);
 
   useEffect(() => {
-    fetchProfile();
+    (async () => {
+      try {
+        const localValue = await loadAvailabilityPreference();
+        if (typeof localValue === 'boolean') {
+          applyAvailability(localValue);
+        }
+      } catch (e) { }
+      fetchProfile();
+    })();
   }, [fetchProfile]);
 
   useFocusEffect(
     useCallback(() => {
-      fetchProfile();
+      (async () => {
+        try {
+          const localValue = await loadAvailabilityPreference();
+          if (typeof localValue === 'boolean') {
+            applyAvailability(localValue);
+          }
+        } catch (e) { }
+        fetchProfile();
+      })();
     }, [fetchProfile])
   );
 

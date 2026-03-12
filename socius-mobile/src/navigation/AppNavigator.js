@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { NavigationContainer, createNavigationContainerRef, CommonActions } from '@react-navigation/native';
 import notifee, { EventType } from '@notifee/react-native';
-import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
+import { AppState, NativeEventEmitter, NativeModules, Platform } from 'react-native';
 import StackNavigator from './StackNavigator';
 import { onNotificationOpened, getInitialNotification, onMessageForeground } from '../services/firebase/messaging';
 import { CHANNELS, handleIncomingCallMessage } from '../services/notifications/SociusNotificationService';
@@ -10,6 +10,7 @@ import CustomAlert from '../components/common/CustomAlert';
 import { loadAuth } from '../services/storage/asyncStorage.service';
 import { declineHelpAsVolunteer } from '../services/api/volunteer.api';
 import { getMyActiveHelpRequest } from '../services/api/incident.api';
+import { buildClosureInitiatedCopy, buildRequestClosedCopy } from '../utils/closureMessages';
 
 const { SociusCallModule } = NativeModules;
 
@@ -173,6 +174,26 @@ const AppNavigator = () => {
   }, []);
 
   useEffect(() => {
+    const appStateRef = { current: AppState.currentState };
+    const appStateSub = AppState.addEventListener('change', (nextState) => {
+      appStateRef.current = nextState;
+    });
+
+    const displayUpdateNotification = async ({ title, body, data }) => {
+      if (Platform.OS !== 'android') return;
+      try {
+        await notifee.displayNotification({
+          title,
+          body,
+          android: {
+            channelId: CHANNELS.UPDATES,
+            pressAction: { id: 'default' },
+          },
+          data,
+        });
+      } catch (e) {}
+    };
+
     const unsubscribeOpened = onNotificationOpened((remoteMessage) => {
       const data = remoteMessage?.data || {};
       const run = () => {
@@ -199,16 +220,7 @@ const AppNavigator = () => {
             return;
           }
           if (status === 'closed') {
-            showAlert(
-              'Request closed',
-              'Samne wale ne request close kar di hai.',
-              [
-                { text: 'Open Activity', onPress: () => navigateToActivity(data.requestId, status), style: 'primary' },
-                { text: 'OK', onPress: closeAlert, style: 'cancel' },
-              ],
-              'check-circle',
-              '#28C76F'
-            );
+            navigateToActivity(data.requestId, status);
           }
         }
       };
@@ -233,41 +245,39 @@ const AppNavigator = () => {
       const status = String(data.status || '').toLowerCase();
       if (dataType === 'request_status') {
         if (status === 'matched') {
-          showAlert(
-            title || '✅ Someone is coming to help',
-            body || 'A volunteer has accepted your request.',
-            [
-              { text: 'OK', onPress: () => { closeAlert(); openRequesterMeeting(data.requestId); }, style: 'primary' },
-            ],
-            'account-heart',
-            '#28C76F'
-          );
+          await displayUpdateNotification({
+            title: title || 'Match found',
+            body: body || 'A volunteer has accepted your request. Tap to open the meeting screen.',
+            data: { ...data, type: 'request_status', status: 'matched' },
+          });
           return;
         }
         if (status === 'closing') {
-          showAlert(
-            title || 'Request closing started',
-            body || 'Samne wale ne request close start kar di hai. Please closure complete karein.',
-            [
-              { text: 'Open Meeting', onPress: () => openRequesterMeeting(data.requestId), style: 'primary' },
-              { text: 'OK', onPress: closeAlert, style: 'cancel' },
-            ],
-            'alert-circle-outline',
-            '#DC5C69'
-          );
+          const copy = buildClosureInitiatedCopy({
+            requestId: data.requestId,
+            requestType: data.requestType || 'Help request',
+            initiatedBy: data.initiatedBy,
+            occurredAt: data.occurredAt,
+          });
+          await displayUpdateNotification({
+            title: title || copy.title,
+            body: body || copy.message,
+            data: { ...data, type: 'request_status', status: 'closing' },
+          });
           return;
         }
         if (status === 'closed') {
-          showAlert(
-            title || 'Request closed',
-            body || 'Samne wale ne request close kar di hai.',
-            [
-              { text: 'Open Activity', onPress: () => navigateToActivity(data.requestId, status), style: 'primary' },
-              { text: 'OK', onPress: closeAlert, style: 'cancel' },
-            ],
-            'check-circle',
-            '#28C76F'
-          );
+          const copy = buildRequestClosedCopy({
+            requestId: data.requestId,
+            requestType: data.requestType || 'Help request',
+            reason: data.reason,
+            occurredAt: data.occurredAt,
+          });
+          await displayUpdateNotification({
+            title: title || copy.title,
+            body: body || copy.message,
+            data: { ...data, type: 'request_status', status: 'closed' },
+          });
           return;
         }
       }
@@ -393,37 +403,38 @@ const AppNavigator = () => {
     let socket;
     let mounted = true;
 
-    const showUpdate = async (title, message, { requestId, status }) => {
-      showAlert(
-        title,
-        message,
-        [
-          status === 'matched'
-            ? { text: 'Open Meeting', onPress: () => openRequesterMeeting(requestId), style: 'primary' }
-            : { text: 'Open Activity', onPress: () => navigateToActivity(requestId, status), style: 'primary' },
-          { text: 'OK', onPress: closeAlert, style: 'cancel' },
-        ],
-        status === 'closed' ? 'check-circle' : status === 'matched' ? 'account-heart' : 'alert-circle-outline',
-        status === 'closed' ? '#28C76F' : status === 'matched' ? '#28C76F' : '#DC5C69'
-      );
-
-      if (Platform.OS === 'android') {
-        try {
-          await notifee.displayNotification({
-            title,
-            body: message,
-            android: {
-              channelId: CHANNELS.UPDATES,
-              pressAction: { id: 'default' },
-            },
-            data: {
-              type: 'request_status',
-              status,
-              requestId: String(requestId || ''),
-            },
-          });
-        } catch (e) {}
+    const showUpdate = async (title, message, { requestId, status, requestType, reason, occurredAt, initiatedBy }) => {
+      const isActive = appStateRef.current === 'active';
+      if (!isActive) {
+        await displayUpdateNotification({
+          title,
+          body: message,
+          data: {
+            type: 'request_status',
+            status,
+            requestId: String(requestId || ''),
+            requestType: requestType ? String(requestType) : '',
+            reason: reason ? String(reason) : '',
+            occurredAt: occurredAt ? String(occurredAt) : '',
+            initiatedBy: initiatedBy ? String(initiatedBy) : '',
+          },
+        });
+        return;
       }
+
+      await displayUpdateNotification({
+        title,
+        body: message,
+        data: {
+          type: 'request_status',
+          status,
+          requestId: String(requestId || ''),
+          requestType: requestType ? String(requestType) : '',
+          reason: reason ? String(reason) : '',
+          occurredAt: occurredAt ? String(occurredAt) : '',
+          initiatedBy: initiatedBy ? String(initiatedBy) : '',
+        },
+      });
     };
 
     const setupSocket = async () => {
@@ -434,20 +445,32 @@ const AppNavigator = () => {
       socket.on('help:closure_initiated', (payload) => {
         const requestId = payload?.requestId;
         if (!requestId) return;
+        const copy = buildClosureInitiatedCopy({
+          requestId,
+          requestType: payload?.requestType || 'Help request',
+          initiatedBy: payload?.initiatedBy,
+          occurredAt: payload?.occurredAt,
+        });
         showUpdate(
-          'Request closing started',
-          'Samne wale ne request close start kar di hai. Please closure complete karein.',
-          { requestId, status: 'closing' }
+          copy.title,
+          copy.message,
+          { requestId, status: 'closing', requestType: payload?.requestType, initiatedBy: payload?.initiatedBy, occurredAt: payload?.occurredAt }
         );
       });
 
       socket.on('help:request_closed', (payload) => {
         const requestId = payload?.requestId;
         if (!requestId) return;
+        const copy = buildRequestClosedCopy({
+          requestId,
+          requestType: payload?.requestType || 'Help request',
+          reason: payload?.reason,
+          occurredAt: payload?.occurredAt,
+        });
         showUpdate(
-          'Request closed',
-          'Samne wale ne request close kar di hai.',
-          { requestId, status: 'closed' }
+          copy.title,
+          copy.message,
+          { requestId, status: 'closed', requestType: payload?.requestType, reason: payload?.reason, occurredAt: payload?.occurredAt }
         );
       });
     };
@@ -460,6 +483,7 @@ const AppNavigator = () => {
         socket.off('help:closure_initiated');
         socket.off('help:request_closed');
       }
+      appStateSub?.remove?.();
       if (typeof unsubscribeOpened === 'function') {
         unsubscribeOpened();
       }

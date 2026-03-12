@@ -5,12 +5,13 @@ import { useResponsive } from '../../utils/responsive';
 import Button from '../../components/common/Button';
 import Header from '../../components/common/Header';
 import StaticPageViewer from '../../components/common/StaticPageViewer';
+import BottomActionBar from '../../components/common/BottomActionBar';
 
 const WhatSociusIsNotScreen = ({ navigation }) => {
   const { contentWidth, scale, vscale, spacing } = useResponsive();
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <Header 
         title="What Socius is NOT" 
         onBackPress={() => navigation.goBack()} 
@@ -21,8 +22,7 @@ const WhatSociusIsNotScreen = ({ navigation }) => {
         <StaticPageViewer slug="what-socius-is-not" />
       </View>
 
-      {/* Footer Button */}
-      <View style={[styles.footer, { paddingHorizontal: spacing(20), paddingVertical: vscale(12), paddingBottom: vscale(24), borderTopWidth: scale(1) }]}>
+      <BottomActionBar style={{ paddingHorizontal: spacing(20) }} contentStyle={{ width: contentWidth, alignSelf: 'center' }}>
         <View style={{ width: contentWidth, alignSelf: 'center' }}>
           <Button 
             title="I Understand" 
@@ -30,7 +30,7 @@ const WhatSociusIsNotScreen = ({ navigation }) => {
             fullWidth
           />
         </View>
-      </View>
+      </BottomActionBar>
     </SafeAreaView>
   );
 };
@@ -44,15 +44,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: 100, // Ensure content is not hidden behind footer
-  },
-  footer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#FFFFFF',
-    borderTopColor: '#E8EAED',
+    paddingBottom: 16,
   },
 });
 

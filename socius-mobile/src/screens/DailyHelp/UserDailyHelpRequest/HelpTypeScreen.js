@@ -5,6 +5,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../../components/common/Header';
 import Button from '../../../components/common/Button';
 import { useResponsive } from '../../../utils/responsive';
+import BottomActionBar from '../../../components/common/BottomActionBar';
 
 const HelpTypeScreen = ({ navigation }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
@@ -50,7 +51,7 @@ const HelpTypeScreen = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <Header 
         onBackPress={() => navigation.goBack()}
         rightComponent={
@@ -135,14 +136,14 @@ const HelpTypeScreen = ({ navigation }) => {
           </View>
         </ScrollView>
 
-        <View style={[styles.footer, { paddingHorizontal: spacing(16), paddingBottom: vscale(24), paddingTop: vscale(8) }]}>
+        <BottomActionBar style={{ paddingHorizontal: spacing(16) }}>
           <Button
             title="Continue"
             onPress={handleContinue}
             fullWidth
             disabled={!selectedHelpType}
           />
-        </View>
+        </BottomActionBar>
       </View>
     </SafeAreaView>
   );

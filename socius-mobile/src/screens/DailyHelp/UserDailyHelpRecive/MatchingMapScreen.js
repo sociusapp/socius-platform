@@ -16,6 +16,7 @@ import { getSocket, connectSocket } from '../../../services/socket/socket.servic
 import { getSessionByRequest, getMessages, markMessagesRead } from '../../../services/api/chat.api';
 import ChatModal from '../../../components/common/ChatModal';
 import CustomAlert from '../../../components/common/CustomAlert';
+import { buildClosureInitiatedCopy, buildRequestClosedCopy } from '../../../utils/closureMessages';
 
 const MatchingMapScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
@@ -294,12 +295,18 @@ const MatchingMapScreen = ({ navigation, route }) => {
 
       const initiatedBy = String(data?.initiatedBy || '');
       if (initiatedBy === 'requester') {
+        const copy = buildClosureInitiatedCopy({
+          requestId,
+          requestType: data?.requestType || 'Help request',
+          initiatedBy: data?.initiatedBy,
+          occurredAt: data?.occurredAt,
+        });
         showAlert(
-          'Request closing started',
-          'Requester ne request close start kar di hai. Please aap apna closure complete karein.',
+          copy.title,
+          copy.message,
           [
             {
-              text: 'Complete Closure',
+              text: 'Complete closure',
               onPress: () => {
                 closeAlert();
                 navigation.navigate('ThankYouClosing', { requestId });
@@ -317,9 +324,15 @@ const MatchingMapScreen = ({ navigation, route }) => {
     const handleRequestClosed = (data) => {
       if (!isMounted) return;
       if (String(data?.requestId) !== String(requestId)) return;
+      const copy = buildRequestClosedCopy({
+        requestId,
+        requestType: data?.requestType || 'Help request',
+        reason: data?.reason,
+        occurredAt: data?.occurredAt,
+      });
       showAlert(
-        'Request closed',
-        'Ye request close ho gayi hai.',
+        copy.title,
+        copy.message,
         [
           {
             text: 'OK',

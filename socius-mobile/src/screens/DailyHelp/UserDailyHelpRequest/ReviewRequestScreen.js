@@ -232,11 +232,13 @@ const ReviewRequestScreen = ({ navigation, route }) => {
         error.response.data?.errors?.[0]?.message;
 
       if (status === 404 && error.response.data?.code === 'NO_HELPERS_FOUND') {
-        const requestData = error.response.data?.data?.request;
-        navigation.navigate('RequestActive', { 
-          initialRequest: requestData, 
-          initialNoHelpers: true 
-        });
+        showAlert(
+          'No helpers nearby',
+          messageFromServer || 'No available helpers were found within 500m right now. Please try again later.',
+          [{ text: 'OK', onPress: closeAlert, type: 'primary' }],
+          'account-search-outline',
+          '#DC5C69'
+        );
         return;
       }
 
@@ -252,7 +254,7 @@ const ReviewRequestScreen = ({ navigation, route }) => {
       }
 
       showAlert(
-        status ? `Error (${status})` : 'Error',
+        'Unable to share',
         messageFromServer || 'Something went wrong. Please try again.',
         [{ text: 'OK', onPress: closeAlert, type: 'destructive' }],
         'alert-octagon',

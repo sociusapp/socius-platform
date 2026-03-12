@@ -23,3 +23,7 @@ ios/build/
 # React Native
 # yarn.lock
 # package-lock.json
+
+# Environment files
+.env
+.env.*

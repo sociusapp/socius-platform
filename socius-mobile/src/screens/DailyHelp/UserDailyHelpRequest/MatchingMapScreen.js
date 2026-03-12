@@ -16,6 +16,7 @@ import { getSocket, connectSocket } from '../../../services/socket/socket.servic
 import { getSessionByRequest, getMessages, markMessagesRead } from '../../../services/api/chat.api';
 import ChatModal from '../../../components/common/ChatModal';
 import CustomAlert from '../../../components/common/CustomAlert';
+import { buildClosureInitiatedCopy, buildRequestClosedCopy } from '../../../utils/closureMessages';
 
 const MatchingMapScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
@@ -407,59 +408,50 @@ const MatchingMapScreen = ({ navigation, route }) => {
       if (!isMounted) return;
       if (String(data?.requestId) !== String(requestId)) return;
 
-      const initiatedBy = String(data?.initiatedBy || '');
-      if (initiatedBy === 'helper') {
-        showAlert(
-          'Request closing started',
-          'Helper ne request close start kar di hai. Kya aapka help pura hua? Agar haan, ab closure complete karein. Agar nahi, aap naya request bana sakte hain.',
-          [
-            {
-              text: 'Close Now',
-              onPress: () => {
-                closeAlert();
-                navigation.navigate('ClosingRequest', { requestId });
-              },
-              style: 'primary',
+      const copy = buildClosureInitiatedCopy({
+        requestId,
+        requestType: data?.requestType || 'Help request',
+        initiatedBy: data?.initiatedBy,
+        occurredAt: data?.occurredAt,
+      });
+      showAlert(
+        copy.title,
+        copy.message,
+        [
+          {
+            text: 'Complete closure',
+            onPress: () => {
+              closeAlert();
+              navigation.navigate('ClosingRequest', { requestId });
             },
-            {
-              text: 'Request Again',
-              onPress: () => {
-                closeAlert();
-                navigation.navigate('HelpType');
-              },
+            style: 'primary',
+          },
+          {
+            text: 'Request again',
+            onPress: () => {
+              closeAlert();
+              navigation.navigate('HelpType');
             },
-            { text: 'Later', onPress: closeAlert },
-          ],
-          'alert-circle-outline',
-          '#DC5C69'
-        );
-      } else {
-        showAlert(
-          'Request closing started',
-          'Samne wale ne request close start kar di hai. Please closure complete karein.',
-          [
-            {
-              text: 'Close Now',
-              onPress: () => {
-                closeAlert();
-                navigation.navigate('ClosingRequest', { requestId });
-              },
-              style: 'primary',
-            },
-            { text: 'OK', onPress: closeAlert },
-          ],
-          'alert-circle-outline',
-          '#DC5C69'
-        );
-      }
+          },
+          { text: 'Later', onPress: closeAlert, style: 'cancel' },
+        ],
+        'alert-circle-outline',
+        '#DC5C69'
+      );
     };
 
     const handleRequestClosed = (data) => {
       if (!isMounted) return;
       if (String(data?.requestId) !== String(requestId)) return;
+      const copy = buildRequestClosedCopy({
+        requestId,
+        requestType: data?.requestType || 'Help request',
+        reason: data?.reason,
+        occurredAt: data?.occurredAt,
+      });
       showAlert(
-        'Request closed',
-        'Ye request close ho gayi hai.',
+        copy.title,
+        copy.message,
         [
           {
             text: 'OK',

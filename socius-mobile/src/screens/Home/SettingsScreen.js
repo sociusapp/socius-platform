@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../components/common/Header';
 import { useResponsive } from '../../utils/responsive';
-import { loadAuth } from '../../services/storage/asyncStorage.service';
+import { loadAuth, loadAvailabilityPreference, saveAvailabilityPreference } from '../../services/storage/asyncStorage.service';
 import { getProfile } from '../../services/api/user.api';
 import { toggleAvailability } from '../../services/api/incident.api';
 import { requestLocationPermission, getCurrentPosition } from '../../services/location/geolocation.service';
@@ -14,7 +14,15 @@ const SettingsScreen = ({ navigation }) => {
   const [isAvailable, setIsAvailable] = useState(true);
 
   useEffect(() => {
-    fetchAvailabilityStatus();
+    (async () => {
+      try {
+        const localValue = await loadAvailabilityPreference();
+        if (typeof localValue === 'boolean') {
+          setIsAvailable(localValue);
+        }
+      } catch (e) { }
+      fetchAvailabilityStatus();
+    })();
   }, []);
 
   const fetchAvailabilityStatus = async () => {
@@ -23,7 +31,11 @@ const SettingsScreen = ({ navigation }) => {
       if (!accessToken) return;
       const response = await getProfile(accessToken);
       if (response?.success && response?.data) {
-        setIsAvailable(!!response.data.isAvailable);
+        const value = !!response.data.isAvailable;
+        setIsAvailable(value);
+        try {
+          await saveAvailabilityPreference(value);
+        } catch (e) { }
       }
     } catch (error) {
       console.log('Error fetching availability:', error);
@@ -31,12 +43,22 @@ const SettingsScreen = ({ navigation }) => {
   };
 
   const handleAvailabilityToggle = async (value) => {
+    const previousValue = isAvailable;
     // Optimistic update
     setIsAvailable(value);
+    try {
+      await saveAvailabilityPreference(value);
+    } catch (e) { }
     
     try {
       const { accessToken } = await loadAuth();
-      if (!accessToken) return;
+      if (!accessToken) {
+        setIsAvailable(previousValue);
+        try {
+          await saveAvailabilityPreference(previousValue);
+        } catch (e) { }
+        return;
+      }
 
       if (value) {
         // Get location if turning ON
@@ -57,7 +79,10 @@ const SettingsScreen = ({ navigation }) => {
       }
     } catch (error) {
       console.error('Error toggling availability:', error);
-      setIsAvailable(!value);
+      setIsAvailable(previousValue);
+      try {
+        await saveAvailabilityPreference(previousValue);
+      } catch (e) { }
     }
   };
 

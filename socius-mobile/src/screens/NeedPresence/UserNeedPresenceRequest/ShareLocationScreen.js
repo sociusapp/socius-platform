@@ -183,11 +183,11 @@ const ShareLocationScreen = ({ navigation, route }) => {
         error.response.data?.errors?.[0]?.message;
 
       if (status === 404 && error.response.data?.code === 'NO_HELPERS_FOUND') {
-        const requestData = error.response.data?.data?.request;
-        navigation.navigate('RequestShared', {
-          requestId: requestData?._id || requestData?.id,
-          initialNoHelpers: true
-        });
+        showAlert(
+          'No helpers nearby',
+          messageFromServer || 'No available helpers were found within 500m right now. Please try again later.',
+          [{ text: 'OK', onPress: closeAlert }]
+        );
         return;
       }
 
@@ -195,20 +195,13 @@ const ShareLocationScreen = ({ navigation, route }) => {
         showAlert(
           'Request already active',
           messageFromServer || 'You already have an active presence request.',
-          [{ text: 'OK', onPress: closeAlert }]
+          [{ text: 'Open request', onPress: () => { closeAlert(); navigation.navigate('RequestShared'); } }]
         );
-        const requestId =
-          error.response.data?.data?._id ||
-          error.response.data?.data?.id ||
-          error.response.data?.data?.requestId ||
-          error.response.data?.data?.request?._id ||
-          error.response.data?.data?.request?.id;
-        navigation.navigate('RequestShared', requestId ? { requestId } : undefined);
         return;
       }
 
       showAlert(
-        status ? `Error (${status})` : 'Error',
+        'Unable to share',
         messageFromServer || 'Something went wrong. Please try again.',
         [{ text: 'OK', onPress: closeAlert }]
       );

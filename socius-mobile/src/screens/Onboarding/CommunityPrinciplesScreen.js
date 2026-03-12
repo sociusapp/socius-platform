@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '../../components/common/Button';
 import Header from '../../components/common/Header';
 import { useResponsive } from '../../utils/responsive';
+import BottomActionBar from '../../components/common/BottomActionBar';
 
 const CommunityPrinciplesScreen = ({ navigation }) => {
   const { contentWidth, titleFont, subtitleFont, bodyFont, smallFont, scale, vscale, spacing, height } = useResponsive();
@@ -36,7 +37,7 @@ const CommunityPrinciplesScreen = ({ navigation }) => {
   ];
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <Header 
         title="" 
         onBackPress={() => navigation.goBack()} 
@@ -44,7 +45,7 @@ const CommunityPrinciplesScreen = ({ navigation }) => {
       />
       
       <ScrollView 
-        contentContainerStyle={[styles.scrollContent, { alignItems: 'center', paddingHorizontal: spacing(20), paddingTop: vscale(10), paddingBottom: vscale(120) }]}
+        contentContainerStyle={[styles.scrollContent, { alignItems: 'center', paddingHorizontal: spacing(20), paddingTop: vscale(10), paddingBottom: vscale(24) }]}
         showsVerticalScrollIndicator={false}
       >
         <View style={{ alignItems: 'center', width: '100%', flex: 1, justifyContent: height > 700 ? 'center' : 'flex-start' }}>
@@ -95,16 +96,13 @@ const CommunityPrinciplesScreen = ({ navigation }) => {
         </View>
       </ScrollView>
 
-      {/* Button Footer */}
-      <View style={[styles.footer, { paddingHorizontal: spacing(20), paddingVertical: vscale(12), paddingBottom: vscale(24), borderTopWidth: scale(1) }]}>
-        <View style={{ width: contentWidth, alignSelf: 'center' }}>
-          <Button 
-            title="Continue" 
-            onPress={() => navigation.navigate('PhoneVerification')}
-            fullWidth
-          />
-        </View>
-      </View>
+      <BottomActionBar style={{ paddingHorizontal: spacing(20) }} contentStyle={{ width: contentWidth, alignSelf: 'center' }}>
+        <Button 
+          title="Continue" 
+          onPress={() => navigation.navigate('PhoneVerification')}
+          fullWidth
+        />
+      </BottomActionBar>
     </SafeAreaView>
   );
 };
