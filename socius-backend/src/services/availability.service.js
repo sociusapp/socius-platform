@@ -1,7 +1,7 @@
 const User = require('../models/User')
 const { isValidCoordinates } = require('../utils/geoQuery')
 const logger = require('../utils/logger')
-const { updateUserLocation, removeUserLocation } = require('../config/redis')
+const { updateUserLocation, removeUserLocation, del } = require('../config/redis')
 
 /**
  * Availability toggle karo
@@ -31,6 +31,7 @@ const toggleAvailability = async (userId, { isAvailable, location }) => {
     if (!isValidCoordinates(lng, lat)) {
       const coords = user?.location?.coordinates
       const hasStored =
+        !!user?.location?.updatedAt &&
         Array.isArray(coords) &&
         coords.length === 2 &&
         typeof coords[0] === 'number' &&
@@ -62,6 +63,7 @@ const toggleAvailability = async (userId, { isAvailable, location }) => {
   }
 
   await User.findByIdAndUpdate(userId, { $set: updates })
+  del(`user:profile:${userId}`).catch(() => {})
 
   logger.info(`Availability toggled: ${userId} → ${isAvailable}`)
   return { isAvailable, location: isAvailable ? location : null }
@@ -87,6 +89,7 @@ const updateLocation = async (userId, { lng, lat }) => {
       },
     },
   })
+  del(`user:profile:${userId}`).catch(() => {})
 
   // REDIS UPDATE
   updateUserLocation(userId, lng, lat).catch(e => logger.error('Redis location update failed', e))

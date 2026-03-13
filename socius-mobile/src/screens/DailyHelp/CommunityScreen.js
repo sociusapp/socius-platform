@@ -520,7 +520,13 @@ const CommunityScreen = ({ navigation, route }) => {
                       if (isMyRequest) {
                         navigation.navigate('RequesterMatchingMap', { requestId });
                       } else {
-                        navigation.navigate('MatchingMap', { requestId });
+                        navigation.reset({
+                          index: 1,
+                          routes: [
+                            { name: 'MainApp', params: { screen: 'HomeTab' } },
+                            { name: 'MatchingMap', params: { requestId } },
+                          ],
+                        });
                       }
                     }}
                   >
@@ -736,7 +742,18 @@ const CommunityScreen = ({ navigation, route }) => {
                   {activeHelp && (
                     <TouchableOpacity
                       activeOpacity={0.9}
-                      onPress={() => navigation.navigate('MatchingMap', { requestId: activeHelp.request._id, prefillRequest: activeHelp.request })}
+                      onPress={() =>
+                        navigation.reset({
+                          index: 1,
+                          routes: [
+                            { name: 'MainApp', params: { screen: 'HomeTab' } },
+                            {
+                              name: 'MatchingMap',
+                              params: { requestId: activeHelp.request._id, prefillRequest: activeHelp.request },
+                            },
+                          ],
+                        })
+                      }
                       style={[
                         styles.activeCard,
                         {

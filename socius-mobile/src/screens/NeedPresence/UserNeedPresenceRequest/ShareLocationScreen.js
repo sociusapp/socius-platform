@@ -183,6 +183,8 @@ const ShareLocationScreen = ({ navigation, route }) => {
         error.response.data?.errors?.[0]?.message;
       const code = error.response.data?.code;
       const retryAfter = Number(error.response.headers?.['retry-after'] || 0) || 0;
+      const attemptId = error.response.data?.data?.attemptId || null;
+      const ref = attemptId ? `\n\nRef: ${attemptId}` : '';
 
       if (status === 429) {
         const suffix = retryAfter > 0 ? ` Please try again after ${retryAfter} seconds.` : '';
@@ -207,10 +209,10 @@ const ShareLocationScreen = ({ navigation, route }) => {
         const isBusy = code === 'NO_HELPERS_AVAILABLE';
         showAlert(
           isBusy ? 'Helpers are busy' : 'No helpers nearby',
-          messageFromServer ||
+          (messageFromServer ||
             (isBusy
               ? 'Nearby helpers are currently busy. Please try again in a few minutes.'
-              : 'No available helpers were found within 500m right now. Please try again later.'),
+              : 'No available helpers were found within 500m right now. Please try again later.')) + ref,
           [{ text: 'OK', onPress: closeAlert }]
         );
         return;

@@ -162,18 +162,12 @@ const getHistory = async (userId, { page = 1, limit = 20 } = {}) => {
  * User profile get karo
  */
 const getProfile = async (userId) => {
-  const cacheKey = `user:profile:${userId}`
-  const cached = await redis.get(cacheKey)
-  if (cached) return cached
-
-  const user = await User.findById(userId).select('-__v -adminNotes')
+  const user = await User.findById(userId).select('-__v -adminNotes').lean()
   if (!user || user.isDeleted) {
     const err = new Error('User not found')
     err.statusCode = 404
     throw err
   }
-
-  await redis.setEx(cacheKey, 3600, user)
   return user
 }
 
@@ -197,6 +191,10 @@ const updateProfile = async (userId, updates) => {
     { $set: filtered },
     { new: true, runValidators: true }
   ).select('-__v -adminNotes')
+
+  try {
+    await redis.del(`user:profile:${userId}`)
+  } catch (e) { }
 
   if (!user) {
     const err = new Error('User not found')
@@ -296,7 +294,6 @@ module.exports = {
   getHomeData,
   getHistory,
 }
-
 
 
 

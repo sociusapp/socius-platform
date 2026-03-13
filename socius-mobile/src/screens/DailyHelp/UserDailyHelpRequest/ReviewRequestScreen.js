@@ -237,12 +237,14 @@ const ReviewRequestScreen = ({ navigation, route }) => {
 
       if (status === 404 && (code === 'NO_HELPERS_FOUND' || code === 'NO_HELPERS_AVAILABLE')) {
         const isBusy = code === 'NO_HELPERS_AVAILABLE';
+        const attemptId = error.response.data?.data?.attemptId || null;
+        const ref = attemptId ? `\n\nRef: ${attemptId}` : '';
         showAlert(
           isBusy ? 'Helpers are busy' : 'No helpers nearby',
-          messageFromServer ||
+          (messageFromServer ||
             (isBusy
               ? 'Nearby helpers are currently busy. Please try again in a few minutes.'
-              : 'No available helpers were found within 500m right now. Please try again later.'),
+              : 'No available helpers were found within 500m right now. Please try again later.')) + ref,
           [{ text: 'OK', onPress: closeAlert, type: 'primary' }],
           isBusy ? 'account-clock-outline' : 'account-search-outline',
           '#DC5C69'

@@ -158,7 +158,13 @@ const LocalRequestScreen = ({ navigation, route }) => {
               const response = await acceptHelpAsVolunteer(token, requestId);
 
               if (response?.success) {
-                navigation.navigate('MatchingMap', { requestId });
+                navigation.reset({
+                  index: 1,
+                  routes: [
+                    { name: 'MainApp', params: { screen: 'HomeTab' } },
+                    { name: 'MatchingMap', params: { requestId } },
+                  ],
+                });
                 return;
               }
 
