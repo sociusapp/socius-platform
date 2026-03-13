@@ -116,6 +116,8 @@ const HelpTypeScreen = ({ navigation }) => {
                     selectedHelpType === helpType.id && [styles.helpTypeCardSelected, { borderWidth: scale(2) }]
                   ]}
                   onPress={() => handleSelectHelpType(helpType)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Select help type: ${helpType.label}`}
                 >
                   <Icon name={helpType.icon} size={scale(26)} color={helpType.color} style={styles.cardIcon} />
                   <Text style={[styles.helpTypeLabel, { fontSize: ms(14), marginLeft: spacing(10), lineHeight: ms(20) }]}>{helpType.label}</Text>
@@ -142,6 +144,8 @@ const HelpTypeScreen = ({ navigation }) => {
             onPress={handleContinue}
             fullWidth
             disabled={!selectedHelpType}
+            icon={<Icon name="arrow-right" size={scale(18)} color="#FFFFFF" />}
+            accessibilityLabel="Continue to review details"
           />
         </BottomActionBar>
       </View>

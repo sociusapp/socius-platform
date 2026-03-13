@@ -19,7 +19,12 @@ const StatusSharedScreen = ({ navigation }) => {
       <Header 
         onBackPress={() => navigation.goBack()}
         rightComponent={
-          <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={{ padding: spacing(8) }}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Settings')}
+            style={{ padding: spacing(8) }}
+            accessibilityRole="button"
+            accessibilityLabel="Open settings"
+          >
             <Icon name="cog" size={scale(24)} color="#999999" />
           </TouchableOpacity>
         }
@@ -61,8 +66,13 @@ const StatusSharedScreen = ({ navigation }) => {
               borderRadius: scale(12)
             }]} 
             onPress={handleGoHome}
+            accessibilityRole="button"
+            accessibilityLabel="Back to home"
           >
-            <Text style={[styles.primaryButtonText, { fontSize: ms(16) }]}>Back to Home</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Icon name="home-outline" size={scale(18)} color="#FFFFFF" style={{ marginRight: spacing(8) }} />
+              <Text style={[styles.primaryButtonText, { fontSize: ms(16) }]}>Back to Home</Text>
+            </View>
           </TouchableOpacity>
         </View>
       </ScrollView>

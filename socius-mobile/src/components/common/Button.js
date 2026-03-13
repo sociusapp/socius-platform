@@ -3,7 +3,7 @@
 
 import React from 'react';
 import {
-  TouchableOpacity,
+  Pressable,
   Text,
   ActivityIndicator,
   View,
@@ -123,6 +123,8 @@ const Button = ({
   icon = null,
   style,
   textStyle,
+  accessibilityLabel,
+  accessibilityHint,
   ...props
 }) => {
   const getButtonVariantStyle = () => {
@@ -181,18 +183,23 @@ const Button = ({
 
   return (
     <View style={[styles.buttonContainer, fullWidth && { width: '100%' }]}>
-      <TouchableOpacity
-        style={[
+      <Pressable
+        style={({ pressed, hovered }) => [
           styles.buttonBase,
           getButtonVariantStyle(),
           fullWidth && styles.fullWidth,
           getSizeStyle(),
-          disabled && { opacity: 0.6 },
+          (disabled || loading) && { opacity: 0.6 },
+          (pressed && !(disabled || loading)) && { opacity: 0.92, transform: [{ scale: 0.99 }] },
+          (hovered && !(disabled || loading)) && { opacity: 0.96 },
           style,
         ]}
         onPress={onPress}
         disabled={disabled || loading}
-        activeOpacity={0.85}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel || title}
+        accessibilityHint={accessibilityHint}
+        accessibilityState={{ disabled: !!(disabled || loading) }}
         {...props}
       >
         {variant === 'gradient' && (
@@ -209,7 +216,7 @@ const Button = ({
         ) : (
           <Text style={[getTextStyle(), textStyle]}>{title}</Text>
         )}
-      </TouchableOpacity>
+      </Pressable>
     </View>
   );
 };

@@ -283,6 +283,8 @@ const AddDetailsScreen = ({ navigation, route }) => {
             variant="gradient"
             fullWidth
             disabled={description.trim().length === 0}
+            icon={<Icon name="clipboard-text-outline" size={scale(18)} color="#FFFFFF" />}
+            accessibilityLabel="Review your request"
           />
 
           <View style={[styles.bottomSpacer, { height: vscale(40) }]} />
@@ -312,6 +314,8 @@ const AddDetailsScreen = ({ navigation, route }) => {
                     setSelectedTime(option.label);
                     setCustomTimeVisible(false);
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Select time: ${option.label}`}
                 >
                   <Text style={[styles.customOptionText, { fontSize: ms(14) }]}>{option.label}</Text>
                 </TouchableOpacity>
@@ -323,6 +327,8 @@ const AddDetailsScreen = ({ navigation, route }) => {
               variant="white"
               fullWidth
               style={{ marginTop: vscale(4) }}
+              icon={<Icon name="close" size={scale(18)} color="#2C3E50" />}
+              accessibilityLabel="Close time picker"
             />
           </View>
         </View>

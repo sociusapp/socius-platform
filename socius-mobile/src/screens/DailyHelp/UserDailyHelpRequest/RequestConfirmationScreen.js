@@ -1,7 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../../components/common/Header';
 import { useResponsive } from '../../../utils/responsive';
 
@@ -25,11 +24,6 @@ const RequestConfirmationScreen = ({ navigation, route }) => {
     <SafeAreaView style={styles.container}>
       <Header 
         onBackPress={() => navigation.goBack()}
-        rightComponent={
-          <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={{ padding: spacing(8) }}>
-            <Icon name="cog" size={scale(24)} color="#999999" />
-          </TouchableOpacity>
-        }
         style={{ borderBottomWidth: scale(1), borderBottomColor: '#E8EAED' }}
       />
       <ScrollView 
@@ -79,8 +73,13 @@ const RequestConfirmationScreen = ({ navigation, route }) => {
                 borderRadius: scale(12)
               }]} 
               onPress={handleKeepActive}
+              accessibilityRole="button"
+              accessibilityLabel="Keep this request active"
             >
-              <Text style={[styles.primaryButtonText, { fontSize: ms(16) }]}>Keep This Request Active</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name="clock-outline" size={20} color="#FFFFFF" style={{ marginRight: spacing(10) }} />
+                <Text style={[styles.primaryButtonText, { fontSize: ms(16) }]}>Keep This Request Active</Text>
+              </View>
             </TouchableOpacity>
 
             <TouchableOpacity 
@@ -90,8 +89,13 @@ const RequestConfirmationScreen = ({ navigation, route }) => {
                 borderWidth: scale(1)
               }]} 
               onPress={handleCancel}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel request"
             >
-              <Text style={[styles.secondaryButtonText, { fontSize: ms(16) }]}>Cancel Request</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name="close-circle-outline" size={20} color="#DC5C69" style={{ marginRight: spacing(10) }} />
+                <Text style={[styles.secondaryButtonText, { fontSize: ms(16) }]}>Cancel Request</Text>
+              </View>
             </TouchableOpacity>
 
             <TouchableOpacity 
@@ -100,8 +104,13 @@ const RequestConfirmationScreen = ({ navigation, route }) => {
                 paddingVertical: vscale(12)
               }]} 
               onPress={handleEmergency}
+              accessibilityRole="button"
+              accessibilityLabel="Open emergency services"
             >
-              <Text style={[styles.emergencyButtonText, { fontSize: ms(14) }]}>I need emergency services</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name="phone-alert-outline" size={18} color="#DC5C69" style={{ marginRight: spacing(8) }} />
+                <Text style={[styles.emergencyButtonText, { fontSize: ms(14) }]}>I need emergency services</Text>
+              </View>
             </TouchableOpacity>
           </View>
         </View>

@@ -31,13 +31,15 @@ const { logRequestAttempt } = require('./requestAttempt.service')
  * Naya help request create karo + helpers notify karo
  */
 const createRequest = async (requesterId, { category, description, location, itemReturnRequired }, meta = null) => {
+  logger.info(`[HelpRequest] createRequest by=${requesterId} cat=${category} loc=(${location?.lng},${location?.lat})`)
   // Active request check — ek time pe ek hi request
   const activeRequest = await HelpRequest.findOne({
     requesterId,
-    status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING, HELP_REQUEST_STATUS.MATCHED, HELP_REQUEST_STATUS.ACTIVE, HELP_REQUEST_STATUS.CLOSING] },
+    status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING, HELP_REQUEST_STATUS.MATCHED, HELP_REQUEST_STATUS.ACTIVE] },
   })
 
   if (activeRequest) {
+    logger.warn(`[HelpRequest] BLOCK: active help request exists id=${activeRequest._id} status=${activeRequest.status}`)
     logRequestAttempt({
       requesterId,
       requestKind: 'help_request',
@@ -62,6 +64,7 @@ const createRequest = async (requesterId, { category, description, location, ite
   }).select('_id status')
 
   if (activePresence) {
+    logger.warn(`[HelpRequest] BLOCK: active presence request exists id=${activePresence._id} status=${activePresence.status}`)
     logRequestAttempt({
       requesterId,
       requestKind: 'help_request',
@@ -179,7 +182,7 @@ const createRequest = async (requesterId, { category, description, location, ite
 const acceptRequest = async (helperId, requestId) => {
   const busyRequester = await HelpRequest.findOne({
     requesterId: helperId,
-    status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING, HELP_REQUEST_STATUS.MATCHED, HELP_REQUEST_STATUS.ACTIVE, HELP_REQUEST_STATUS.CLOSING] },
+    status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING, HELP_REQUEST_STATUS.MATCHED, HELP_REQUEST_STATUS.ACTIVE] },
   }).select('_id status')
 
   if (busyRequester) {
@@ -270,6 +273,15 @@ const acceptRequest = async (helperId, requestId) => {
     matchedAt: new Date(),
   })
 
+  try {
+    emitToUser(String(request.requesterId), 'help:accepted', {
+      requestId: String(requestId),
+      helperId: String(helperId),
+    })
+  } catch (e) {
+    logger.error('Failed to emit help:accepted', e)
+  }
+
   const otherHelpers = await HelpMatch.find({
     requestId,
     helperId: { $ne: helperId },
@@ -350,6 +362,7 @@ const declineRequest = async (helperId, requestId) => {
  * Request cancel karo (requester)
  */
 const cancelRequest = async (requesterId, requestId) => {
+  logger.info(`[HelpRequest] cancelRequest by=${requesterId} id=${requestId}`)
   const request = await HelpRequest.findOne({ _id: requestId, requesterId })
 
   if (!request) {
@@ -376,6 +389,53 @@ const cancelRequest = async (requesterId, requestId) => {
     { requestId, status: { $in: [HELP_MATCH_STATUS.PENDING, HELP_MATCH_STATUS.NOTIFIED, HELP_MATCH_STATUS.ACCEPTED] } },
     { status: HELP_MATCH_STATUS.CANCELLED }
   )
+
+  const occurredAt = new Date().toISOString()
+  try {
+    const matches = await HelpMatch.find({ requestId })
+      .select('helperId status')
+      .lean()
+    const helperIds = [...new Set(matches.map((m) => String(m.helperId)).filter(Boolean))]
+
+    emitToUser(String(requesterId), 'help:request_closed', {
+      requestId: String(requestId),
+      requestType: request?.category || 'help_request',
+      closedBy: String(requesterId),
+      reason: 'cancelled',
+      occurredAt,
+    })
+
+    for (const hid of helperIds) {
+      emitToUser(hid, 'help:request_closed', {
+        requestId: String(requestId),
+        requestType: request?.category || 'help_request',
+        closedBy: String(requesterId),
+        reason: 'cancelled',
+        occurredAt,
+      })
+      emitToUser(hid, 'help:request_cancelled', {
+        requestId: String(requestId),
+        requestType: request?.category || 'help_request',
+        occurredAt,
+      })
+    }
+
+    if (helperIds.length > 0) {
+      sendCancelAlert(helperIds, requestId).catch(err => logger.error('Failed to send cancel alert', err))
+    }
+  } catch (e) {
+    logger.error('Failed to emit cancel updates', e)
+  }
+
+  try {
+    const ChatSession = require('../models/ChatSession')
+    const session = await ChatSession.findOne({ requestId })
+    if (session) {
+      await chatService.closeSession(session._id)
+    }
+  } catch (e) {
+    logger.error('Failed to close chat session on cancel', e)
+  }
 
   return request
 }
@@ -470,6 +530,7 @@ const getRequestById = async (requestId, userId) => {
  * User ki active requests
  */
 const getMyActiveRequest = async (userId) => {
+  logger.info(`[HelpRequest] getMyActiveRequest for=${userId}`)
   // 1. Check if user is a requester (Request active hai)
   const request = await HelpRequest.findOne({
     requesterId: userId,
@@ -478,10 +539,12 @@ const getMyActiveRequest = async (userId) => {
 
   let requesterData = null
   if (request) {
+    logger.info(`[HelpRequest] Active as requester id=${request._id} status=${request.status}`)
     // Calculate stats
     const matches = await HelpMatch.find({ requestId: request._id })
 
     const stats = {
+      totalCandidates: matches.length,
       notificationSentCount: matches.filter(m => m.status !== 'pending').length,
       viewedCount: matches.filter(m => m.viewedAt).length,
       declinedCount: matches.filter(m => ['declined', 'not_available'].includes(m.status)).length,
@@ -533,6 +596,7 @@ const getMyActiveRequest = async (userId) => {
 
   let helperData = null
   if (activeHelpMatch && activeHelpMatch.requestId) {
+    logger.info(`[HelpRequest] Active as helper match=${activeHelpMatch._id} req=${activeHelpMatch.requestId?._id} status=${activeHelpMatch.status}`)
     let reqObj = activeHelpMatch.requestId.toObject();
 
     if (reqObj.requesterId && reqObj.requesterId.profileImage) {
@@ -554,6 +618,7 @@ const getMyActiveRequest = async (userId) => {
     }
   }
 
+  logger.info(`[HelpRequest] Active summary requester=${!!request} helper=${!!activeHelpMatch}`)
   return { activeRequest: requesterData, activeHelp: helperData }
 }
 

@@ -11,7 +11,7 @@ const authConfig = (token) =>
 
 const getMyActiveHelpRequest = (token) => {
   return api
-    .get('/help-request/active', { ...authConfig(token), cacheTtlMs: 5000 })
+    .get('/help-request/active', authConfig(token))
     .then((response) => response.data);
 };
 

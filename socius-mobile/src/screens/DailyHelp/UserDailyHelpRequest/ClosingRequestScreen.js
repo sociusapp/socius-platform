@@ -198,7 +198,12 @@ const ClosingRequestScreen = ({ navigation, route }) => {
       <Header
         onBackPress={() => navigation.goBack()}
         rightComponent={
-          <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={{ padding: scale(8) }}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Settings')}
+            style={{ padding: scale(8) }}
+            accessibilityRole="button"
+            accessibilityLabel="Open settings"
+          >
             <Icon name="cog" size={scale(24)} color="#999999" />
           </TouchableOpacity>
         }
@@ -209,7 +214,10 @@ const ClosingRequestScreen = ({ navigation, route }) => {
         showsVerticalScrollIndicator={false}
       >
         <View style={{ width: contentWidth }}>
-          <Text style={[styles.pageTitle, { fontSize: ms(16), marginBottom: vscale(12) }]}>Closing This Request</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: vscale(12) }}>
+            <Icon name="check-circle-outline" size={scale(18)} color="#111827" style={{ marginRight: spacing(8) }} />
+            <Text style={[styles.pageTitle, { fontSize: ms(16) }]}>Closing This Request</Text>
+          </View>
 
           <View style={[styles.statusCard, {
             borderRadius: scale(18),
@@ -223,21 +231,32 @@ const ClosingRequestScreen = ({ navigation, route }) => {
           }]}>
             <View style={[styles.statusTop, { marginBottom: vscale(10) }]}>
               <LinearGradient
-                colors={['#EEF2F6', '#E5EAEE']}
+                colors={['#E7F9F0', '#DCFCE7']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
-                style={[styles.statusCircleLg, { width: scale(72), height: scale(72), borderRadius: scale(36) }]}
-              />
+                style={[styles.statusCircleLg, { width: scale(72), height: scale(72), borderRadius: scale(36), alignItems: 'center', justifyContent: 'center' }]}
+              >
+                <Icon name="hand-heart" size={scale(34)} color="#28C76F" />
+              </LinearGradient>
             </View>
             <Text style={[styles.statusTitle, { fontSize: ms(16), marginBottom: vscale(6) }]}>This request is being closed.</Text>
             <Text style={[styles.statusSubtitle, { fontSize: ms(14) }]}>Thanks for keeping things calm and respectful.</Text>
           </View>
 
           <View style={[styles.section, { marginBottom: vscale(14) }]}>
-            <Text style={[styles.sectionHeading, { fontSize: ms(14), marginBottom: vscale(10) }]}>Rate your experience</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: vscale(10) }}>
+              <Icon name="star-outline" size={scale(18)} color="#6B7280" style={{ marginRight: spacing(8) }} />
+              <Text style={[styles.sectionHeading, { fontSize: ms(14) }]}>Rate your experience</Text>
+            </View>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               {[1,2,3,4,5].map(n => (
-                <TouchableOpacity key={n} onPress={() => setStarRating(n)} style={{ padding: spacing(6) }}>
+                <TouchableOpacity
+                  key={n}
+                  onPress={() => setStarRating(n)}
+                  style={{ padding: spacing(6) }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Rate ${n} star${n === 1 ? '' : 's'}`}
+                >
                   <Icon name={n <= starRating ? 'star' : 'star-outline'} size={scale(28)} color={n <= starRating ? '#F59E0B' : '#9CA3AF'} />
                 </TouchableOpacity>
               ))}
@@ -245,7 +264,10 @@ const ClosingRequestScreen = ({ navigation, route }) => {
           </View>
 
           <View style={[styles.section, { marginBottom: vscale(14) }]}>
-            <Text style={[styles.sectionHeading, { fontSize: ms(14), marginBottom: vscale(10) }]}>Did the helper provide help?</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: vscale(10) }}>
+              <Icon name="account-heart-outline" size={scale(18)} color="#6B7280" style={{ marginRight: spacing(8) }} />
+              <Text style={[styles.sectionHeading, { fontSize: ms(14) }]}>Did the helper provide help?</Text>
+            </View>
             <View style={[styles.rowButtons, { gap: spacing(10) }]}>
               <Button
                 title="Yes"
@@ -254,6 +276,8 @@ const ClosingRequestScreen = ({ navigation, route }) => {
                 size="large"
                 fullWidth={false}
                 style={styles.halfButton}
+                icon={<Icon name="thumb-up-outline" size={scale(18)} color={providedHelp === true ? '#FFFFFF' : '#E85555'} />}
+                accessibilityLabel="Yes, help was provided"
               />
               <Button
                 title="No"
@@ -262,17 +286,24 @@ const ClosingRequestScreen = ({ navigation, route }) => {
                 size="large"
                 fullWidth={false}
                 style={styles.halfButton}
+                icon={<Icon name="thumb-down-outline" size={scale(18)} color={providedHelp === false ? '#FFFFFF' : '#E85555'} />}
+                accessibilityLabel="No, help was not provided"
               />
             </View>
           </View>
 
           {providedHelp === false && (
             <View style={[styles.section, { marginBottom: vscale(14) }]}>
-              <Text style={[styles.sectionHeading, { fontSize: ms(14), marginBottom: vscale(10) }]}>What happened?</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: vscale(10) }}>
+                <Icon name="alert-circle-outline" size={scale(18)} color="#6B7280" style={{ marginRight: spacing(8) }} />
+                <Text style={[styles.sectionHeading, { fontSize: ms(14) }]}>What happened?</Text>
+              </View>
               <TouchableOpacity
                 style={[styles.checkboxRow, { marginBottom: vscale(8) }]}
                 onPress={() => setCancelledAfterAccept(!cancelledAfterAccept)}
                 activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="Cancelled after accepting"
               >
                 <View style={[styles.checkbox, {
                   width: scale(22),
@@ -283,12 +314,15 @@ const ClosingRequestScreen = ({ navigation, route }) => {
                 }, cancelledAfterAccept && styles.checkboxChecked]}>
                   {cancelledAfterAccept && <Icon name="check" size={scale(16)} color="#FFFFFF" />}
                 </View>
+                <Icon name="close-circle-outline" size={scale(18)} color="#9CA3AF" style={{ marginRight: spacing(8) }} />
                 <Text style={[styles.checkboxText, { fontSize: ms(14) }]}>Cancelled after accepting</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.checkboxRow, { marginBottom: vscale(8) }]}
                 onPress={() => setNoReplyAfterAccept(!noReplyAfterAccept)}
                 activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="No reply after accepting"
               >
                 <View style={[styles.checkbox, {
                   width: scale(22),
@@ -299,12 +333,15 @@ const ClosingRequestScreen = ({ navigation, route }) => {
                 }, noReplyAfterAccept && styles.checkboxChecked]}>
                   {noReplyAfterAccept && <Icon name="check" size={scale(16)} color="#FFFFFF" />}
                 </View>
+                <Icon name="message-alert-outline" size={scale(18)} color="#9CA3AF" style={{ marginRight: spacing(8) }} />
                 <Text style={[styles.checkboxText, { fontSize: ms(14) }]}>No reply after accepting</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.checkboxRow, { marginBottom: vscale(8) }]}
                 onPress={() => setItemIssue(!itemIssue)}
                 activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="Issue with item"
               >
                 <View style={[styles.checkbox, {
                   width: scale(22),
@@ -315,6 +352,7 @@ const ClosingRequestScreen = ({ navigation, route }) => {
                 }, itemIssue && styles.checkboxChecked]}>
                   {itemIssue && <Icon name="check" size={scale(16)} color="#FFFFFF" />}
                 </View>
+                <Icon name="package-variant-closed" size={scale(18)} color="#9CA3AF" style={{ marginRight: spacing(8) }} />
                 <Text style={[styles.checkboxText, { fontSize: ms(14) }]}>Issue with item</Text>
               </TouchableOpacity>
               <Text style={[styles.helperText, { fontSize: ms(12), marginTop: vscale(6) }]}>This helps build trust for future requests.</Text>
@@ -323,7 +361,10 @@ const ClosingRequestScreen = ({ navigation, route }) => {
 
           {itemIssue && (
             <View style={[styles.section, { marginBottom: vscale(14) }]}>
-              <Text style={[styles.sectionHeading, { fontSize: ms(14), marginBottom: vscale(10) }]}>Describe the issue</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: vscale(10) }}>
+                <Icon name="text-box-edit-outline" size={scale(18)} color="#6B7280" style={{ marginRight: spacing(8) }} />
+                <Text style={[styles.sectionHeading, { fontSize: ms(14) }]}>Describe the issue</Text>
+              </View>
               <TextInput
                 style={[styles.textInput, { borderRadius: scale(8), padding: spacing(12), height: vscale(80), fontSize: ms(14), marginBottom: vscale(8), borderWidth: scale(1), borderColor: '#E5E7EB' }]}
                 placeholder="Short description"
@@ -333,7 +374,14 @@ const ClosingRequestScreen = ({ navigation, route }) => {
                 multiline
               />
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Button title="Add Photos" onPress={pickEvidencePhoto} size="small" variant="white" />
+                <Button
+                  title="Add Photos"
+                  onPress={pickEvidencePhoto}
+                  size="small"
+                  variant="white"
+                  icon={<Icon name="camera-plus-outline" size={scale(16)} color="#2C3E50" />}
+                  accessibilityLabel="Add photos"
+                />
                 <Text style={[styles.helperText, { fontSize: ms(12) }]}>{evidenceUris.length}/5</Text>
               </View>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: vscale(8) }}>
@@ -385,6 +433,8 @@ const ClosingRequestScreen = ({ navigation, route }) => {
             fullWidth
             loading={submitting || uploading}
             disabled={submitting || uploading}
+            icon={<Icon name="check-circle-outline" size={scale(18)} color="#FFFFFF" />}
+            accessibilityLabel="Submit closure"
           />
           <View style={[styles.footerNote, { marginTop: vscale(8) }]}>
             <Text style={[styles.footerNoteText, { fontSize: ms(12) }]}>

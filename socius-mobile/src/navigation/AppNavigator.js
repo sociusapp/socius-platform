@@ -99,16 +99,18 @@ const AppNavigator = () => {
     message: '',
     buttons: [],
     icon: 'bell-ring',
-    iconColor: '#DC5C69'
+    iconColor: '#DC5C69',
+    dismissDurationMs: 200,
   });
 
-  const showAlert = (title, message, buttons = [], icon = 'bell-ring', iconColor = '#DC5C69') => {
+  const showAlert = (title, message, buttons = [], icon = 'bell-ring', iconColor = '#DC5C69', options = {}) => {
     setAlertConfig({
       title,
       message,
       buttons,
       icon,
-      iconColor
+      iconColor,
+      dismissDurationMs: typeof options?.dismissDurationMs === 'number' ? options.dismissDurationMs : 200,
     });
     setAlertVisible(true);
   };
@@ -320,9 +322,28 @@ const AppNavigator = () => {
         const lowerTitle = (title || '').toLowerCase();
         const lowerBody = (body || '').toLowerCase();
 
-        if (title.includes('Someone is coming') || (String(data.type || '').toLowerCase() === 'request_status' && String(data.status || '').toLowerCase() === 'matched')) {
+        const isMatchedLike =
+          title.includes('Someone is coming') ||
+          (String(data.type || '').toLowerCase() === 'request_status' && String(data.status || '').toLowerCase() === 'matched') ||
+          String(data.status || '').toLowerCase() === 'matched';
+
+        if (isMatchedLike) {
           icon = 'account-heart';
           iconColor = '#28C76F';
+          buttons = [{
+            text: 'OK',
+            onPress: () => {
+              const t0 = Date.now();
+              const requestId = data.requestId;
+              if (navigationRef.isReady()) {
+                if (requestId) {
+                  navigationRef.navigate('RequesterMatchingMap', { requestId, perf: { t0, source: 'matched_alert_ok' } });
+                } else {
+                  openRequesterMeeting();
+                }
+              }
+            }
+          }];
         } else if (
           (lowerTitle.includes('verified') || lowerBody.includes('verified') ||
             lowerTitle.includes('approved') || lowerBody.includes('approved')) &&
@@ -354,7 +375,14 @@ const AppNavigator = () => {
           }];
         }
 
-        showAlert(title || 'Notification', body, buttons, icon, iconColor);
+        showAlert(
+          title || 'Notification',
+          body,
+          buttons,
+          icon,
+          iconColor,
+          isMatchedLike ? { dismissDurationMs: 0 } : undefined
+        );
       }
     });
 
@@ -509,6 +537,7 @@ const AppNavigator = () => {
         icon={alertConfig.icon}
         iconColor={alertConfig.iconColor}
         onClose={closeAlert}
+        dismissDurationMs={alertConfig.dismissDurationMs}
       />
     </>
   );

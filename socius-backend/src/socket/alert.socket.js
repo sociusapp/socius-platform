@@ -10,11 +10,6 @@ module.exports = (io, socket) => {
 
       const { request } = await helpRequestService.acceptRequest(socket.userId, requestId)
 
-      emitToUser(request.requesterId, 'help:accepted', {
-        requestId: String(request._id),
-        helperId: String(socket.userId),
-      })
-
       socket.emit('help:accepted', { requestId: String(request._id) })
     } catch (err) {
       logger.error('help:accept handler error:', err)
@@ -35,4 +30,3 @@ module.exports = (io, socket) => {
     }
   })
 }
-

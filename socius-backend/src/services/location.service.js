@@ -11,7 +11,7 @@ const getBusyRequesterIdSet = async (candidateIds) => {
   const [busyHelp, busyPresence] = await Promise.all([
     HelpRequest.distinct('requesterId', {
       requesterId: { $in: ids },
-      status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING, HELP_REQUEST_STATUS.MATCHED, HELP_REQUEST_STATUS.ACTIVE, HELP_REQUEST_STATUS.CLOSING] },
+      status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING, HELP_REQUEST_STATUS.MATCHED, HELP_REQUEST_STATUS.ACTIVE] },
     }),
     PresenceRequest.distinct('requesterId', {
       requesterId: { $in: ids },

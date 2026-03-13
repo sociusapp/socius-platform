@@ -103,6 +103,24 @@ const CancelRequestScreen = ({ navigation, route }) => {
         error?.response?.data?.message ||
         error?.response?.data?.errors?.[0]?.message;
 
+      const msg = String(messageFromServer || '').toLowerCase();
+      if (status === 404 || (status === 409 && msg.includes('already'))) {
+        showAlert('Request updated', 'This request is no longer active.', [
+          {
+            text: 'OK',
+            onPress: () => {
+              closeAlert();
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+              });
+            },
+            type: 'primary'
+          },
+        ], 'check-circle', '#4CAF50');
+        return;
+      }
+
       showAlert(
         status ? `Error (${status})` : 'Error',
         messageFromServer || 'Something went wrong while cancelling the request.',
@@ -122,7 +140,12 @@ const CancelRequestScreen = ({ navigation, route }) => {
       <Header
         onBackPress={() => navigation.goBack()}
         rightComponent={
-          <TouchableOpacity onPress={handleSettings} style={{ padding: scale(8) }}>
+          <TouchableOpacity
+            onPress={handleSettings}
+            style={{ padding: scale(8) }}
+            accessibilityRole="button"
+            accessibilityLabel="Open settings"
+          >
             <Icon name="cog" size={scale(24)} color="#999999" />
           </TouchableOpacity>
         }
@@ -189,6 +212,8 @@ const CancelRequestScreen = ({ navigation, route }) => {
               ]}
               onPress={() => setCancelReason(CANCEL_REASONS.NO_HELPERS_NEARBY)}
               activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel reason: No helpers nearby"
             >
               <Text
                 style={[
@@ -209,6 +234,8 @@ const CancelRequestScreen = ({ navigation, route }) => {
               ]}
               onPress={() => setCancelReason(CANCEL_REASONS.NO_ONE_ACCEPTED)}
               activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel reason: No one accepted"
             >
               <Text
                 style={[
@@ -249,6 +276,8 @@ const CancelRequestScreen = ({ navigation, route }) => {
               ]}
               onPress={() => setCancelReason(CANCEL_REASONS.CHANGE_OF_PLANS)}
               activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel reason: Change of plans"
             >
               <Text
                 style={[
@@ -273,6 +302,8 @@ const CancelRequestScreen = ({ navigation, route }) => {
               fullWidth
               loading={submitting}
               disabled={submitting}
+              icon={<Icon name="close-circle-outline" size={scale(18)} color="#FFFFFF" />}
+              accessibilityLabel="Cancel this request now"
             />
           </View>
 
@@ -282,6 +313,8 @@ const CancelRequestScreen = ({ navigation, route }) => {
             onPress={handleKeepActive}
             variant="white"
             fullWidth
+            icon={<Icon name="clock-outline" size={scale(18)} color="#2C3E50" />}
+            accessibilityLabel="Keep request active and go back"
           />
 
           {/* Footer Text */}

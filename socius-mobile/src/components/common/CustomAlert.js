@@ -23,6 +23,7 @@ const CustomAlert = ({
   iconColor,
   onClose,
   animationType = 'scale', // 'scale' | 'fade' | 'slide'
+  dismissDurationMs = 200,
 }) => {
   const [showModal, setShowModal] = useState(visible);
   const scaleValue = useRef(new Animated.Value(0)).current;
@@ -50,15 +51,22 @@ const CustomAlert = ({
         }),
       ]).start();
     } else {
+      if (dismissDurationMs === 0) {
+        scaleValue.setValue(0);
+        opacityValue.setValue(0);
+        setShowModal(false);
+        if (onClose) onClose();
+        return;
+      }
       Animated.parallel([
         Animated.timing(scaleValue, {
           toValue: 0.8,
-          duration: 200,
+          duration: dismissDurationMs,
           useNativeDriver: true,
         }),
         Animated.timing(opacityValue, {
           toValue: 0,
-          duration: 200,
+          duration: dismissDurationMs,
           useNativeDriver: true,
         }),
       ]).start(() => {

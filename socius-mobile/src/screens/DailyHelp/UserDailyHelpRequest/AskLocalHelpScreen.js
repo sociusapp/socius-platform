@@ -17,7 +17,12 @@ const AskLocalHelpScreen = ({ navigation }) => {
       <Header 
         onBackPress={() => navigation.goBack()}
         rightComponent={
-          <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={{ padding: scale(8) }}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Settings')}
+            style={{ padding: scale(8) }}
+            accessibilityRole="button"
+            accessibilityLabel="Open settings"
+          >
             <Icon name="cog" size={scale(24)} color="#999999" />
           </TouchableOpacity>
         }
@@ -62,6 +67,8 @@ const AskLocalHelpScreen = ({ navigation }) => {
               onPress={handleRequestHelp}
               variant="gradient"
               fullWidth
+              icon={<Icon name="hand-heart" size={scale(18)} color="#FFFFFF" />}
+              accessibilityLabel="Request help from people nearby"
               style={{ borderRadius: scale(28), marginTop: vscale(8) }}
             />
           </View>

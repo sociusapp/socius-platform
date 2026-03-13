@@ -6,7 +6,7 @@ import Header from '../../../components/common/Header';
 import Button from '../../../components/common/Button';
 import CustomAlert from '../../../components/common/CustomAlert';
 import { useResponsive } from '../../../utils/responsive';
-import { createHelpRequest } from '../../../services/api/incident.api';
+import { createHelpRequest, getMyActiveHelpRequest } from '../../../services/api/incident.api';
 import { requestLocationPermission, getCurrentPosition, reverseGeocode, formatLocationLabel } from '../../../services/location/geolocation.service';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
 
@@ -106,6 +106,8 @@ const ReviewRequestScreen = ({ navigation, route }) => {
 
     setSubmitting(true);
 
+    let payload = null;
+
     try {
       const auth = await loadAuth();
       const token = auth?.accessToken;
@@ -162,7 +164,7 @@ const ReviewRequestScreen = ({ navigation, route }) => {
         return;
       }
 
-      const payload = {
+      payload = {
         category: mapHelpTypeToCategory(),
         description: requestText,
         location: {
@@ -174,13 +176,17 @@ const ReviewRequestScreen = ({ navigation, route }) => {
 
       const response = await createHelpRequest(token, payload);
 
-      if (response?.success && response?.data?.showNudge) {
-        navigation.navigate('CommunityBalanceNudge');
-        return;
-      }
-
       if (response?.success) {
-        navigation.navigate('RequestActive');
+        const createdRequest = response?.data?.request || response?.data;
+        const showNudge = !!response?.data?.showNudge;
+        console.log('[DailyHelp] createHelpRequest: success', response?.data);
+
+        if (showNudge) {
+          navigation.navigate('CommunityBalanceNudge', { requestId: createdRequest?._id, initialRequest: createdRequest });
+          return;
+        }
+
+        navigation.navigate('RequestActive', { initialRequest: createdRequest });
         return;
       }
 
@@ -214,6 +220,7 @@ const ReviewRequestScreen = ({ navigation, route }) => {
       const messageFromServer =
         error.response.data?.message ||
         error.response.data?.errors?.[0]?.message;
+      console.log('[DailyHelp] createHelpRequest: error', status, messageFromServer, error.response?.data);
 
       if (status === 404 && error.response.data?.code === 'NO_HELPERS_FOUND') {
         showAlert(
@@ -227,6 +234,29 @@ const ReviewRequestScreen = ({ navigation, route }) => {
       }
 
       if (status === 409) {
+        try {
+          const auth = await loadAuth();
+          const token = auth?.accessToken;
+          if (token && payload) {
+            const activeRes = await getMyActiveHelpRequest(token);
+            const activeRequest =
+              activeRes?.data?.activeRequest !== undefined
+                ? activeRes?.data?.activeRequest
+                : activeRes?.data;
+            console.log('[DailyHelp] 409: activeRes', !!activeRequest, activeRes?.data);
+            if (!activeRequest) {
+              const retryRes = await createHelpRequest(token, payload);
+              console.log('[DailyHelp] retry create after 409: ', retryRes?.success);
+              if (retryRes?.success) {
+                navigation.navigate('RequestActive');
+                return;
+              }
+            }
+          }
+        } catch (e) {
+          console.log('[DailyHelp] 409 handling failed', e?.message);
+        }
+
         showAlert(
           'Request already active',
           messageFromServer || 'You already have an active request.',
@@ -451,13 +481,17 @@ const ReviewRequestScreen = ({ navigation, route }) => {
               title="Share Request"
               onPress={handleShareRequest}
               variant="gradient"
-            loading={submitting}
+              loading={submitting}
+              icon={<Icon name="send" size={scale(18)} color="#FFFFFF" />}
+              accessibilityLabel="Share this request with people nearby"
             />
 
             <Button
               title="Edit Details"
               onPress={handleEditDetails}
               variant="white"
+              icon={<Icon name="pencil-outline" size={scale(18)} color="#2C3E50" />}
+              accessibilityLabel="Edit request details"
             />
           </View>
 

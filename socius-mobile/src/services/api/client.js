@@ -108,6 +108,10 @@ api.interceptors.request.use(async (config) => {
   const method = String(cfg.method || 'get').toLowerCase();
   const cacheTtlMs = Number(cfg.cacheTtlMs || 0) || 0;
 
+  if (method !== 'get' && cacheStore.size > 0) {
+    cacheStore.clear();
+  }
+
   if (method === 'get' && cacheTtlMs > 0) {
     const cacheKey = buildCacheKey(cfg);
     const cached = getCacheEntry(cacheKey);

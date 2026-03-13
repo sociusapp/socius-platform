@@ -5,13 +5,7 @@ const { success, created } = require('../utils/response')
 
 const createRequest = async (req, res, next) => {
   try {
-    // Nudge check karo pehle
-    const nudge = await shouldShowNudge(req.user._id)
-    if (nudge) {
-      await recordNudgeShown(req.user._id)
-      return success(res, { showNudge: true }, 'Community balance nudge')
-    }
-
+    const showNudge = await shouldShowNudge(req.user._id)
     const request = await helpRequestService.createRequest(req.user._id, req.body, {
       ip: req.ip,
       userAgent: req.headers['user-agent'],
@@ -19,7 +13,10 @@ const createRequest = async (req, res, next) => {
       deviceId: req.headers['x-device-id'],
       appVersion: req.headers['x-app-version'],
     })
-    return created(res, request, 'Help request created')
+    if (showNudge) {
+      recordNudgeShown(req.user._id).catch(() => {})
+    }
+    return created(res, { request, showNudge }, 'Help request created')
   } catch (err) {
     next(err)
   }

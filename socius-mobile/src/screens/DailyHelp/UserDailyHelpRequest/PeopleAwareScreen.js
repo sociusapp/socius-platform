@@ -16,7 +16,12 @@ const PeopleAwareScreen = ({ navigation }) => {
       <Header 
         onBackPress={() => navigation.goBack()}
         rightComponent={
-          <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={{ padding: 8 }}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Settings')}
+            style={{ padding: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Open settings"
+          >
             <Icon name="cog" size={24} color="#999999" />
           </TouchableOpacity>
         }
@@ -68,8 +73,21 @@ const PeopleAwareScreen = ({ navigation }) => {
             </Text>
           </View>
 
-          <Button title="Open Details" onPress={handleOpenDetails} fullWidth />
-          <Button title="Stay Away" onPress={handleStayAway} variant="white" fullWidth />
+          <Button
+            title="Open Details"
+            onPress={handleOpenDetails}
+            fullWidth
+            icon={<Icon name="clipboard-text-outline" size={scale(18)} color="#FFFFFF" />}
+            accessibilityLabel="Open request details"
+          />
+          <Button
+            title="Stay Away"
+            onPress={handleStayAway}
+            variant="white"
+            fullWidth
+            icon={<Icon name="shield-alert-outline" size={scale(18)} color="#2C3E50" />}
+            accessibilityLabel="Safety guidance: stay away"
+          />
         </View>
       </ScrollView>
     </SafeAreaView>

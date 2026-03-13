@@ -6,14 +6,16 @@ import Header from '../../../components/common/Header';
 import Button from '../../../components/common/Button';
 import { useResponsive } from '../../../utils/responsive';
 
-const CommunityBalanceNudgeScreen = ({ navigation }) => {
+const CommunityBalanceNudgeScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
+  const { initialRequest } = route?.params || {};
 
   const handleContinueRequest = () => {
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
-    });
+    if (initialRequest?._id || initialRequest?.id) {
+      navigation.replace('RequestActive', { initialRequest });
+      return;
+    }
+    navigation.reset({ index: 0, routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }] });
   };
 
   const handleSetWaysToHelp = () => {
@@ -25,7 +27,12 @@ const CommunityBalanceNudgeScreen = ({ navigation }) => {
       <Header
         onBackPress={() => navigation.goBack()}
         rightComponent={
-          <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={{ padding: scale(8) }}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Settings')}
+            style={{ padding: scale(8) }}
+            accessibilityRole="button"
+            accessibilityLabel="Open settings"
+          >
             <Icon name="cog" size={scale(24)} color="#999999" />
           </TouchableOpacity>
         }
@@ -59,6 +66,8 @@ const CommunityBalanceNudgeScreen = ({ navigation }) => {
             variant="gradient"
             size="large"
             fullWidth
+            icon={<Icon name="hand-heart" size={scale(18)} color="#FFFFFF" />}
+            accessibilityLabel="Set ways you can help others"
           />
           <Button
             title="Continue without setting now"
@@ -66,6 +75,8 @@ const CommunityBalanceNudgeScreen = ({ navigation }) => {
             variant="white"
             size="large"
             fullWidth
+            icon={<Icon name="arrow-right" size={scale(18)} color="#2C3E50" />}
+            accessibilityLabel="Continue to your active request"
           />
 
           <View style={[styles.footerNote, { marginTop: vscale(10) }]}>
@@ -121,4 +132,3 @@ const styles = StyleSheet.create({
 });
 
 export default CommunityBalanceNudgeScreen;
-

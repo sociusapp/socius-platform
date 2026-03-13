@@ -6,7 +6,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Header from '../../../components/common/Header';
 import Button from '../../../components/common/Button';
-import LoadingSpinner from '../../../components/common/LoadingSpinner';
+import { SkeletonBox, SkeletonCircle, SkeletonSpacer } from '../../../components/common/Skeleton';
 import { useResponsive } from '../../../utils/responsive';
 import { getMyActiveHelpRequest, cancelHelpRequest } from '../../../services/api/incident.api';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
@@ -35,8 +35,8 @@ const RequestSuccessScreen = ({ navigation, route }) => {
       if (currentRequest) {
         // Status checks for active/pending request
         const isWaiting = ['PENDING', 'SEARCHING', 'open', 'matching'].includes(currentRequest.status);
-        // Check if no helpers have been notified (radius check proxy)
-        const noHelpersFound = (currentRequest?.stats?.notificationSentCount || 0) === 0;
+        // True "no helpers nearby" signal: zero candidates at creation time
+        const noHelpersFound = (currentRequest?.stats?.totalCandidates || 0) === 0;
 
         if (isWaiting && noHelpersFound) {
           setNoHelpersModalVisible(true);
@@ -58,12 +58,27 @@ const RequestSuccessScreen = ({ navigation, route }) => {
         const response = await cancelHelpRequest(token, request.id || request._id, { reason: 'no_helpers_nearby' });
         
         if (response?.success) {
-           setNoHelpersModalVisible(false);
-           navigation.reset({
-             index: 0,
-             routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
-           });
-           return;
+          setNoHelpersModalVisible(false);
+          showAlert(
+            'Cancelled',
+            'Request cancelled successfully.',
+            [
+              {
+                text: 'OK',
+                style: 'primary',
+                onPress: () => {
+                  closeAlert();
+                  navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+                  });
+                },
+              },
+            ],
+            'check-circle-outline',
+            '#28C76F'
+          );
+          return;
         }
       }
       // If failed or no token
@@ -102,6 +117,24 @@ const RequestSuccessScreen = ({ navigation, route }) => {
 
   const closeAlert = () => {
     setAlertVisible(false);
+  };
+
+  const goHome = () => {
+    closeAlert();
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+    });
+  };
+
+  const showNoActiveRequest = () => {
+    showAlert(
+      'Request ended',
+      'This request is no longer active.',
+      [{ text: 'Go Home', style: 'primary', onPress: goHome }],
+      'check-circle-outline',
+      '#28C76F'
+    );
   };
 
   const handleSettings = () => {
@@ -205,51 +238,12 @@ const RequestSuccessScreen = ({ navigation, route }) => {
           if (activeRequest) {
             setRequest(activeRequest);
           } else {
-             // No active request found
-             if (loading) {
-                showAlert('No active request', 'You do not have an active request right now.', [
-                  {
-                    text: 'Go Back',
-                    onPress: () => {
-                      navigation.reset({
-                        index: 0,
-                        routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
-                      });
-                    }
-                  },
-                  {
-                    text: 'Retry',
-                    onPress: () => {
-                      closeAlert();
-                      setLoading(true);
-                      loadActiveRequest();
-                    }
-                  }
-                ]);
-             }
+            setRequest(null);
+
+            showNoActiveRequest();
           }
         } else {
-           if (loading) {
-              showAlert('No active request', 'You do not have an active request right now.', [
-                {
-                  text: 'Go Back',
-                  onPress: () => {
-                    navigation.reset({
-                      index: 0,
-                      routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
-                    });
-                  }
-                },
-                {
-                  text: 'Retry',
-                  onPress: () => {
-                    closeAlert();
-                    setLoading(true);
-                    loadActiveRequest();
-                  }
-                }
-              ]);
-           }
+          showNoActiveRequest();
         }
       } catch (error) {
         console.log('Error loading active request:', error);
@@ -290,7 +284,24 @@ const RequestSuccessScreen = ({ navigation, route }) => {
         // Listen for help accepted event
         socket.on('help:accepted', (data) => {
           console.log('Socket event: help:accepted', data);
-          loadActiveRequest();
+          const reqId = data?.requestId || requestRef.current?.id || requestRef.current?._id;
+          const currentId = requestRef.current?.id || requestRef.current?._id;
+          if (currentId && reqId && String(currentId) !== String(reqId)) {
+            return;
+          }
+          const t0 = Date.now();
+          if (reqId) {
+            navigation.navigate('RequesterMatchingMap', {
+              requestId: reqId,
+              prefillRequest: requestRef.current,
+              perf: { t0, source: 'socket_help_accepted_ok' },
+            });
+            setTimeout(() => {
+              loadActiveRequest();
+            }, 0);
+          } else {
+            loadActiveRequest();
+          }
         });
 
         // Listen for stats updates (viewed, declined, etc.)
@@ -389,6 +400,8 @@ const RequestSuccessScreen = ({ navigation, route }) => {
                     fullWidth
                     style={{ marginBottom: vscale(12) }}
                     disabled={!request.volunteer && !['accepted', 'in_progress', 'matched', 'en_route', 'arrived', 'active'].includes(String(request.status).toLowerCase())}
+                    icon={<Icon name="map-marker-radius-outline" size={scale(18)} color="#E85555" />}
+                    accessibilityLabel="View meeting details on map"
                 />
           <Button
             title="Close Request"
@@ -396,6 +409,8 @@ const RequestSuccessScreen = ({ navigation, route }) => {
                     variant="gradient"
                     fullWidth
                     style={{ marginBottom: vscale(12) }}
+                    icon={<Icon name="check-circle-outline" size={scale(18)} color="#FFFFFF" />}
+                    accessibilityLabel="Close this request"
                 />
                  <Button
                     title="Emergency"
@@ -403,6 +418,8 @@ const RequestSuccessScreen = ({ navigation, route }) => {
                     variant="white"
                     fullWidth
                     textStyle={{ color: '#FF3B30' }}
+                    icon={<Icon name="phone-alert-outline" size={scale(18)} color="#FF3B30" />}
+                    accessibilityLabel="Open emergency help"
                 />
             </View>
          );
@@ -560,9 +577,16 @@ const RequestSuccessScreen = ({ navigation, route }) => {
             }]} 
             onPress={handleCloseRequest} 
             activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Close request"
           >
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flex: 1, marginRight: spacing(10) }}>
             <Text style={[styles.actionTitle, { fontSize: ms(16), marginBottom: vscale(4) }]}>Close Request</Text>
             <Text style={[styles.actionSubtitle, { fontSize: ms(13), lineHeight: ms(20) }]}>Mark this request as finished and share feedback.</Text>
+              </View>
+              <Icon name="chevron-right" size={scale(22)} color="#94A3B8" />
+            </View>
           </TouchableOpacity>
 
           {/* Location Notice */}
@@ -575,6 +599,8 @@ const RequestSuccessScreen = ({ navigation, route }) => {
             variant="gradient"
             size="large"
             fullWidth
+            icon={<Icon name="close-circle-outline" size={scale(18)} color="#FFFFFF" />}
+            accessibilityLabel="Cancel this request"
           />
 
           <View style={[styles.bottomSpacer, { height: vscale(20) }]} />
@@ -595,7 +621,12 @@ const RequestSuccessScreen = ({ navigation, route }) => {
            ]);
         }}
         rightComponent={
-          <TouchableOpacity onPress={handleSettings} style={{ padding: scale(8) }}>
+          <TouchableOpacity
+            onPress={handleSettings}
+            style={{ padding: scale(8) }}
+            accessibilityRole="button"
+            accessibilityLabel="Open settings"
+          >
             <Icon name="cog" size={scale(24)} color="#999999" />
           </TouchableOpacity>
         }
@@ -603,11 +634,43 @@ const RequestSuccessScreen = ({ navigation, route }) => {
       />
 
       {loading ? (
-        <LoadingSpinner
-          visible={loading}
-          delayMs={300}
-          message="Loading request…"
-        />
+        <ScrollView
+          contentContainerStyle={[styles.scrollContent, { alignItems: 'center' }]}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={{ width: contentWidth }}>
+            <View style={{ alignItems: 'center', marginTop: vscale(10), marginBottom: vscale(18) }}>
+              <SkeletonCircle size={scale(84)} />
+              <SkeletonSpacer height={vscale(14)} />
+              <SkeletonBox height={14} radius={10} width="55%" style={{ marginBottom: vscale(10) }} />
+              <SkeletonBox height={12} radius={10} width="80%" />
+            </View>
+
+            <View style={{ borderRadius: scale(18), borderWidth: scale(1), borderColor: '#E2E8F0', padding: spacing(16), marginBottom: vscale(14), backgroundColor: '#FFFFFF' }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: vscale(10) }}>
+                <SkeletonBox height={12} radius={10} width="35%" />
+                <SkeletonBox height={20} radius={10} width={scale(64)} />
+              </View>
+              <SkeletonBox height={12} radius={10} style={{ marginBottom: vscale(8) }} />
+              <SkeletonBox height={12} radius={10} width="75%" />
+              <SkeletonSpacer height={vscale(14)} />
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <SkeletonBox height={34} radius={14} width="30%" />
+                <SkeletonBox height={34} radius={14} width="30%" />
+                <SkeletonBox height={34} radius={14} width="30%" />
+              </View>
+            </View>
+
+            <View style={{ borderRadius: scale(18), borderWidth: scale(1), borderColor: '#E2E8F0', padding: spacing(16), marginBottom: vscale(14), backgroundColor: '#FFFFFF' }}>
+              <SkeletonBox height={12} radius={10} width="40%" style={{ marginBottom: vscale(10) }} />
+              <SkeletonBox height={44} radius={12} style={{ marginBottom: vscale(10) }} />
+              <SkeletonBox height={44} radius={12} style={{ marginBottom: vscale(10) }} />
+              <SkeletonBox height={44} radius={12} />
+            </View>
+
+            <View style={{ height: vscale(30) }} />
+          </View>
+        </ScrollView>
       ) : (
       <ScrollView 
         contentContainerStyle={[styles.scrollContent, { alignItems: 'center' }]}

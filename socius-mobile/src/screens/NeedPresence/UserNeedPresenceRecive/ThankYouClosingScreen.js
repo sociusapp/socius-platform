@@ -7,6 +7,7 @@ import { submitClosure } from '../../../services/api/incident.api';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
 import CustomAlert from '../../../components/common/CustomAlert';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { useResponsive } from '../../../utils/responsive';
 
@@ -44,10 +45,10 @@ const ThankYouClosingScreen = ({ navigation, route }) => {
   };
 
   const outcomes = [
-    'Resolved calmly',
-    'No longer needed',
-    'Chose another option',
-    'Still concerned',
+    { label: 'Resolved calmly', icon: 'check-circle-outline' },
+    { label: 'No longer needed', icon: 'clock-outline' },
+    { label: 'Chose another option', icon: 'swap-horizontal' },
+    { label: 'Still concerned', icon: 'alert-circle-outline' },
   ];
 
   const handleSubmit = async () => {
@@ -117,10 +118,26 @@ const ThankYouClosingScreen = ({ navigation, route }) => {
       
       <ScrollView contentContainerStyle={[styles.scrollContent, { paddingHorizontal: spacing(20), paddingTop: vscale(24), paddingBottom: vscale(40), alignItems: 'center' }]} showsVerticalScrollIndicator={false}>
         <View style={{ width: contentWidth }}>
-          <View style={[styles.headerSection, { marginBottom: vscale(24) }]}>
-            <Text style={[styles.mainTitle, { fontSize: ms(22), marginBottom: vscale(8) }]}>Thanks for closing this.</Text>
+          <View style={[styles.headerSection, { marginBottom: vscale(20) }]}>
+            <View style={{ alignItems: 'center', marginBottom: vscale(14) }}>
+              <LinearGradient
+                colors={['#E7F9F0', '#DCFCE7']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={{
+                  width: scale(74),
+                  height: scale(74),
+                  borderRadius: scale(37),
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Icon name="hand-heart" size={scale(34)} color="#28C76F" />
+              </LinearGradient>
+            </View>
+            <Text style={[styles.mainTitle, { fontSize: ms(22), marginBottom: vscale(8) }]}>Close this request</Text>
             <Text style={[styles.subTitle, { fontSize: ms(15), lineHeight: vscale(22) }]}>
-              Your input helps keep the community calm and respectful.
+              A short rating helps keep community help calm and respectful.
             </Text>
           </View>
 
@@ -129,7 +146,13 @@ const ThankYouClosingScreen = ({ navigation, route }) => {
             <Text style={[styles.cardTitle, { fontSize: ms(16), marginBottom: vscale(12) }]}>Rate this experience</Text>
             <View style={{ flexDirection: 'row', marginBottom: vscale(16) }}>
               {[1,2,3,4,5].map(n => (
-                <TouchableOpacity key={n} onPress={() => setStars(n)} style={{ padding: spacing(6) }}>
+                <TouchableOpacity
+                  key={n}
+                  onPress={() => setStars(n)}
+                  style={{ padding: spacing(6) }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Rate ${n} star${n === 1 ? '' : 's'}`}
+                >
                   <Icon
                     name={n <= stars ? 'star' : 'star-outline'}
                     size={scale(26)}
@@ -142,21 +165,31 @@ const ThankYouClosingScreen = ({ navigation, route }) => {
             <View style={[styles.chipContainer, { gap: spacing(10) }]}>
               {outcomes.map((outcome) => (
                 <TouchableOpacity
-                  key={outcome}
+                  key={outcome.label}
                   style={[
                     styles.chip,
                     { paddingVertical: vscale(10), paddingHorizontal: spacing(16), borderRadius: scale(20), borderWidth: scale(1), width: '48%' },
-                    selectedOutcome === outcome && styles.chipSelected
+                    selectedOutcome === outcome.label && styles.chipSelected
                   ]}
-                  onPress={() => setSelectedOutcome(outcome)}
+                  onPress={() => setSelectedOutcome(outcome.label)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Outcome: ${outcome.label}`}
                 >
-                  <Text style={[
-                    styles.chipText,
-                    { fontSize: ms(13) },
-                    selectedOutcome === outcome && styles.chipTextSelected
-                  ]}>
-                    {outcome}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon
+                      name={outcome.icon}
+                      size={scale(16)}
+                      color={selectedOutcome === outcome.label ? '#FFFFFF' : '#5D6D7E'}
+                      style={{ marginRight: spacing(8) }}
+                    />
+                    <Text style={[
+                      styles.chipText,
+                      { fontSize: ms(13) },
+                      selectedOutcome === outcome.label && styles.chipTextSelected
+                    ]}>
+                      {outcome.label}
+                    </Text>
+                  </View>
                 </TouchableOpacity>
               ))}
             </View>
@@ -164,7 +197,10 @@ const ThankYouClosingScreen = ({ navigation, route }) => {
 
           {/* Feedback Input */}
           <View style={[styles.section, { marginBottom: vscale(24) }]}>
-            <Text style={[styles.sectionLabel, { fontSize: ms(15), marginBottom: vscale(10) }]}>Anything you want to share? <Text style={[styles.optionalText, { fontSize: ms(15) }]}>(optional)</Text></Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: vscale(10) }}>
+              <Icon name="message-text-outline" size={scale(18)} color="#5D6D7E" style={{ marginRight: spacing(8) }} />
+              <Text style={[styles.sectionLabel, { fontSize: ms(15) }]}>Anything you want to share? <Text style={[styles.optionalText, { fontSize: ms(15) }]}>(optional)</Text></Text>
+            </View>
             <TextInput
               style={[styles.textInput, { borderRadius: scale(8), padding: spacing(12), height: vscale(80), fontSize: ms(14), marginBottom: vscale(8), borderWidth: scale(1) }]}
               placeholder="Short feedback helps improve the platform"
@@ -218,6 +254,8 @@ const ThankYouClosingScreen = ({ navigation, route }) => {
               variant="primary"
               fullWidth
               style={[styles.returnButton, { marginTop: vscale(16), borderRadius: scale(30) }]}
+              icon={<Icon name={requestId ? "check-circle-outline" : "home-outline"} size={scale(18)} color="#FFFFFF" />}
+              accessibilityLabel={requestId ? "Submit closure and close" : "Return to home"}
             />
           )}
         </View>

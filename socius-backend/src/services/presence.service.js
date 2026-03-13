@@ -15,7 +15,7 @@ const createPresenceRequest = async (requesterId, { situationType, description, 
   
   const activeHelp = await HelpRequest.findOne({
     requesterId,
-    status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING, HELP_REQUEST_STATUS.MATCHED, HELP_REQUEST_STATUS.ACTIVE, HELP_REQUEST_STATUS.CLOSING] },
+    status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING, HELP_REQUEST_STATUS.MATCHED, HELP_REQUEST_STATUS.ACTIVE] },
   }).select('_id status')
 
   if (activeHelp) {
@@ -139,7 +139,7 @@ const createPresenceRequest = async (requesterId, { situationType, description, 
 const acceptPresence = async (helperId, presenceRequestId) => {
   const busyHelpRequester = await HelpRequest.findOne({
     requesterId: helperId,
-    status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING, HELP_REQUEST_STATUS.MATCHED, HELP_REQUEST_STATUS.ACTIVE, HELP_REQUEST_STATUS.CLOSING] },
+    status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING, HELP_REQUEST_STATUS.MATCHED, HELP_REQUEST_STATUS.ACTIVE] },
   }).select('_id status')
 
   if (busyHelpRequester) {

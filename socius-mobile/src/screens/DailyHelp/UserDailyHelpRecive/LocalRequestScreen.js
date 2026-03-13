@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../../components/common/Header';
 import Button from '../../../components/common/Button';
-import LoadingSpinner from '../../../components/common/LoadingSpinner';
+import { SkeletonBox, SkeletonCircle, SkeletonSpacer } from '../../../components/common/Skeleton';
 import { useResponsive } from '../../../utils/responsive';
 import { getHelpRequestById } from '../../../services/api/incident.api';
 import { acceptHelpAsVolunteer, declineHelpAsVolunteer } from '../../../services/api/volunteer.api';
@@ -370,8 +370,36 @@ const LocalRequestScreen = ({ navigation, route }) => {
         showsVerticalScrollIndicator={false}
       >
         {loading ? (
-          <View style={[styles.loaderContainer, { width: contentWidth }]}>
-            <LoadingSpinner visible={loading} delayMs={300} message="Loading request…" />
+          <View style={{ width: contentWidth }}>
+            <SkeletonBox height={20} radius={10} width="55%" style={{ marginBottom: vscale(10) }} />
+            <SkeletonBox height={12} radius={10} width="70%" style={{ marginBottom: vscale(14) }} />
+
+            <View style={[styles.requestCard, { 
+              borderRadius: scale(18),
+              borderWidth: scale(1),
+              borderColor: '#E2E8F0',
+              paddingHorizontal: spacing(18),
+              paddingVertical: vscale(16),
+              marginBottom: vscale(16),
+              backgroundColor: '#FFFFFF'
+            }]}>
+              <SkeletonBox height={12} radius={10} width="35%" style={{ marginBottom: vscale(12) }} />
+              <View style={[styles.requestRow, { marginTop: vscale(8), marginBottom: vscale(10), gap: spacing(10) }]}>
+                <SkeletonCircle size={scale(22)} />
+                <View style={{ flex: 1 }}>
+                  <SkeletonBox height={12} radius={10} style={{ marginBottom: 8 }} />
+                  <SkeletonBox height={12} radius={10} width="80%" />
+                </View>
+              </View>
+              <View style={[styles.metaRow, { gap: spacing(6) }]}>
+                <SkeletonCircle size={scale(18)} />
+                <SkeletonBox height={10} radius={10} width="70%" />
+              </View>
+            </View>
+
+            <SkeletonBox height={48} radius={12} style={{ marginBottom: vscale(12) }} />
+            <SkeletonBox height={48} radius={12} />
+            <SkeletonSpacer height={vscale(30)} />
           </View>
         ) : (
         <View style={{ width: contentWidth }}>
@@ -429,6 +457,8 @@ const LocalRequestScreen = ({ navigation, route }) => {
             onPress={handleOpenDetails}
             fullWidth
             disabled={submitting}
+            icon={<Icon name="clipboard-text-outline" size={scale(18)} color="#FFFFFF" />}
+            accessibilityLabel="Open request details"
           />
           <Button
             title="Stay Away"
@@ -436,6 +466,8 @@ const LocalRequestScreen = ({ navigation, route }) => {
             variant="white"
             fullWidth
             disabled={submitting}
+            icon={<Icon name="shield-alert-outline" size={scale(18)} color="#2C3E50" />}
+            accessibilityLabel="Stay away from this request"
           />
         </View>
         )}

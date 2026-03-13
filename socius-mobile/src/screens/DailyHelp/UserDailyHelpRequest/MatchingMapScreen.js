@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, Linking, Alert, ActivityIndicator, Dimensions, ScrollView, Image, Animated, NativeModules } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, Linking, Alert, Dimensions, ScrollView, Image, Animated, NativeModules } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
@@ -20,8 +20,9 @@ import { buildClosureInitiatedCopy, buildRequestClosedCopy } from '../../../util
 
 const MatchingMapScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
-  const [loading, setLoading] = useState(true);
-  const [request, setRequest] = useState(null);
+  const prefillRequest = route?.params?.prefillRequest || null;
+  const [loading, setLoading] = useState(!prefillRequest);
+  const [request, setRequest] = useState(prefillRequest);
   const [chatVisible, setChatVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -84,6 +85,7 @@ const MatchingMapScreen = ({ navigation, route }) => {
   const mapRef = useRef(null);
   const chatVisibleRef = useRef(chatVisible);
   const requestId = route?.params?.requestId;
+  const perf = route?.params?.perf;
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -121,6 +123,31 @@ const MatchingMapScreen = ({ navigation, route }) => {
     });
   };
 
+  const handleCancelRequest = () => {
+    const rid = request?.id || request?._id || requestId;
+    if (!rid) {
+      showAlert('Error', 'Request ID missing.', [{ text: 'OK', onPress: closeAlert }]);
+      return;
+    }
+    showAlert(
+      'Cancel Request',
+      'Are you sure you want to cancel this request?',
+      [
+        { text: 'Stay Here', style: 'cancel', onPress: closeAlert },
+        {
+          text: 'Cancel Request',
+          style: 'destructive',
+          onPress: () => {
+            closeAlert();
+            navigation.navigate('CancelRequest', { requestId: rid });
+          },
+        },
+      ],
+      'alert-circle-outline',
+      '#DC5C69'
+    );
+  };
+
   const handleMessage = async () => {
     if (sessionId) {
       setChatVisible(true);
@@ -148,6 +175,10 @@ const MatchingMapScreen = ({ navigation, route }) => {
 
   // Initial load of request details
   useEffect(() => {
+    if (perf?.t0) {
+      const dt = Date.now() - Number(perf.t0);
+      console.log('[Perf] MeetingDetails render', `${dt}ms`, perf?.source || '');
+    }
     let isMounted = true;
     
     const loadRequest = async () => {
@@ -188,10 +219,11 @@ const MatchingMapScreen = ({ navigation, route }) => {
            }));
            
            // Also fetch session if needed
-           const sessionRes = await getSessionByRequest(auth.accessToken, requestId);
-           if (isMounted && sessionRes?.success && sessionRes?.data) {
-              setSessionId(sessionRes.data._id);
-           }
+           getSessionByRequest(auth.accessToken, requestId).then((sessionRes) => {
+             if (isMounted && sessionRes?.success && sessionRes?.data) {
+               setSessionId(sessionRes.data._id);
+             }
+           }).catch(() => {});
         }
       } catch (error) {
         console.log('Error loading initial request:', error);
@@ -492,13 +524,7 @@ const MatchingMapScreen = ({ navigation, route }) => {
     };
   }, [requestId, navigation]);
 
-  if (loading) {
-    return (
-      <View style={styles.loaderContainer}>
-        <ActivityIndicator size="large" color="#DC5C69" />
-      </View>
-    );
-  }
+  const showInitialLoading = loading && !request;
 
   const initialRegion = request?.location?.coordinates ? {
     latitude: request.location.coordinates[1],
@@ -550,35 +576,39 @@ const MatchingMapScreen = ({ navigation, route }) => {
           {/* Map Card */}
           <View style={styles.mapCard}>
             <View style={styles.mapPreviewContainer}>
-              <MapView
-                ref={mapRef}
-                style={styles.mapPreview}
-                provider={PROVIDER_GOOGLE}
-                initialRegion={initialRegion}
-                showsUserLocation={true}
-                scrollEnabled={false}
-                zoomEnabled={false}
-                rotateEnabled={false}
-                pitchEnabled={false}
-              >
-                {request?.location?.coordinates && (
-                  <Marker
-                    coordinate={{
-                      latitude: request.location.coordinates[1],
-                      longitude: request.location.coordinates[0],
-                    }}
-                    title="Meeting Point"
-                    description={request.description}
-                    pinColor="#DC5C69"
-                  >
-                     <Icon name="map-marker" size={40} color="#DC5C69" />
-                  </Marker>
-                )}
-              </MapView>
+              {showInitialLoading ? (
+                <View style={[styles.mapPreview, { backgroundColor: '#E5E7EB' }]} />
+              ) : (
+                <MapView
+                  ref={mapRef}
+                  style={styles.mapPreview}
+                  provider={PROVIDER_GOOGLE}
+                  initialRegion={initialRegion}
+                  showsUserLocation={true}
+                  scrollEnabled={false}
+                  zoomEnabled={false}
+                  rotateEnabled={false}
+                  pitchEnabled={false}
+                >
+                  {request?.location?.coordinates && (
+                    <Marker
+                      coordinate={{
+                        latitude: request.location.coordinates[1],
+                        longitude: request.location.coordinates[0],
+                      }}
+                      title="Meeting Point"
+                      description={request.description}
+                      pinColor="#DC5C69"
+                    >
+                       <Icon name="map-marker" size={40} color="#DC5C69" />
+                    </Marker>
+                  )}
+                </MapView>
+              )}
               <View style={styles.locationOverlay}>
                 <Icon name="map-marker" size={16} color="#DC5C69" style={{marginRight: 4}} />
                 <Text style={styles.locationText}>
-                  {request?.location?.address || "Current Location"}
+                  {showInitialLoading ? 'Loading…' : (request?.location?.address || "Current Location")}
                 </Text>
               </View>
             </View>
@@ -591,9 +621,16 @@ const MatchingMapScreen = ({ navigation, route }) => {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Meeting Point</Text>
             <View style={styles.cardContentRow}>
-              <Text style={styles.cardDescription}>
-                {request?.description || "Waiting at the specified location."}
-              </Text>
+              {showInitialLoading ? (
+                <View style={{ flex: 1 }}>
+                  <View style={{ height: 12, backgroundColor: '#E5E7EB', borderRadius: 8, marginBottom: 8 }} />
+                  <View style={{ height: 12, backgroundColor: '#E5E7EB', borderRadius: 8, width: '70%' }} />
+                </View>
+              ) : (
+                <Text style={styles.cardDescription}>
+                  {request?.description || "Waiting at the specified location."}
+                </Text>
+              )}
               <View style={styles.illustrationContainer}>
                  <Icon name="map-marker-radius" size={60} color="#8B6F47" />
               </View>
@@ -602,28 +639,6 @@ const MatchingMapScreen = ({ navigation, route }) => {
 
           {/* Profile Cards */}
           <View style={styles.profilesContainer}>
-            <View style={styles.profileCard}>
-              <View style={[styles.profileImageContainer, { backgroundColor: '#28C76F' }]}>
-                 {request?.volunteer?.profileImage ? (
-                    <Image 
-                      source={getProfileImage(request?.volunteer?.profileImage)} 
-                      style={styles.profileImage}
-                      resizeMode="cover"
-                      onError={(e) => console.log('Image Load Error (Volunteer):', e.nativeEvent.error)}
-                      onLoad={() => console.log('Image Loaded (Volunteer)')}
-                    />
-                 ) : (
-                    <Icon name="account-heart" size={60} color="#FFF" />
-                 )}
-              </View>
-              <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>
-              {request?.volunteer?.firstName || request?.volunteer?.name || request?.volunteer?.fullName || request?.volunteer?.username || "Volunteer"}
-            </Text>
-            <Text style={styles.profileRole}>Coming to help</Text>
-          </View>
-            </View>
-
             <View style={styles.profileCard}>
               <View style={[styles.profileImageContainer, { backgroundColor: '#E0E0E0' }]}>
                  {request?.requesterId?.profileImage || request?.user?.profileImage ? (
@@ -643,6 +658,37 @@ const MatchingMapScreen = ({ navigation, route }) => {
                 <Text style={styles.profileRole}>Waiting</Text>
               </View>
             </View>
+
+            <View style={styles.profileCard}>
+              <View style={[styles.profileImageContainer, { backgroundColor: '#28C76F' }]}>
+                 {request?.volunteer?.profileImage ? (
+                    <Image 
+                      source={getProfileImage(request?.volunteer?.profileImage)} 
+                      style={styles.profileImage}
+                      resizeMode="cover"
+                      onError={(e) => console.log('Image Load Error (Volunteer):', e.nativeEvent.error)}
+                      onLoad={() => console.log('Image Loaded (Volunteer)')}
+                    />
+                 ) : (
+                    <Icon name="account-heart" size={60} color="#FFF" />
+                 )}
+              </View>
+              <View style={styles.profileInfo}>
+            {showInitialLoading && !request?.volunteer ? (
+              <>
+                <View style={{ height: 12, backgroundColor: '#E5E7EB', borderRadius: 8, marginBottom: 8 }} />
+                <View style={{ height: 10, backgroundColor: '#E5E7EB', borderRadius: 8, width: '60%' }} />
+              </>
+            ) : (
+              <>
+                <Text style={styles.profileName}>
+                  {request?.volunteer?.firstName || request?.volunteer?.name || request?.volunteer?.fullName || request?.volunteer?.username || "Volunteer"}
+                </Text>
+                <Text style={styles.profileRole}>Coming to help</Text>
+              </>
+            )}
+          </View>
+            </View>
           </View>
 
           <Text style={styles.sharedInfoText}>
@@ -659,13 +705,41 @@ const MatchingMapScreen = ({ navigation, route }) => {
 
           {/* Bottom Buttons */}
           <View style={styles.bottomContainer}>
-            <TouchableOpacity style={styles.primaryButton} onPress={handleOpenMaps}>
-              <Text style={styles.primaryButtonText}>Open Navigation</Text>
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={handleOpenMaps}
+              accessibilityRole="button"
+              accessibilityLabel="Open navigation"
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Icon name="navigation-variant-outline" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
+                <Text style={styles.primaryButtonText}>Open Navigation</Text>
+              </View>
               <Text style={styles.primaryButtonSubtext}>Opens your maps app</Text>
             </TouchableOpacity>
             
-            <TouchableOpacity style={styles.secondaryButton} onPress={handleCloseRequest}>
-               <Text style={styles.secondaryButtonText}>Close Request</Text>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={handleCancelRequest}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel request"
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Icon name="close-circle-outline" size={18} color="#DC5C69" style={{ marginRight: 8 }} />
+                <Text style={styles.cancelButtonText}>Cancel Request</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={handleCloseRequest}
+              accessibilityRole="button"
+              accessibilityLabel="Close request"
+            >
+               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                 <Icon name="check-circle-outline" size={18} color="#666" style={{ marginRight: 8 }} />
+                 <Text style={styles.secondaryButtonText}>Close Request</Text>
+               </View>
             </TouchableOpacity>
           </View>
         </View>
@@ -952,6 +1026,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#666',
+  },
+  cancelButton: {
+    height: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    borderRadius: 12,
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#DC5C69',
   },
   messageButton: {
     width: 44,

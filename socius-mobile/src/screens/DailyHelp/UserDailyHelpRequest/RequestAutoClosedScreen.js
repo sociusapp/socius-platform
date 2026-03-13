@@ -34,7 +34,12 @@ const RequestAutoClosedScreen = ({ navigation }) => {
       <Header
         onBackPress={() => navigation.goBack()}
         rightComponent={
-          <TouchableOpacity onPress={handleSettings} style={{ padding: scale(8) }}>
+          <TouchableOpacity
+            onPress={handleSettings}
+            style={{ padding: scale(8) }}
+            accessibilityRole="button"
+            accessibilityLabel="Open settings"
+          >
             <Icon name="cog" size={scale(24)} color="#999999" />
           </TouchableOpacity>
         }
@@ -56,7 +61,10 @@ const RequestAutoClosedScreen = ({ navigation }) => {
           </View>
 
           <View style={[styles.section, { marginBottom: vscale(16) }]}>
-            <Text style={[styles.sectionHeading, { fontSize: ms(14), marginBottom: vscale(10) }]}>Was help completed?</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: vscale(10) }}>
+              <Icon name="clipboard-check-outline" size={scale(18)} color="#1F2933" style={{ marginRight: spacing(8) }} />
+              <Text style={[styles.sectionHeading, { fontSize: ms(14) }]}>Was help completed?</Text>
+            </View>
             <View style={{ gap: vscale(8) }}>
               <Button
                 title="Yes, completed"
@@ -64,6 +72,8 @@ const RequestAutoClosedScreen = ({ navigation }) => {
                 variant={completion === 'yes' ? 'gradient' : 'white'}
                 size="large"
                 fullWidth
+                icon={<Icon name="check-circle-outline" size={scale(18)} color={completion === 'yes' ? '#FFFFFF' : '#2C3E50'} />}
+                accessibilityLabel="Yes, help was completed"
               />
               <Button
                 title="No, not really"
@@ -71,6 +81,8 @@ const RequestAutoClosedScreen = ({ navigation }) => {
                 variant={completion === 'no' ? 'gradient' : 'white'}
                 size="large"
                 fullWidth
+                icon={<Icon name="close-circle-outline" size={scale(18)} color={completion === 'no' ? '#FFFFFF' : '#2C3E50'} />}
+                accessibilityLabel="No, help was not completed"
               />
               <Button
                 title="Partially"
@@ -78,13 +90,24 @@ const RequestAutoClosedScreen = ({ navigation }) => {
                 variant={completion === 'partial' ? 'gradient' : 'white'}
                 size="large"
                 fullWidth
+                icon={<Icon name="minus-circle-outline" size={scale(18)} color={completion === 'partial' ? '#FFFFFF' : '#2C3E50'} />}
+                accessibilityLabel="Help was partially completed"
               />
             </View>
           </View>
 
-          <TouchableOpacity onPress={handleReport} activeOpacity={0.85} style={[styles.reportRow, { marginBottom: vscale(18) }]}>
-            <Icon name="alert-circle-outline" size={scale(20)} color="#DC5C69" />
-            <Text style={[styles.reportText, { fontSize: ms(13) }]}>Report a concern about this request</Text>
+          <TouchableOpacity
+            onPress={handleReport}
+            activeOpacity={0.85}
+            style={[styles.reportRow, { marginBottom: vscale(18), justifyContent: 'space-between' }]}
+            accessibilityRole="button"
+            accessibilityLabel="Report a concern about this request"
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Icon name="alert-circle-outline" size={scale(20)} color="#DC5C69" />
+              <Text style={[styles.reportText, { fontSize: ms(13) }]}>Report a concern about this request</Text>
+            </View>
+            <Icon name="chevron-right" size={scale(22)} color="#DC5C69" />
           </TouchableOpacity>
 
           <View style={[styles.infoCard, { borderRadius: scale(16), borderWidth: scale(1), paddingHorizontal: spacing(16), paddingVertical: vscale(12), marginBottom: vscale(20), shadowOffset: { width: 0, height: vscale(2) }, shadowRadius: scale(6), elevation: scale(2) }]}>
@@ -100,6 +123,8 @@ const RequestAutoClosedScreen = ({ navigation }) => {
             variant="gradient"
             size="large"
             fullWidth
+            icon={<Icon name="arrow-right" size={scale(18)} color="#FFFFFF" />}
+            accessibilityLabel="Continue"
           />
         </View>
       </ScrollView>
@@ -166,4 +191,3 @@ const styles = StyleSheet.create({
 });
 
 export default RequestAutoClosedScreen;
-

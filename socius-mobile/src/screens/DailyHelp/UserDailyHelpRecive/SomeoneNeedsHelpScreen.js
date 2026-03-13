@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../../components/common/Header';
 import Button from '../../../components/common/Button';
-import LoadingSpinner from '../../../components/common/LoadingSpinner';
+import { SkeletonBox, SkeletonCircle, SkeletonSpacer } from '../../../components/common/Skeleton';
 import CustomAlert from '../../../components/common/CustomAlert';
 import { useResponsive } from '../../../utils/responsive';
 
@@ -357,8 +357,41 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
           </Text>
 
           {loading ? (
-            <View style={{ marginBottom: vscale(20) }}>
-              <LoadingSpinner visible={loading} delayMs={300} message="Loading request…" />
+            <View
+              style={[
+                styles.summaryCard,
+                {
+                  borderRadius: scale(16),
+                  paddingHorizontal: spacing(16),
+                  paddingVertical: vscale(14),
+                  marginBottom: vscale(24),
+                  borderWidth: scale(1),
+                  borderColor: '#E2E8F0',
+                  backgroundColor: '#FFFFFF',
+                  shadowOffset: { width: 0, height: vscale(2) },
+                  shadowRadius: scale(8),
+                  elevation: scale(2),
+                },
+              ]}
+            >
+              <View style={[styles.summaryRow, { paddingVertical: vscale(4) }]}>
+                <SkeletonCircle size={scale(25)} />
+                <View style={{ flex: 1, marginLeft: spacing(12) }}>
+                  <SkeletonBox height={12} radius={10} style={{ marginBottom: 8 }} />
+                  <SkeletonBox height={12} radius={10} width="70%" />
+                </View>
+              </View>
+
+              <View style={[styles.summaryDivider, { marginVertical: vscale(6) }]} />
+
+              <View style={[styles.summaryRow, { paddingVertical: vscale(4) }]}>
+                <SkeletonCircle size={scale(25)} />
+                <View style={{ flex: 1, marginLeft: spacing(12) }}>
+                  <SkeletonBox height={12} radius={10} width="45%" style={{ marginBottom: 8 }} />
+                  <SkeletonBox height={10} radius={10} width="35%" />
+                </View>
+              </View>
+              <SkeletonSpacer height={vscale(6)} />
             </View>
           ) : (
             <View
@@ -485,6 +518,8 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
               fullWidth
               loading={isProcessing}
               disabled={isProcessing}
+              icon={<Icon name="clipboard-text-outline" size={scale(18)} color="#FFFFFF" />}
+              accessibilityLabel="Open request details"
             />
           </View>
 
@@ -495,6 +530,8 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
             fullWidth
             loading={isDeclining}
             disabled={isDeclining || isProcessing}
+            icon={<Icon name="close-circle-outline" size={scale(18)} color="#2C3E50" />}
+            accessibilityLabel="Mark yourself as not available"
           />
         </View>
       </ScrollView>

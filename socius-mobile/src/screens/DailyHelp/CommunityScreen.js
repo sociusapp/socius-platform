@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, FlatList, ActivityIndicator, Animated, Dimensions, TextInput, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, FlatList, Animated, Dimensions, TextInput, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useIsFocused } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import moment from 'moment';
 import Header from '../../components/common/Header';
 import Button from '../../components/common/Button';
-import LoadingSpinner from '../../components/common/LoadingSpinner';
+import PulseDot from '../../components/common/PulseDot';
+import { SkeletonBox, SkeletonCircle, SkeletonSpacer } from '../../components/common/Skeleton';
 import { useResponsive } from '../../utils/responsive';
 import { getMyActiveHelpRequest, getNearbyHelpRequests } from '../../services/api/incident.api';
 import { getHistory } from '../../services/api/user.api';
@@ -663,7 +664,7 @@ const CommunityScreen = ({ navigation, route }) => {
                         const isAccepted = ['accepted', 'in_progress', 'matched', 'en_route', 'arrived', 'active'].includes(status) || activeRequest.volunteer;
 
                         if (isAccepted) {
-                          navigation.navigate('RequesterMatchingMap', { requestId: activeRequest._id });
+                          navigation.navigate('RequesterMatchingMap', { requestId: activeRequest._id, prefillRequest: activeRequest });
                         } else {
                           navigation.navigate('RequestActive');
                         }
@@ -693,10 +694,16 @@ const CommunityScreen = ({ navigation, route }) => {
                       </View>
                       <View style={{ flex: 1 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+                          <View style={{ marginRight: spacing(6) }}>
+                            <PulseDot color="#DC5C69" size={6} />
+                          </View>
                           <Text style={[styles.activeCardTitle, { fontSize: ms(14), color: '#DC5C69', fontWeight: '700', marginRight: spacing(6) }]}>
                             Active Help Request
                           </Text>
-                          <View style={{ backgroundColor: '#DC5C69', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                          <View style={{ backgroundColor: '#DC5C69', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, flexDirection: 'row', alignItems: 'center' }}>
+                            <View style={{ marginRight: 4 }}>
+                              <PulseDot color="#FFFFFF" size={5} ringOpacity={0.35} />
+                            </View>
                             <Text style={{ color: '#FFF', fontSize: ms(9), fontWeight: '800' }}>LIVE</Text>
                           </View>
                         </View>
@@ -712,7 +719,7 @@ const CommunityScreen = ({ navigation, route }) => {
                   {activeHelp && (
                     <TouchableOpacity
                       activeOpacity={0.9}
-                      onPress={() => navigation.navigate('MatchingMap', { requestId: activeHelp.request._id })}
+                      onPress={() => navigation.navigate('MatchingMap', { requestId: activeHelp.request._id, prefillRequest: activeHelp.request })}
                       style={[
                         styles.activeCard,
                         {
@@ -800,6 +807,8 @@ const CommunityScreen = ({ navigation, route }) => {
                       onPress={handleRequestHelp}
                       variant="gradient"
                       fullWidth
+                      icon={<Icon name="hand-heart" size={scale(18)} color="#FFFFFF" />}
+                      accessibilityLabel="Request local help"
                       style={{ borderRadius: scale(12), height: scale(42) }}
                       labelStyle={{ fontSize: ms(14) }}
                     />
@@ -857,18 +866,65 @@ const CommunityScreen = ({ navigation, route }) => {
                   </View>
 
                   {loadingNearby ? (
-                    <View style={{ minHeight: vscale(280), alignItems: 'center', justifyContent: 'center' }}>
-                      <LoadingSpinner visible={loadingNearby} delayMs={300} message="Loading nearby requests…" />
+                    <View style={{ minHeight: vscale(280) }}>
+                      {[0, 1, 2].map((i) => (
+                        <View
+                          key={i}
+                          style={[
+                            styles.activeCard,
+                            {
+                              backgroundColor: '#FFFFFF',
+                              marginBottom: vscale(16),
+                              padding: spacing(16),
+                              borderRadius: scale(16),
+                              borderWidth: 1,
+                              borderColor: '#E2E8F0',
+                              shadowColor: '#000',
+                              shadowOffset: { width: 0, height: 4 },
+                              shadowOpacity: 0.06,
+                              shadowRadius: 8,
+                              elevation: 3,
+                            },
+                          ]}
+                        >
+                          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: vscale(12) }}>
+                            <SkeletonCircle size={scale(48)} style={{ marginRight: spacing(12) }} />
+                            <View style={{ flex: 1 }}>
+                              <SkeletonBox height={12} radius={8} style={{ marginBottom: 8 }} />
+                              <SkeletonBox height={10} radius={8} width="55%" />
+                            </View>
+                            <SkeletonBox height={22} radius={10} width={scale(62)} />
+                          </View>
+                          <SkeletonBox height={12} radius={8} style={{ marginBottom: 8 }} />
+                          <SkeletonBox height={12} radius={8} width="80%" />
+                          <SkeletonSpacer height={vscale(16)} />
+                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <SkeletonBox height={scale(40)} radius={scale(10)} style={{ flex: 1, marginRight: spacing(8) }} />
+                            <SkeletonBox height={scale(40)} radius={scale(10)} width={scale(40)} />
+                          </View>
+                        </View>
+                      ))}
                     </View>
                   ) : nearbyRequests.length > 0 ? (
-                    nearbyRequests.map((req, index) => (
+                    nearbyRequests.map((req, index) => {
+                      const statusLower = String(req?.status || 'open').toLowerCase();
+                      const badgeCfg =
+                        statusLower === 'matched'
+                          ? { bg: '#E0F2FE', fg: '#0369A1', pulse: '#0EA5E9' }
+                          : statusLower === 'active'
+                            ? { bg: '#DCFCE7', fg: '#15803D', pulse: '#22C55E' }
+                            : statusLower === 'open' || statusLower === 'matching'
+                              ? { bg: '#FFF0F1', fg: '#DC5C69', pulse: '#DC5C69' }
+                              : { bg: '#F1F5F9', fg: '#475569', pulse: null };
+
+                      return (
                       <View key={index} style={[styles.activeCard, {
                         backgroundColor: '#FFFFFF',
                         marginBottom: vscale(16),
                         padding: spacing(16),
                         borderRadius: scale(16),
                         borderWidth: 1,
-                        borderColor: '#E2E8F0',
+                        borderColor: badgeCfg.pulse ? badgeCfg.pulse : '#E2E8F0',
                         shadowColor: '#000',
                         shadowOffset: { width: 0, height: 4 },
                         shadowOpacity: 0.06,
@@ -904,16 +960,16 @@ const CommunityScreen = ({ navigation, route }) => {
                           </View>
                           <View style={{ alignItems: 'flex-end' }}>
                             <View style={[
-                              { paddingHorizontal: spacing(8), paddingVertical: vscale(4), borderRadius: scale(8) },
-                              req.status === 'matched' ? { backgroundColor: '#E0F2FE' } :
-                                req.status === 'active' ? { backgroundColor: '#DCFCE7' } :
-                                  { backgroundColor: '#F1F5F9' }
+                              { paddingHorizontal: spacing(8), paddingVertical: vscale(4), borderRadius: scale(8), flexDirection: 'row', alignItems: 'center' },
+                              { backgroundColor: badgeCfg.bg }
                             ]}>
+                              {badgeCfg.pulse ? (
+                                <View style={{ marginRight: 6 }}>
+                                  <PulseDot color={badgeCfg.pulse} size={5} />
+                                </View>
+                              ) : null}
                               <Text style={[
-                                { fontSize: ms(10), fontWeight: '700' },
-                                req.status === 'matched' ? { color: '#0369A1' } :
-                                  req.status === 'active' ? { color: '#15803D' } :
-                                    { color: '#475569' }
+                                { fontSize: ms(10), fontWeight: '700', color: badgeCfg.fg }
                               ]}>
                                 {(req.status || 'OPEN').toUpperCase()}
                               </Text>
@@ -964,7 +1020,7 @@ const CommunityScreen = ({ navigation, route }) => {
                           </TouchableOpacity>
                         </View>
                       </View>
-                    ))
+                    )})
                   ) : (
                     <View style={{ alignItems: 'center', justifyContent: 'center', paddingTop: vscale(60) }}>
                       <View style={{
@@ -983,8 +1039,13 @@ const CommunityScreen = ({ navigation, route }) => {
                       <TouchableOpacity
                         onPress={fetchNearbyRequests}
                         style={{ marginTop: vscale(20) }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Refresh nearby requests"
                       >
-                        <Text style={{ color: '#DC5C69', fontWeight: '600', fontSize: ms(14) }}>Refresh List</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <Icon name="refresh" size={scale(16)} color="#DC5C69" style={{ marginRight: spacing(6) }} />
+                          <Text style={{ color: '#DC5C69', fontWeight: '600', fontSize: ms(14) }}>Refresh List</Text>
+                        </View>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -1053,8 +1114,40 @@ const CommunityScreen = ({ navigation, route }) => {
                 </View>
 
                 {loadingHistory ? (
-                  <View style={{ marginTop: vscale(20) }}>
-                    <LoadingSpinner visible={loadingHistory} delayMs={300} message="Loading history…" />
+                  <View style={{ marginTop: vscale(12), paddingBottom: vscale(100) }}>
+                    {[0, 1, 2, 3].map((i) => (
+                      <View
+                        key={i}
+                        style={[
+                          styles.historyCard,
+                          {
+                            marginBottom: vscale(12),
+                            borderRadius: scale(16),
+                            padding: scale(16),
+                            backgroundColor: '#FFFFFF',
+                            shadowColor: '#000',
+                            shadowOffset: { width: 0, height: 2 },
+                            shadowOpacity: 0.08,
+                            shadowRadius: 8,
+                            elevation: 3,
+                            borderWidth: 1,
+                            borderColor: '#F1F5F9',
+                          },
+                        ]}
+                      >
+                        <View style={{ flexDirection: 'row' }}>
+                          <SkeletonCircle size={scale(48)} style={{ marginRight: spacing(12) }} />
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: vscale(6) }}>
+                              <SkeletonBox height={12} radius={8} width="55%" />
+                              <SkeletonBox height={18} radius={9} width={scale(70)} />
+                            </View>
+                            <SkeletonBox height={10} radius={8} width="70%" style={{ marginBottom: vscale(10) }} />
+                            <SkeletonBox height={10} radius={8} width="45%" />
+                          </View>
+                        </View>
+                      </View>
+                    ))}
                   </View>
                 ) : (
                   <FlatList
