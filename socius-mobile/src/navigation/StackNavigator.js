@@ -65,6 +65,7 @@ import HelpSupportScreen from '../screens/Home/HelpSupportScreen';
 import ConnectionIssueScreen from '../screens/Home/ConnectionIssueScreen';
 import ReportConcernScreen from '../screens/Home/ReportConcernScreen';
 import PrepareStayReadyScreen from '../screens/Home/PrepareStayReadyScreen';
+import LocationMapScreen from '../screens/Home/LocationMapScreen';
 
 // ==================== PREPARE TAB SCREENS ====================
 import SafetyTipsScreen from '../screens/Prepare/SafetyTipsScreen';
@@ -194,6 +195,7 @@ const StackNavigator = () => {
       {/* ==================== HOME FLOW SCREENS ==================== */}
 
       <Stack.Screen name="HomeScreen" component={HomeScreen} />
+      <Stack.Screen name="LocationMap" component={LocationMapScreen} />
       <Stack.Screen name="AccountAccess" component={AccountAccessScreen} />
       <Stack.Screen name="ProfileUnderReview" component={ProfileUnderReviewScreen} />
       <Stack.Screen name="DocumentDetails" component={DocumentDetailsScreen} />

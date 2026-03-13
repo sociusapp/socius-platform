@@ -46,6 +46,7 @@ const HomeReviewScreen = ({ navigation }) => {
       <HomeHeader
         onSettingsPress={handleSettings}
         onLogoPress={() => console.log('Logo pressed')}
+        onLocationPress={() => navigation.navigate('LocationMap')}
       />
 
       <ScrollView

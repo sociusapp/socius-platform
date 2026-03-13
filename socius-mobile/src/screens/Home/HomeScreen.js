@@ -413,6 +413,7 @@ const HomeScreen = ({ navigation }) => {
       <HomeHeader
         onSettingsPress={handleSettings}
         onLogoPress={() => console.log('Logo pressed')}
+        onLocationPress={() => navigation.navigate('LocationMap')}
         locationLabel={locationLabel}
       />
 

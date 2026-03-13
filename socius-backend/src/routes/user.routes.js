@@ -6,12 +6,16 @@ const {
   markFirstTimeFlag,
   deleteAccount,
   getHistory,
+  getNearbyUsers,
 } = require('../controllers/user.controller')
 const { authenticate } = require('../middlewares/auth')
 const { validate, schemas } = require('../middlewares/validate')
 
 // GET /api/user/home
 router.get('/home', authenticate, getHomeData)
+
+// GET /api/user/nearby-users?latitude=..&longitude=..&radiusMeters=500
+router.get('/nearby-users', authenticate, getNearbyUsers)
 
 // GET /api/user/history
 router.get('/history', authenticate, getHistory)

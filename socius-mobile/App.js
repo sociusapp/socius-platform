@@ -53,7 +53,7 @@ const App = () => {
       try {
         await SplashScreen.hideAsync();
       } catch (e) { }
-    }, 8000);
+    }, 2000);
 
     return () => clearTimeout(timer);
   }, []);

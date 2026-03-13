@@ -58,4 +58,15 @@ const getHistory = (token, { page = 1, limit = 20 } = {}) => {
     .then((response) => response.data);
 };
 
- export { getHome, getProfile, updateProfile, markFirstTimeFlag, deleteAccount, getHistory, getEmergencyContacts, upsertEmergencyContacts, deleteEmergencyContact };
+const getNearbyUsers = (token, { latitude, longitude, radiusMeters = 500 } = {}) => {
+  const params = [];
+  if (typeof latitude === 'number') params.push(`latitude=${encodeURIComponent(latitude)}`);
+  if (typeof longitude === 'number') params.push(`longitude=${encodeURIComponent(longitude)}`);
+  if (typeof radiusMeters === 'number') params.push(`radiusMeters=${encodeURIComponent(radiusMeters)}`);
+  const query = params.length ? `?${params.join('&')}` : '';
+  return api
+    .get(`/user/nearby-users${query}`, { ...authConfig(token), cacheTtlMs: 5000 })
+    .then((response) => response.data);
+};
+
+ export { getHome, getProfile, updateProfile, markFirstTimeFlag, deleteAccount, getHistory, getEmergencyContacts, upsertEmergencyContacts, deleteEmergencyContact, getNearbyUsers };

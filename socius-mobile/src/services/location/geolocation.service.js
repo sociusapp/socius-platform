@@ -14,11 +14,34 @@ const requestLocationPermission = async () => {
   return status === 'granted';
 };
 
-const getCurrentPosition = async () => {
-  const position = await Location.getCurrentPositionAsync({
-    accuracy: Location.Accuracy.High,
+const getCurrentPosition = async ({
+  timeoutMs = 7000,
+  fallbackToLastKnown = true,
+  accuracy = Location.Accuracy.High,
+} = {}) => {
+  const getPos = Location.getCurrentPositionAsync({ accuracy });
+  if (!timeoutMs || timeoutMs <= 0) {
+    return await getPos;
+  }
+
+  const withTimeout = new Promise((_, reject) => {
+    const id = setTimeout(() => {
+      clearTimeout(id);
+      reject(new Error('Location timeout'));
+    }, timeoutMs);
   });
-  return position;
+
+  try {
+    return await Promise.race([getPos, withTimeout]);
+  } catch (e) {
+    if (fallbackToLastKnown) {
+      try {
+        const last = await Location.getLastKnownPositionAsync({});
+        if (last) return last;
+      } catch (e2) { }
+    }
+    throw e;
+  }
 };
 
 const reverseGeocode = async ({ latitude, longitude }) => {

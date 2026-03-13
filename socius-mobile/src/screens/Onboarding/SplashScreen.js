@@ -53,14 +53,17 @@ const SplashScreen = () => {
       useNativeDriver: true,
     }).start();
 
+    let failSafeTimer = null;
+    let fallbackTimer = null;
+
     const init = async () => {
       const startTime = Date.now();
 
       try {
-        // Fail-safe: Hide native splash after 6 seconds no matter what
-        const failSafeTimer = setTimeout(() => {
+        // Fail-safe: Hide native splash quickly (target <= 2s splash)
+        failSafeTimer = setTimeout(() => {
           ExpoSplashScreen.hideAsync().catch(() => { });
-        }, 6000);
+        }, 2500);
 
         addLog('loading token');
         const { accessToken } = await loadAuth();
@@ -70,17 +73,18 @@ const SplashScreen = () => {
           if (navigated) return;
           navigated = true;
           await ExpoSplashScreen.hideAsync().catch(() => { });
-          clearTimeout(failSafeTimer);
+          if (failSafeTimer) clearTimeout(failSafeTimer);
+          if (fallbackTimer) clearTimeout(fallbackTimer);
           navigation.reset({ index: 0, routes: [{ name: route, params }] });
         };
-        const fallbackTimer = setTimeout(() => {
+        fallbackTimer = setTimeout(() => {
           addLog('fallback navigate');
           if (accessToken) {
             navigateNow('MainApp', { screen: 'HomeTab' });
           } else {
             navigateNow('PhoneVerification');
           }
-        }, 4000);
+        }, 2000);
 
         if (accessToken) {
           // 1. Check for active help request or presence request
@@ -98,10 +102,10 @@ const SplashScreen = () => {
               const activeStatuses = ['PENDING', 'SEARCHING', 'ACCEPTED', 'IN_PROGRESS', 'matched'];
 
               if (request && activeStatuses.includes(request.status)) {
-                clearTimeout(fallbackTimer);
+                if (fallbackTimer) clearTimeout(fallbackTimer);
                 await ExpoSplashScreen.hideAsync().catch(() => { });
                 navigation.reset({ index: 0, routes: [{ name: 'RequestActive' }] });
-                clearTimeout(failSafeTimer);
+                if (failSafeTimer) clearTimeout(failSafeTimer);
                 return;
               }
             }
@@ -112,10 +116,10 @@ const SplashScreen = () => {
               const activePresenceId = pData?._id || pData?.id || pData?.requestId || pData?.request?._id || pData?.presenceRequestId;
 
               if (activePresenceId) {
-                clearTimeout(fallbackTimer);
+                if (fallbackTimer) clearTimeout(fallbackTimer);
                 await ExpoSplashScreen.hideAsync().catch(() => { });
                 navigation.reset({ index: 0, routes: [{ name: 'AwarenessShared', params: { requestId: activePresenceId } }] });
-                clearTimeout(failSafeTimer);
+                if (failSafeTimer) clearTimeout(failSafeTimer);
                 return;
               }
             }
@@ -140,9 +144,9 @@ const SplashScreen = () => {
           const elapsed = Date.now() - startTime;
           if (elapsed < 2000) await new Promise(r => setTimeout(r, 2000 - elapsed));
 
-          clearTimeout(fallbackTimer);
+          if (fallbackTimer) clearTimeout(fallbackTimer);
           await ExpoSplashScreen.hideAsync().catch(() => { });
-          clearTimeout(failSafeTimer);
+          if (failSafeTimer) clearTimeout(failSafeTimer);
 
           if (shouldShowProfileReview) {
             addLog('navigate profile review');
@@ -156,9 +160,9 @@ const SplashScreen = () => {
           const elapsed = Date.now() - startTime;
           if (elapsed < 2000) await new Promise(r => setTimeout(r, 2000 - elapsed));
 
-          clearTimeout(fallbackTimer);
+          if (fallbackTimer) clearTimeout(fallbackTimer);
           await ExpoSplashScreen.hideAsync().catch(() => { });
-          clearTimeout(failSafeTimer);
+          if (failSafeTimer) clearTimeout(failSafeTimer);
           addLog('navigate phone verification');
           navigation.reset({ index: 0, routes: [{ name: 'PhoneVerification' }] });
         }
@@ -170,6 +174,10 @@ const SplashScreen = () => {
     };
 
     init();
+    return () => {
+      if (failSafeTimer) clearTimeout(failSafeTimer);
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+    };
   }, [navigation, fadeAnim]);
 
   return (
@@ -178,7 +186,7 @@ const SplashScreen = () => {
         <View style={styles.logoContainer}>
           <Image
             source={require('../../assets/icons/icon-03.png')}
-            style={{ width: scale(150), height: scale(150) }}
+            style={{ width: scale(220), height: scale(220) }}
             resizeMode="contain"
           />
         </View>

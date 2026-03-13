@@ -8,10 +8,21 @@
     "orientation": "portrait",
     "icon": "./src/assets/icons/icon-03.png",
     "splash": {
-      "image": "./src/assets/icons/splash.png",
-      "resizeMode": "cover",
+      "image": "./src/assets/icons/icon-03.png",
+      "resizeMode": "contain",
       "backgroundColor": "#FFFFFF"
     },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./src/assets/icons/icon-03.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#FFFFFF",
+          "imageWidth": 256
+        }
+      ]
+    ],
     "android": {
       "package": "com.socius.app",
       "adaptiveIcon": {
