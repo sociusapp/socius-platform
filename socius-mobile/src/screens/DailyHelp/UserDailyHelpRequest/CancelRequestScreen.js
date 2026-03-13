@@ -22,6 +22,12 @@ const CancelRequestScreen = ({ navigation, route }) => {
     FOUND_HELP_ELSEWHERE: 'found_help_elsewhere',
   };
   const [cancelReason, setCancelReason] = useState(CANCEL_REASONS.NO_ONE_ACCEPTED);
+  const cancelReasonOptions = [
+    { key: CANCEL_REASONS.NO_HELPERS_NEARBY, label: 'No helpers nearby', icon: 'account-search-outline' },
+    { key: CANCEL_REASONS.NO_ONE_ACCEPTED, label: 'No one accepted', icon: 'account-clock-outline' },
+    { key: CANCEL_REASONS.FOUND_HELP_ELSEWHERE, label: 'Found help elsewhere', icon: 'account-check-outline' },
+    { key: CANCEL_REASONS.CHANGE_OF_PLANS, label: 'Change of plans', icon: 'calendar-refresh' },
+  ];
 
   // Custom Alert State
   const [alertVisible, setAlertVisible] = useState(false);
@@ -204,91 +210,52 @@ const CancelRequestScreen = ({ navigation, route }) => {
 
           {/* Reason Selection */}
           <View style={{ width: '100%', marginBottom: vscale(24) }}>
-            <TouchableOpacity
-              style={[
-                styles.reasonOption,
-                { borderRadius: scale(14), paddingVertical: vscale(12), paddingHorizontal: spacing(14), marginBottom: vscale(10) },
-                cancelReason === CANCEL_REASONS.NO_HELPERS_NEARBY && styles.reasonOptionSelected,
-              ]}
-              onPress={() => setCancelReason(CANCEL_REASONS.NO_HELPERS_NEARBY)}
-              activeOpacity={0.85}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel reason: No helpers nearby"
-            >
-              <Text
-                style={[
-                  styles.reasonOptionText,
-                  { fontSize: ms(14) },
-                  cancelReason === CANCEL_REASONS.NO_HELPERS_NEARBY && styles.reasonOptionTextSelected,
-                ]}
-              >
-                No helpers nearby
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.reasonOption,
-                { borderRadius: scale(14), paddingVertical: vscale(12), paddingHorizontal: spacing(14), marginBottom: vscale(10) },
-                cancelReason === CANCEL_REASONS.NO_ONE_ACCEPTED && styles.reasonOptionSelected,
-              ]}
-              onPress={() => setCancelReason(CANCEL_REASONS.NO_ONE_ACCEPTED)}
-              activeOpacity={0.85}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel reason: No one accepted"
-            >
-              <Text
-                style={[
-                  styles.reasonOptionText,
-                  { fontSize: ms(14) },
-                  cancelReason === CANCEL_REASONS.NO_ONE_ACCEPTED && styles.reasonOptionTextSelected,
-                ]}
-              >
-                No one accepted
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.reasonOption,
-                { borderRadius: scale(14), paddingVertical: vscale(12), paddingHorizontal: spacing(14), marginBottom: vscale(10) },
-                cancelReason === CANCEL_REASONS.FOUND_HELP_ELSEWHERE && styles.reasonOptionSelected,
-              ]}
-              onPress={() => setCancelReason(CANCEL_REASONS.FOUND_HELP_ELSEWHERE)}
-              activeOpacity={0.85}
-            >
-              <Text
-                style={[
-                  styles.reasonOptionText,
-                  { fontSize: ms(14) },
-                  cancelReason === CANCEL_REASONS.FOUND_HELP_ELSEWHERE && styles.reasonOptionTextSelected,
-                ]}
-              >
-                Found help elsewhere
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.reasonOption,
-                { borderRadius: scale(14), paddingVertical: vscale(12), paddingHorizontal: spacing(14) },
-                cancelReason === CANCEL_REASONS.CHANGE_OF_PLANS && styles.reasonOptionSelected,
-              ]}
-              onPress={() => setCancelReason(CANCEL_REASONS.CHANGE_OF_PLANS)}
-              activeOpacity={0.85}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel reason: Change of plans"
-            >
-              <Text
-                style={[
-                  styles.reasonOptionText,
-                  { fontSize: ms(14) },
-                  cancelReason === CANCEL_REASONS.CHANGE_OF_PLANS && styles.reasonOptionTextSelected,
-                ]}
-              >
-                Change of plans
-              </Text>
-            </TouchableOpacity>
+            {cancelReasonOptions.map((opt, idx) => {
+              const isSelected = cancelReason === opt.key;
+              return (
+                <TouchableOpacity
+                  key={opt.key}
+                  style={[
+                    styles.reasonOption,
+                    {
+                      borderRadius: scale(14),
+                      paddingVertical: vscale(12),
+                      paddingHorizontal: spacing(14),
+                      marginBottom: idx === cancelReasonOptions.length - 1 ? 0 : vscale(10),
+                    },
+                    isSelected && styles.reasonOptionSelected,
+                  ]}
+                  onPress={() => setCancelReason(opt.key)}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Cancel reason: ${opt.label}`}
+                >
+                  <View style={styles.reasonRow}>
+                    <View style={[styles.reasonIconWrap, isSelected && styles.reasonIconWrapSelected]}>
+                      <Icon
+                        name={opt.icon}
+                        size={scale(18)}
+                        color={isSelected ? '#D84D42' : '#94A3B8'}
+                      />
+                    </View>
+                    <Text
+                      style={[
+                        styles.reasonOptionText,
+                        { fontSize: ms(14) },
+                        isSelected && styles.reasonOptionTextSelected,
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                    <Icon
+                      name={isSelected ? 'check-circle' : 'checkbox-blank-circle-outline'}
+                      size={scale(18)}
+                      color={isSelected ? '#D84D42' : '#CBD5E1'}
+                    />
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
           {/* Spacer */}
@@ -440,6 +407,25 @@ const styles = StyleSheet.create({
   },
   reasonOptionTextSelected: {
     color: '#B93A30',
+  },
+  reasonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  reasonIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginRight: 12,
+  },
+  reasonIconWrapSelected: {
+    backgroundColor: '#FFE7E4',
+    borderColor: '#F6B8B2',
   },
 
   // ===== DETAILS BOX =====

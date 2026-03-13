@@ -8,7 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useResponsive } from '../../utils/responsive';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getFcmToken } from '../../services/firebase/config';
-import { loadAuth, loadAvailabilityPreference, saveAvailabilityPreference } from '../../services/storage/asyncStorage.service';
+import { loadAuth, loadAvailabilityPreference, saveAvailabilityPreference, loadLastKnownLocation, saveLastKnownLocation } from '../../services/storage/asyncStorage.service';
 import { updateDeviceToken } from '../../services/api/auth.api';
 import * as Device from 'expo-device';
 import * as Application from 'expo-application';
@@ -149,6 +149,7 @@ const HomeScreen = ({ navigation }) => {
       }
 
       setLocationLabel(label);
+      saveLastKnownLocation({ label, latitude, longitude, updatedAt: now }).catch(() => {});
 
       await updateAvailabilityLocation(accessToken, {
         lng: longitude,
@@ -202,7 +203,18 @@ const HomeScreen = ({ navigation }) => {
   useEffect(() => {
     checkOnboardingStatus();
     checkAndSyncDeviceToken();
-    syncCurrentLocationToDb();
+    (async () => {
+      try {
+        const cached = await loadLastKnownLocation();
+        if (cached?.label) {
+          setLocationLabel(cached.label);
+        }
+        if (cached?.updatedAt) {
+          lastLocationSyncAtRef.current = cached.updatedAt;
+        }
+      } catch (e) { }
+      syncCurrentLocationToDb();
+    })();
     (async () => {
       try {
         const localValue = await loadAvailabilityPreference();

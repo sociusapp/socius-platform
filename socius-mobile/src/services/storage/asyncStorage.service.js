@@ -5,6 +5,7 @@ const REFRESH_TOKEN_KEY = 'refreshToken';
 const USER_ROLE_KEY = 'userRole';
 const USER_ID_KEY = 'userId';
 const AVAILABILITY_PREFERENCE_KEY = 'availabilityPreference.isAvailable';
+const LAST_KNOWN_LOCATION_KEY = 'location.lastKnown.v1';
 
 const saveAuth = async ({ accessToken, refreshToken, role, userId }) => {
   const tasks = [];
@@ -51,4 +52,43 @@ const loadAvailabilityPreference = async () => {
   return value === '1' || value === 'true';
 };
 
-export { saveAuth, loadAuth, clearAuth, saveAvailabilityPreference, loadAvailabilityPreference };
+const saveLastKnownLocation = async ({ label, latitude, longitude, updatedAt }) => {
+  const payload = {
+    label: typeof label === 'string' ? label : null,
+    latitude: typeof latitude === 'number' ? latitude : null,
+    longitude: typeof longitude === 'number' ? longitude : null,
+    updatedAt: typeof updatedAt === 'number' ? updatedAt : Date.now(),
+  };
+  await AsyncStorage.setItem(LAST_KNOWN_LOCATION_KEY, JSON.stringify(payload));
+};
+
+const loadLastKnownLocation = async () => {
+  const raw = await AsyncStorage.getItem(LAST_KNOWN_LOCATION_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    const out = {
+      label: typeof parsed.label === 'string' ? parsed.label : null,
+      latitude: typeof parsed.latitude === 'number' ? parsed.latitude : null,
+      longitude: typeof parsed.longitude === 'number' ? parsed.longitude : null,
+      updatedAt: typeof parsed.updatedAt === 'number' ? parsed.updatedAt : null,
+    };
+    if (out.label || (typeof out.latitude === 'number' && typeof out.longitude === 'number')) {
+      return out;
+    }
+    return null;
+  } catch (e) {
+    return null;
+  }
+};
+
+export {
+  saveAuth,
+  loadAuth,
+  clearAuth,
+  saveAvailabilityPreference,
+  loadAvailabilityPreference,
+  saveLastKnownLocation,
+  loadLastKnownLocation,
+};

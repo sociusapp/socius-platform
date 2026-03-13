@@ -115,8 +115,8 @@ class SociusCallModule(private val reactContext: ReactApplicationContext) :
                 titleTemplate = "Socius . Help Request",
                 bodyTemplate  = "{info}",
                 guidanceLine  = "No task required",
-                declineLabel  = "Not Available",
-                acceptLabel   = "View Details",
+                declineLabel  = "Not available",
+                acceptLabel   = "View",
                 acceptBtnBg   = "bg_btn_help"
             )
         }
@@ -445,6 +445,8 @@ class SociusCallModule(private val reactContext: ReactApplicationContext) :
                 )
 
                 val body  = cfg.bodyTemplate.replace("{info}", info)
+                val isHelpRequest = cfg.channelId.contains("help_request")
+                val displayTitle = if (isHelpRequest) "Help Request" else cfg.titleTemplate.replace("{name}", name)
 
                 val smallIconRes = listOf(
                     "ic_notification",
@@ -463,7 +465,7 @@ class SociusCallModule(private val reactContext: ReactApplicationContext) :
                 val channelId = "${cfg.channelId}_v9"
                 val notificationBuilder = NotificationCompat.Builder(reactContext, channelId)
                     .setSmallIcon(smallIconRes)
-                    .setContentTitle(cfg.titleTemplate.replace("{name}", name))
+                    .setContentTitle(displayTitle)
                     .setContentText(body)
                     .setPriority(NotificationCompat.PRIORITY_MAX)
                     .setCategory(NotificationCompat.CATEGORY_CALL)
@@ -487,7 +489,10 @@ class SociusCallModule(private val reactContext: ReactApplicationContext) :
                     val bodyId   = reactContext.resources.getIdentifier("tv_body", "id", reactContext.packageName)
                     val avatarId = reactContext.resources.getIdentifier("iv_avatar", "id", reactContext.packageName)
 
-                    if (titleId != 0) remoteViews.setTextViewText(titleId, cfg.titleTemplate.replace("{name}", name))
+                    if (titleId != 0) {
+                        val safeTitle = if (isHelpRequest) "Help Request" else (name.takeIf { it.isNotBlank() } ?: "Socius")
+                        remoteViews.setTextViewText(titleId, "$safeTitle · Socius · now")
+                    }
                     if (bodyId  != 0) remoteViews.setTextViewText(bodyId, body)
                     if (avatarId != 0) remoteViews.setImageViewBitmap(avatarId, finalAvatar)
                     
@@ -497,13 +502,13 @@ class SociusCallModule(private val reactContext: ReactApplicationContext) :
                     if (declineBtnId != 0) {
                         remoteViews.setTextViewText(declineBtnId, cfg.declineLabel)
                         remoteViews.setOnClickPendingIntent(declineBtnId, declinePendingIntent)
-                        val declineBgId = reactContext.resources.getIdentifier("bg_btn_surface", "drawable", reactContext.packageName)
+                        val declineBgId = reactContext.resources.getIdentifier("bg_btn_decline", "drawable", reactContext.packageName)
                         if (declineBgId != 0) remoteViews.setInt(declineBtnId, "setBackgroundResource", declineBgId)
                     }
                     if (answerBtnId != 0) {
                         remoteViews.setTextViewText(answerBtnId, cfg.acceptLabel)
                         remoteViews.setOnClickPendingIntent(answerBtnId, acceptPendingIntent)
-                        val acceptBgId = reactContext.resources.getIdentifier(cfg.acceptBtnBg, "drawable", reactContext.packageName)
+                        val acceptBgId = reactContext.resources.getIdentifier("bg_btn_answer", "drawable", reactContext.packageName)
                         if (acceptBgId != 0) remoteViews.setInt(answerBtnId, "setBackgroundResource", acceptBgId)
                     }
                     

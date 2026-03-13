@@ -84,33 +84,37 @@ class LockScreenActivity : AppCompatActivity() {
         val tvType = findViewById<TextView>(R.id.tv_type)
         val tvTitle = findViewById<TextView>(R.id.tv_title)
         val tvBody = findViewById<TextView>(R.id.tv_body)
+        val tvInfo = findViewById<TextView>(R.id.tv_info)
         val ivIcon = findViewById<ImageView>(R.id.iv_icon)
         val btnAccept = findViewById<LinearLayout>(R.id.btn_accept)
         val tvAcceptLabel = findViewById<TextView>(R.id.tv_accept_label)
         val tvDeclineLabel = findViewById<TextView>(R.id.tv_decline_label)
         val bgOverlay = findViewById<android.view.View>(R.id.bg_overlay)
 
+        tvType.text = "Socius"
+        bgOverlay.setBackgroundColor(android.graphics.Color.parseColor("#000000"))
+
         if (type == "PRESENCE_ALARM") {
-            tvType.text = "EMERGENCY ALERT"
-            tvType.setTextColor(android.graphics.Color.parseColor("#FF5555"))
-            bgOverlay.setBackgroundColor(android.graphics.Color.parseColor("#D95F5F"))
             ivIcon.setImageResource(R.drawable.notif_alarm_icon)
-            btnAccept.setBackgroundResource(R.drawable.bg_btn_alarm)
-            tvAcceptLabel.text = "I'm Aware"
-            tvDeclineLabel.text = "Can't Go"
         } else {
-            // Help Request or others
-            tvType.text = "HELP REQUEST"
-            tvType.setTextColor(android.graphics.Color.parseColor("#4A7EB5"))
-            bgOverlay.setBackgroundColor(android.graphics.Color.parseColor("#4A7EB5"))
             ivIcon.setImageResource(R.drawable.notif_help_icon)
-            btnAccept.setBackgroundResource(R.drawable.bg_btn_help)
-            tvAcceptLabel.text = "View Details"
-            tvDeclineLabel.text = "Not Available"
         }
 
-        tvTitle.text = name
-        tvBody.text = info
+        if (type == "PRESENCE_ALARM") {
+            btnAccept.setBackgroundResource(R.drawable.bg_btn_answer)
+            tvAcceptLabel.text = "Answer"
+            tvDeclineLabel.text = "Decline"
+            tvTitle.text = name
+            tvBody.text = "Incoming voice call"
+            tvInfo.text = info
+        } else {
+            btnAccept.setBackgroundResource(R.drawable.bg_btn_answer)
+            tvAcceptLabel.text = "View"
+            tvDeclineLabel.text = "Not available"
+            tvTitle.text = "Help Request"
+            tvBody.text = "Someone nearby needs help"
+            tvInfo.text = info
+        }
     }
 
     private fun acceptCall() {

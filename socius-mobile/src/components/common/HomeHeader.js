@@ -3,6 +3,8 @@ import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 const HomeHeader = ({ onSettingsPress, onLogoPress, locationLabel }) => {
+  const labelText = typeof locationLabel === 'string' && locationLabel.trim().length > 0 ? locationLabel : 'Updating location…';
+  const isPlaceholder = labelText === 'Updating location…';
   return (
     <View style={styles.container}>
       <TouchableOpacity style={styles.logoSection} onPress={onLogoPress} activeOpacity={0.8}>
@@ -12,20 +14,20 @@ const HomeHeader = ({ onSettingsPress, onLogoPress, locationLabel }) => {
         />
         <View style={styles.logoTextColumn}>
           <Text style={styles.logoText}>Socius</Text>
-          {locationLabel ? (
-            <View style={styles.locationRow}>
-              <Icon name="map-marker" size={14} color="#EC6E63" />
-              <Text style={styles.locationText} numberOfLines={2}>
-                {locationLabel}
-              </Text>
-            </View>
-          ) : null}
+          <View style={styles.locationRow}>
+            <Icon name="map-marker" size={14} color={isPlaceholder ? '#CBD5E1' : '#EC6E63'} />
+            <Text style={[styles.locationText, isPlaceholder && styles.locationTextPlaceholder]} numberOfLines={2}>
+              {labelText}
+            </Text>
+          </View>
         </View>
       </TouchableOpacity>
 
       <TouchableOpacity 
         style={styles.settingsButton}
         onPress={onSettingsPress}
+        accessibilityRole="button"
+        accessibilityLabel="Open settings"
       >
         <Icon name="cog" size={24} color="#999999" />
       </TouchableOpacity>
@@ -86,6 +88,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6B7280',
     flexShrink: 1,
+  },
+  locationTextPlaceholder: {
+    color: '#94A3B8',
   },
 });
 

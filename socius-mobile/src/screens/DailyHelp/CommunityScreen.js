@@ -11,7 +11,7 @@ import { SkeletonBox, SkeletonCircle, SkeletonSpacer } from '../../components/co
 import { useResponsive } from '../../utils/responsive';
 import { getMyActiveHelpRequest, getNearbyHelpRequests } from '../../services/api/incident.api';
 import { getHistory } from '../../services/api/user.api';
-import { loadAuth } from '../../services/storage/asyncStorage.service';
+import { loadAuth, loadLastKnownLocation, saveLastKnownLocation } from '../../services/storage/asyncStorage.service';
 import { getCurrentPosition } from '../../services/location/geolocation.service';
 import CustomAlert from '../../components/common/CustomAlert';
 
@@ -72,13 +72,19 @@ const CommunityScreen = ({ navigation, route }) => {
       const auth = await loadAuth();
       if (auth?.accessToken) {
         let coords = null;
+        let cached = null;
         try {
-          const position = await getCurrentPosition();
-          if (position?.coords) {
-            coords = {
-              latitude: position.coords.latitude,
-              longitude: position.coords.longitude
-            };
+          cached = await loadLastKnownLocation();
+          if (cached?.latitude && cached?.longitude) {
+            coords = { latitude: cached.latitude, longitude: cached.longitude };
+          } else {
+            const position = await getCurrentPosition();
+            if (position?.coords) {
+              coords = {
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude
+              };
+            }
           }
         } catch (locErr) {
           console.log('Error getting location:', locErr);
@@ -104,6 +110,17 @@ const CommunityScreen = ({ navigation, route }) => {
           setNearbyRequests(filteredRequests);
         } else {
           setNearbyRequests([]);
+        }
+
+        if (coords && (!cached || !cached.updatedAt || Date.now() - cached.updatedAt > 120000)) {
+          try {
+            await saveLastKnownLocation({
+              label: cached?.label || null,
+              latitude: coords.latitude,
+              longitude: coords.longitude,
+              updatedAt: Date.now(),
+            });
+          } catch (e) { }
         }
       }
     } catch (err) {

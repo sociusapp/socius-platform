@@ -3,15 +3,14 @@
     android:id="@+id/root_layout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#1C1C2E">
+    android:background="#121212">
 
-    <!-- Background Gradient Overlay (optional, dynamic via code) -->
     <View
         android:id="@+id/bg_overlay"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#D95F5F"
-        android:alpha="0.15" />
+        android:background="#000000"
+        android:alpha="0.35" />
 
     <!-- Top Content -->
     <LinearLayout
@@ -22,41 +21,52 @@
         android:orientation="vertical"
         android:padding="32dp">
 
-        <!-- Icon Circle -->
-        <FrameLayout
-            android:layout_width="120dp"
-            android:layout_height="120dp"
-            android:background="@drawable/bg_btn_surface"
-            android:padding="24dp">
-            
-            <ImageView
-                android:id="@+id/iv_icon"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:src="@drawable/notif_alarm_icon"
-                android:scaleType="fitCenter" />
-        </FrameLayout>
-
         <TextView
             android:id="@+id/tv_type"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="EMERGENCY ALERT"
-            android:textColor="#FF5555"
+            android:layout_marginBottom="22dp"
+            android:text="Socius"
+            android:textColor="#BDBDBD"
             android:textSize="14sp"
-            android:letterSpacing="0.15"
-            android:textStyle="bold"
-            android:textAllCaps="true" />
+            android:letterSpacing="0.05"
+            android:textStyle="bold" />
+
+        <FrameLayout
+            android:layout_width="112dp"
+            android:layout_height="112dp">
+
+            <ImageView
+                android:layout_width="112dp"
+                android:layout_height="112dp"
+                android:background="@drawable/bg_lock_avatar" />
+
+            <ImageView
+                android:id="@+id/iv_icon"
+                android:layout_width="112dp"
+                android:layout_height="112dp"
+                android:src="@drawable/notif_alarm_icon"
+                android:scaleType="centerCrop" />
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_gravity="bottom|start"
+                android:layout_marginStart="4dp"
+                android:layout_marginBottom="4dp"
+                android:background="@drawable/bg_app_badge"
+                android:padding="2dp"
+                android:src="@mipmap/ic_launcher_round" />
+        </FrameLayout>
 
         <TextView
             android:id="@+id/tv_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="18dp"
             android:text="Someone Needs Help"
             android:textColor="#FFFFFF"
-            android:textSize="24sp"
+            android:textSize="26sp"
             android:textStyle="bold"
             android:gravity="center" />
 
@@ -65,11 +75,23 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="Tap to view details and assist."
-            android:textColor="#AAAACC"
+            android:text="Incoming voice call"
+            android:textColor="#C7C7C7"
             android:textSize="16sp"
             android:gravity="center"
             android:lineSpacingExtra="4dp" />
+
+        <TextView
+            android:id="@+id/tv_info"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text=""
+            android:textColor="#9E9E9E"
+            android:textSize="13sp"
+            android:gravity="center"
+            android:maxLines="2"
+            android:ellipsize="end" />
 
     </LinearLayout>
 
@@ -79,30 +101,36 @@
         android:layout_height="wrap_content"
         android:layout_alignParentBottom="true"
         android:orientation="horizontal"
-        android:padding="32dp"
+        android:padding="24dp"
         android:weightSum="2">
 
         <!-- Decline Button -->
         <LinearLayout
             android:id="@+id/btn_decline"
             android:layout_width="0dp"
-            android:layout_height="56dp"
+            android:layout_height="58dp"
             android:layout_weight="1"
             android:gravity="center"
             android:orientation="horizontal"
             android:clickable="true"
             android:focusable="true"
             android:layout_marginEnd="12dp"
-            android:background="@drawable/bg_btn_surface"
+            android:background="@drawable/bg_btn_decline"
             android:paddingHorizontal="16dp"
             android:paddingVertical="14dp">
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_call_decline"
+                android:layout_marginEnd="10dp" />
 
             <TextView
                 android:id="@+id/tv_decline_label"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Decline"
-                android:textColor="#CCCCDD"
+                android:text="Not available"
+                android:textColor="#FFFFFF"
                 android:textStyle="bold"
                 android:textSize="14sp"
                 android:letterSpacing="0.05" />
@@ -112,16 +140,22 @@
         <LinearLayout
             android:id="@+id/btn_accept"
             android:layout_width="0dp"
-            android:layout_height="56dp"
+            android:layout_height="58dp"
             android:layout_weight="1"
             android:gravity="center"
             android:orientation="horizontal"
             android:clickable="true"
             android:focusable="true"
             android:layout_marginStart="12dp"
-            android:background="@drawable/bg_btn_help"
+            android:background="@drawable/bg_btn_answer"
             android:paddingHorizontal="16dp"
             android:paddingVertical="14dp">
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_call_answer"
+                android:layout_marginEnd="10dp" />
 
             <TextView
                 android:id="@+id/tv_accept_label"
@@ -129,9 +163,9 @@
                 android:layout_height="wrap_content"
                 android:textColor="#FFFFFF"
                 android:textStyle="bold"
-                android:textSize="14sp"
+                android:textSize="15sp"
                 android:letterSpacing="0.05"
-                android:text="View Details" />
+                android:text="View" />
         </LinearLayout>
 
     </LinearLayout>
