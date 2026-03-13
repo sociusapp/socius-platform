@@ -50,11 +50,6 @@ const initiateClosure = async (userId, { requestId, rating, feedback }) => {
     err.statusCode = 403
     throw err
   }
-  if (!rating || rating < 1 || rating > 5) {
-    const err = new Error('Rating (1-5) is required')
-    err.statusCode = 400
-    throw err
-  }
 
   const closure = await getOrCreateClosure({
     requestId,
@@ -63,9 +58,19 @@ const initiateClosure = async (userId, { requestId, rating, feedback }) => {
   })
 
   if (isRequester) {
-    closure.ratingByRequester = rating
+    const providedHelp = typeof feedback?.providedHelp === 'boolean' ? feedback.providedHelp : null
+    if (providedHelp !== false) {
+      if (!rating || rating < 1 || rating > 5) {
+        const err = new Error('Rating (1-5) is required')
+        err.statusCode = 400
+        throw err
+      }
+      closure.ratingByRequester = rating
+    } else {
+      closure.ratingByRequester = null
+    }
     closure.requesterFeedback = {
-      providedHelp: !!feedback?.providedHelp,
+      providedHelp,
       cancelledAfterAccept: !!feedback?.cancelledAfterAccept,
       noReplyAfterAccept: !!feedback?.noReplyAfterAccept,
       itemIssue: !!feedback?.itemIssue,
@@ -78,9 +83,19 @@ const initiateClosure = async (userId, { requestId, rating, feedback }) => {
       closure.flags.helperNoShow = true
     }
   } else if (isHelper) {
-    closure.ratingByHelper = rating
+    const providedHelp = typeof feedback?.providedHelp === 'boolean' ? feedback.providedHelp : null
+    if (providedHelp !== false) {
+      if (!rating || rating < 1 || rating > 5) {
+        const err = new Error('Rating (1-5) is required')
+        err.statusCode = 400
+        throw err
+      }
+      closure.ratingByHelper = rating
+    } else {
+      closure.ratingByHelper = null
+    }
     closure.helperFeedback = {
-      providedHelp: !!feedback?.providedHelp,
+      providedHelp,
       requesterUnavailable: !!feedback?.requesterUnavailable,
       safetyConcerns: !!feedback?.safetyConcerns,
       notes: feedback?.notes || null
@@ -94,7 +109,9 @@ const initiateClosure = async (userId, { requestId, rating, feedback }) => {
   }
 
   // Determine status
-  if (closure.ratingByRequester && closure.ratingByHelper) {
+  const requesterDone = typeof closure.requesterFeedback?.providedHelp === 'boolean' || !!closure.ratingByRequester
+  const helperDone = typeof closure.helperFeedback?.providedHelp === 'boolean' || !!closure.ratingByHelper
+  if (requesterDone && helperDone) {
     closure.status = 'closed'
     closure.closedAt = new Date()
   } else {
@@ -137,7 +154,8 @@ const autoCloseIfGhosted = async (closure) => {
   if (!closure || !closure.ghostingDeadlineAt) return null
   if (closure.closedAt) return null
 
-  if (new Date() >= new Date(closure.ghostingDeadlineAt) && !closure.ratingByHelper) {
+  const helperDone = typeof closure.helperFeedback?.providedHelp === 'boolean' || !!closure.ratingByHelper
+  if (new Date() >= new Date(closure.ghostingDeadlineAt) && !helperDone) {
     closure.status = 'auto_closed_penalty'
     closure.flags.helperGhosted = true
     closure.flags.penaltyApplied = true
@@ -235,8 +253,10 @@ const finalizeClosure = async (userId, { requestId }) => {
     err.statusCode = 403
     throw err
   }
-  if (!closure.ratingByRequester || !closure.ratingByHelper) {
-    const err = new Error('Both parties must submit ratings before finalizing')
+  const requesterDone = typeof closure.requesterFeedback?.providedHelp === 'boolean' || !!closure.ratingByRequester
+  const helperDone = typeof closure.helperFeedback?.providedHelp === 'boolean' || !!closure.ratingByHelper
+  if (!requesterDone || !helperDone) {
+    const err = new Error('Both parties must submit closure feedback before finalizing')
     err.statusCode = 400
     throw err
   }

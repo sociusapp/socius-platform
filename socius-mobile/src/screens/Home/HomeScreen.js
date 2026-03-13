@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Image, Animated, Easing, Modal, Platform, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Image, Animated, Easing, Modal, Platform, RefreshControl, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -8,7 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useResponsive } from '../../utils/responsive';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getFcmToken } from '../../services/firebase/config';
-import { loadAuth, loadAvailabilityPreference, saveAvailabilityPreference, loadLastKnownLocation, saveLastKnownLocation } from '../../services/storage/asyncStorage.service';
+import { loadAuth, loadAvailabilityPreference, loadAvailabilityUpdatedAt, saveAvailabilityPreference, loadLastKnownLocation, saveLastKnownLocation } from '../../services/storage/asyncStorage.service';
 import { updateDeviceToken } from '../../services/api/auth.api';
 import * as Device from 'expo-device';
 import * as Application from 'expo-application';
@@ -19,7 +19,6 @@ import { getProfile } from '../../services/api/user.api';
 const HomeScreen = ({ navigation }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
   const [isAvailable, setIsAvailable] = useState(true);
-  const [isToggling, setIsToggling] = useState(false);
   const [availabilityWidth, setAvailabilityWidth] = useState(0);
   const [toggleAnim] = useState(new Animated.Value(0));
   const [callModalVisible, setCallModalVisible] = useState(false);
@@ -28,6 +27,8 @@ const HomeScreen = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
   const lastLocationSyncAtRef = useRef(0);
   const locationSyncInFlightRef = useRef(false);
+  const availabilityReqSeqRef = useRef(0);
+  const availabilityErrorShownAtRef = useRef(0);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -161,24 +162,41 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
-  const fetchAvailabilityStatus = async () => {
+  const fetchAvailabilityStatus = async ({ forceApply = false } = {}) => {
     try {
-      if (isToggling) return;
       const { accessToken } = await loadAuth();
       if (!accessToken) return;
       const response = await getProfile(accessToken);
       if (response?.success && response?.data) {
         const { isAvailable } = response.data;
-        setIsAvailable(!!isAvailable);
-        try {
-          await saveAvailabilityPreference(!!isAvailable);
-        } catch (e) { }
-        Animated.timing(toggleAnim, {
-          toValue: isAvailable ? 0 : 1,
-          duration: 220,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }).start();
+        let shouldApplyServer = true;
+        if (!forceApply) {
+          try {
+            const [localValue, updatedAt] = await Promise.all([
+              loadAvailabilityPreference(),
+              loadAvailabilityUpdatedAt(),
+            ]);
+            if (typeof localValue === 'boolean' && typeof updatedAt === 'number') {
+              const recentlyChanged = Date.now() - updatedAt < 4000;
+              if (recentlyChanged && localValue !== !!isAvailable) {
+                shouldApplyServer = false;
+              }
+            }
+          } catch (e) { }
+        }
+
+        if (shouldApplyServer) {
+          setIsAvailable(!!isAvailable);
+          try {
+            await saveAvailabilityPreference(!!isAvailable);
+          } catch (e) { }
+          Animated.timing(toggleAnim, {
+            toValue: isAvailable ? 0 : 1,
+            duration: 220,
+            easing: Easing.out(Easing.ease),
+            useNativeDriver: true,
+          }).start();
+        }
       }
     } catch (error) {
       console.log('Error fetching availability:', error);
@@ -302,7 +320,6 @@ const HomeScreen = ({ navigation }) => {
   };
 
   const handleAvailabilityToggle = async (value) => {
-    if (isToggling) return;
     if (value === isAvailable) return;
 
     const previousValue = isAvailable;
@@ -318,48 +335,73 @@ const HomeScreen = ({ navigation }) => {
     }
 
     applyAvailability(value, { animate: true });
-    setIsToggling(true);
     try {
       await saveAvailabilityPreference(value);
     } catch (e) { }
 
-    try {
-      const { accessToken } = await loadAuth();
-      if (!accessToken) {
-        applyAvailability(previousValue, { animate: true });
-        try {
-          await saveAvailabilityPreference(previousValue);
-        } catch (e) { }
-        return;
-      }
+    const seq = (availabilityReqSeqRef.current || 0) + 1;
+    availabilityReqSeqRef.current = seq;
 
-      if (value === true) {
-        // Get location if turning ON
-        const hasPermission = await requestLocationPermission();
-        let location = null;
-        if (hasPermission) {
-          const pos = await getCurrentPosition();
-          if (pos && pos.coords) {
-            location = {
-              lng: pos.coords.longitude,
-              lat: pos.coords.latitude
-            };
+    (async () => {
+      try {
+        const { accessToken } = await loadAuth();
+        if (!accessToken) return;
+
+        if (value === true) {
+          let location = null;
+          try {
+            const cached = await loadLastKnownLocation();
+            if (typeof cached?.latitude === 'number' && typeof cached?.longitude === 'number') {
+              location = { lng: cached.longitude, lat: cached.latitude };
+            }
+          } catch (e) { }
+
+          try {
+            const hasPermission = await requestLocationPermission();
+            if (hasPermission) {
+              const pos = await getCurrentPosition({ timeoutMs: 1500, fallbackToLastKnown: true });
+              if (pos && pos.coords) {
+                location = {
+                  lng: pos.coords.longitude,
+                  lat: pos.coords.latitude,
+                };
+              }
+            }
+          } catch (e) { }
+
+          const payload = location ? { isAvailable: true, location } : { isAvailable: true };
+          const res = await toggleAvailability(accessToken, payload);
+          const serverValue = res?.data?.isAvailable;
+          if (availabilityReqSeqRef.current === seq && typeof serverValue === 'boolean') {
+            applyAvailability(serverValue, { animate: true });
+            try { await saveAvailabilityPreference(serverValue); } catch (e) { }
+          }
+        } else {
+          const res = await toggleAvailability(accessToken, { isAvailable: false });
+          const serverValue = res?.data?.isAvailable;
+          if (availabilityReqSeqRef.current === seq && typeof serverValue === 'boolean') {
+            applyAvailability(serverValue, { animate: true });
+            try { await saveAvailabilityPreference(serverValue); } catch (e) { }
           }
         }
-
-        await toggleAvailability(accessToken, { isAvailable: true, location });
-      } else {
-        await toggleAvailability(accessToken, { isAvailable: false });
+      } catch (error) {
+        if (availabilityReqSeqRef.current !== seq) return;
+        setTimeout(async () => {
+          if (availabilityReqSeqRef.current !== seq) return;
+          try {
+            await fetchAvailabilityStatus({ forceApply: true });
+            const now = Date.now();
+            if (now - (availabilityErrorShownAtRef.current || 0) > 4000) {
+              availabilityErrorShownAtRef.current = now;
+              const apiMessage =
+                error?.response?.data?.message ||
+                error?.response?.data?.errors?.[0]?.message;
+              Alert.alert('Unable to update', apiMessage || 'Unable to update availability. Please try again.');
+            }
+          } catch (e) { }
+        }, 1500);
       }
-    } catch (error) {
-      console.error('Error toggling availability:', error);
-      applyAvailability(previousValue, { animate: true });
-      try {
-        await saveAvailabilityPreference(previousValue);
-      } catch (e) { }
-    } finally {
-      setIsToggling(false);
-    }
+    })();
   };
 
   const emergencyContacts = [
@@ -472,12 +514,11 @@ const HomeScreen = ({ navigation }) => {
                   end={{ x: 0.8, y: 1.0 }}
                   style={[styles.availabilitySliderGradient, { justifyContent: 'center', alignItems: 'flex-end', paddingRight: spacing(10) }]}
                 >
-                  {isToggling ? <ActivityIndicator size="small" color="#FFFFFF" /> : null}
+                
                 </LinearGradient>
               </Animated.View>
             )}
             <TouchableOpacity
-              disabled={isToggling}
               style={[
                 styles.availabilityButton,
                 {
@@ -500,7 +541,6 @@ const HomeScreen = ({ navigation }) => {
             </TouchableOpacity>
 
             <TouchableOpacity
-              disabled={isToggling}
               style={[
                 styles.availabilityButton,
                 {

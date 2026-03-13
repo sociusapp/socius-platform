@@ -107,11 +107,7 @@ const schemas = {
     location: Joi.object({
       lng: Joi.number().min(-180).max(180).required(),
       lat: Joi.number().min(-90).max(90).required(),
-    }).when('isAvailable', {
-      is: true,
-      then: Joi.required(),
-      otherwise: Joi.optional(),
-    }),
+    }).optional(),
   }),
 
   // Help request

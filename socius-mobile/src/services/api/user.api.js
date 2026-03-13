@@ -14,7 +14,7 @@ const getHome = (token) => {
 };
 
 const getProfile = (token) => {
-  return api.get('/user/profile', { ...authConfig(token), cacheTtlMs: 10000 }).then((response) => response.data);
+  return api.get('/user/profile', { ...authConfig(token), cacheTtlMs: 0 }).then((response) => response.data);
 };
 
 const updateProfile = (token, payload) => {

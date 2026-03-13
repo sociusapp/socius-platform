@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Button from '../../../components/common/Button';
@@ -7,8 +7,7 @@ import Header from '../../../components/common/Header';
 import CustomAlert from '../../../components/common/CustomAlert';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useResponsive } from '../../../utils/responsive';
-import * as ImagePicker from 'expo-image-picker';
-import { submitClosure, uploadClosureEvidence } from '../../../services/api/incident.api';
+import { submitClosure } from '../../../services/api/incident.api';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
 
 const ClosingRequestScreen = ({ navigation, route }) => {
@@ -19,16 +18,19 @@ const ClosingRequestScreen = ({ navigation, route }) => {
   const [noReplyAfterAccept, setNoReplyAfterAccept] = useState(false);
   const [itemIssue, setItemIssue] = useState(false);
   const [itemIssueDescription, setItemIssueDescription] = useState('');
-  const [evidenceUris, setEvidenceUris] = useState([]);
-  const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const requestId = route?.params?.requestId;
 
   useEffect(() => {
     if (providedHelp === true) {
+      if (!starRating || starRating < 1) setStarRating(5);
       setCancelledAfterAccept(false);
       setNoReplyAfterAccept(false);
       setItemIssue(false);
+      setItemIssueDescription('');
+    }
+    if (providedHelp === false) {
+      setStarRating(0);
     }
   }, [providedHelp]);
 
@@ -57,28 +59,6 @@ const ClosingRequestScreen = ({ navigation, route }) => {
     setAlertVisible(false);
   };
 
-  const pickEvidencePhoto = async () => {
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission needed', 'We need media library permission to attach photos.');
-        return;
-        }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.8,
-        allowsMultipleSelection: true,
-        selectionLimit: 5,
-      });
-      if (!result.canceled) {
-        const assets = result.assets || [];
-        setEvidenceUris(prev => [...prev, ...assets.map(a => a.uri)].slice(0,5));
-      }
-    } catch (e) {
-      Alert.alert('Error', 'Unable to pick images.');
-    }
-  };
-
   const handleDone = async () => {
     if (submitting) {
       return;
@@ -89,18 +69,14 @@ const ClosingRequestScreen = ({ navigation, route }) => {
       return;
     }
 
-    if (!starRating || starRating < 1) {
-      showAlert('Rating required', 'Please rate your experience to continue.', [{ text: 'OK', onPress: closeAlert }]);
+    if (providedHelp !== true && providedHelp !== false) {
+      showAlert('Select an option', 'Please tell us whether help was provided.', [{ text: 'OK', onPress: closeAlert }]);
       return;
     }
 
-    if (itemIssue) {
-      if (!itemIssueDescription || itemIssueDescription.trim().length < 5) {
-        showAlert('More details', 'Please describe the issue with the item.', [{ text: 'OK', onPress: closeAlert }]);
-        return;
-      }
-      if (evidenceUris.length === 0) {
-        showAlert('Photo required', 'Please add at least one photo of the item issue.', [{ text: 'OK', onPress: closeAlert }]);
+    if (providedHelp === true) {
+      if (!starRating || starRating < 1) {
+        showAlert('Rating required', 'Please rate your experience to continue.', [{ text: 'OK', onPress: closeAlert }]);
         return;
       }
     }
@@ -116,29 +92,16 @@ const ClosingRequestScreen = ({ navigation, route }) => {
         return;
       }
 
-      let evidencePhotos = [];
-      if (itemIssue && evidenceUris.length > 0) {
-        setUploading(true);
-        const formData = new FormData();
-        evidenceUris.forEach((uri, idx) => {
-          const name = `evidence_${idx}.jpg`;
-          formData.append('closure_evidence', { uri, name, type: 'image/jpeg' });
-        });
-        const uploadRes = await uploadClosureEvidence(token, formData);
-        evidencePhotos = uploadRes?.data?.files || uploadRes?.files || [];
-        setUploading(false);
-      }
-
       const payload = {
         requestId,
-        rating: starRating,
+        rating: providedHelp === true ? starRating : null,
         feedback: {
           providedHelp: providedHelp === true,
           cancelledAfterAccept,
           noReplyAfterAccept,
           itemIssue,
-          itemIssueDescription: itemIssue ? itemIssueDescription : null,
-          evidencePhotos,
+          itemIssueDescription: itemIssue && itemIssueDescription.trim().length > 0 ? itemIssueDescription.trim() : null,
+          evidencePhotos: [],
         }
       };
 
@@ -245,52 +208,56 @@ const ClosingRequestScreen = ({ navigation, route }) => {
 
           <View style={[styles.section, { marginBottom: vscale(14) }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: vscale(10) }}>
-              <Icon name="star-outline" size={scale(18)} color="#6B7280" style={{ marginRight: spacing(8) }} />
-              <Text style={[styles.sectionHeading, { fontSize: ms(14) }]}>Rate your experience</Text>
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              {[1,2,3,4,5].map(n => (
-                <TouchableOpacity
-                  key={n}
-                  onPress={() => setStarRating(n)}
-                  style={{ padding: spacing(6) }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Rate ${n} star${n === 1 ? '' : 's'}`}
-                >
-                  <Icon name={n <= starRating ? 'star' : 'star-outline'} size={scale(28)} color={n <= starRating ? '#F59E0B' : '#9CA3AF'} />
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          <View style={[styles.section, { marginBottom: vscale(14) }]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: vscale(10) }}>
               <Icon name="account-heart-outline" size={scale(18)} color="#6B7280" style={{ marginRight: spacing(8) }} />
               <Text style={[styles.sectionHeading, { fontSize: ms(14) }]}>Did the helper provide help?</Text>
             </View>
-            <View style={[styles.rowButtons, { gap: spacing(10) }]}>
-              <Button
-                title="Yes"
-                onPress={() => setProvidedHelp(true)}
-                variant={providedHelp === true ? 'primary' : 'outline'}
-                size="large"
-                fullWidth={false}
-                style={styles.halfButton}
-                icon={<Icon name="thumb-up-outline" size={scale(18)} color={providedHelp === true ? '#FFFFFF' : '#E85555'} />}
-                accessibilityLabel="Yes, help was provided"
-              />
-              <Button
-                title="No"
-                onPress={() => setProvidedHelp(false)}
-                variant={providedHelp === false ? 'primary' : 'outline'}
-                size="large"
-                fullWidth={false}
-                style={styles.halfButton}
-                icon={<Icon name="thumb-down-outline" size={scale(18)} color={providedHelp === false ? '#FFFFFF' : '#E85555'} />}
-                accessibilityLabel="No, help was not provided"
-              />
+            <View style={[styles.rowButtons, { marginBottom: 0 }]}>
+              <View style={{ flex: 1, marginRight: spacing(10) }}>
+                <Button
+                  title="Yes"
+                  onPress={() => setProvidedHelp(true)}
+                  variant={providedHelp === true ? 'primary' : 'outline'}
+                  size="large"
+                  fullWidth
+                  icon={<Icon name="thumb-up-outline" size={scale(18)} color={providedHelp === true ? '#FFFFFF' : '#E85555'} />}
+                  accessibilityLabel="Yes, help was provided"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Button
+                  title="No"
+                  onPress={() => setProvidedHelp(false)}
+                  variant={providedHelp === false ? 'primary' : 'outline'}
+                  size="large"
+                  fullWidth
+                  icon={<Icon name="thumb-down-outline" size={scale(18)} color={providedHelp === false ? '#FFFFFF' : '#E85555'} />}
+                  accessibilityLabel="No, help was not provided"
+                />
+              </View>
             </View>
           </View>
+
+          {providedHelp === true && (
+            <View style={[styles.section, { marginBottom: vscale(14) }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: vscale(10) }}>
+                <Icon name="star-outline" size={scale(18)} color="#6B7280" style={{ marginRight: spacing(8) }} />
+                <Text style={[styles.sectionHeading, { fontSize: ms(14) }]}>Rate your experience</Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                {[1,2,3,4,5].map(n => (
+                  <TouchableOpacity
+                    key={n}
+                    onPress={() => setStarRating(n)}
+                    style={{ padding: spacing(6) }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Rate ${n} star${n === 1 ? '' : 's'}`}
+                  >
+                    <Icon name={n <= starRating ? 'star' : 'star-outline'} size={scale(28)} color={n <= starRating ? '#F59E0B' : '#9CA3AF'} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
 
           {providedHelp === false && (
             <View style={[styles.section, { marginBottom: vscale(14) }]}>
@@ -363,7 +330,7 @@ const ClosingRequestScreen = ({ navigation, route }) => {
             <View style={[styles.section, { marginBottom: vscale(14) }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: vscale(10) }}>
                 <Icon name="text-box-edit-outline" size={scale(18)} color="#6B7280" style={{ marginRight: spacing(8) }} />
-                <Text style={[styles.sectionHeading, { fontSize: ms(14) }]}>Describe the issue</Text>
+                <Text style={[styles.sectionHeading, { fontSize: ms(14) }]}>Describe the issue (optional)</Text>
               </View>
               <TextInput
                 style={[styles.textInput, { borderRadius: scale(8), padding: spacing(12), height: vscale(80), fontSize: ms(14), marginBottom: vscale(8), borderWidth: scale(1), borderColor: '#E5E7EB' }]}
@@ -373,22 +340,6 @@ const ClosingRequestScreen = ({ navigation, route }) => {
                 onChangeText={setItemIssueDescription}
                 multiline
               />
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Button
-                  title="Add Photos"
-                  onPress={pickEvidencePhoto}
-                  size="small"
-                  variant="white"
-                  icon={<Icon name="camera-plus-outline" size={scale(16)} color="#2C3E50" />}
-                  accessibilityLabel="Add photos"
-                />
-                <Text style={[styles.helperText, { fontSize: ms(12) }]}>{evidenceUris.length}/5</Text>
-              </View>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: vscale(8) }}>
-                {evidenceUris.map((uri, idx) => (
-                  <Image key={idx} source={{ uri }} style={{ width: scale(64), height: scale(64), borderRadius: scale(8), marginRight: spacing(8), marginBottom: vscale(8) }} />
-                ))}
-              </View>
             </View>
           )}
 
@@ -426,13 +377,13 @@ const ClosingRequestScreen = ({ navigation, route }) => {
           </View>
 
           <Button
-            title={uploading ? "Uploading..." : "Submit Closure"}
+            title="Submit Closure"
             onPress={handleDone}
             variant="gradient"
             size="large"
             fullWidth
-            loading={submitting || uploading}
-            disabled={submitting || uploading}
+            loading={submitting}
+            disabled={submitting}
             icon={<Icon name="check-circle-outline" size={scale(18)} color="#FFFFFF" />}
             accessibilityLabel="Submit closure"
           />

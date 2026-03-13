@@ -181,11 +181,36 @@ const ShareLocationScreen = ({ navigation, route }) => {
       const messageFromServer =
         error.response.data?.message ||
         error.response.data?.errors?.[0]?.message;
+      const code = error.response.data?.code;
+      const retryAfter = Number(error.response.headers?.['retry-after'] || 0) || 0;
 
-      if (status === 404 && error.response.data?.code === 'NO_HELPERS_FOUND') {
+      if (status === 429) {
+        const suffix = retryAfter > 0 ? ` Please try again after ${retryAfter} seconds.` : '';
         showAlert(
-          'No helpers nearby',
-          messageFromServer || 'No available helpers were found within 500m right now. Please try again later.',
+          'Please wait',
+          (messageFromServer || 'Too many requests. Please try again soon.') + suffix,
+          [{ text: 'OK', onPress: closeAlert }]
+        );
+        return;
+      }
+
+      if (status === 400 && code === 'SELF_HELP_NOT_ALLOWED') {
+        showAlert(
+          'Not possible',
+          messageFromServer || 'You cannot send a request to your own account. Ask another nearby user to be available and try again.',
+          [{ text: 'OK', onPress: closeAlert }]
+        );
+        return;
+      }
+
+      if (status === 404 && (code === 'NO_HELPERS_FOUND' || code === 'NO_HELPERS_AVAILABLE')) {
+        const isBusy = code === 'NO_HELPERS_AVAILABLE';
+        showAlert(
+          isBusy ? 'Helpers are busy' : 'No helpers nearby',
+          messageFromServer ||
+            (isBusy
+              ? 'Nearby helpers are currently busy. Please try again in a few minutes.'
+              : 'No available helpers were found within 500m right now. Please try again later.'),
           [{ text: 'OK', onPress: closeAlert }]
         );
         return;

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../../components/common/Header';
 import Button from '../../../components/common/Button';
 import CustomAlert from '../../../components/common/CustomAlert';
@@ -12,6 +13,32 @@ import { loadAuth } from '../../../services/storage/asyncStorage.service';
 const SafetyComesFirstScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
   const { requestId } = route.params || {};
+  const cards = [
+    {
+      title: 'Observe Only',
+      desc: 'Stay aware, keep distance.',
+      image: require('../../../assets/images/safety-1.png'),
+      icon: 'eye-outline',
+      bg: '#EEF3F6',
+      fg: '#5A6F7D',
+    },
+    {
+      title: 'Leave Anytime',
+      desc: 'You can exit without explanation.',
+      image: require('../../../assets/images/safety-2.png'),
+      icon: 'exit-run',
+      bg: '#F1EEE8',
+      fg: '#8B6F47',
+    },
+    {
+      title: 'Call Authorities',
+      desc: 'If anything feels unsafe.',
+      image: require('../../../assets/images/safety-3.png'),
+      icon: 'phone-alert-outline',
+      bg: '#F8EAEA',
+      fg: '#C94D4D',
+    },
+  ];
 
   // Custom Alert State
   const [alertVisible, setAlertVisible] = useState(false);
@@ -249,68 +276,52 @@ const SafetyComesFirstScreen = ({ navigation, route }) => {
 
           {/* Action Cards */}
           <View style={[styles.cardsContainer, { gap: vscale(16), marginBottom: vscale(32) }]}>
-            <View style={[styles.card, {
-              borderRadius: scale(16),
-              padding: spacing(16),
-              borderWidth: scale(1),
-              shadowRadius: scale(8),
-              elevation: scale(2)
-            }]}>
-              <View style={[styles.iconContainer, { width: scale(48), height: scale(48), marginRight: spacing(16) }]}>
-                <Image
-                  source={require('../../../assets/images/safety-1.png')}
-                  style={{ width: '100%', height: '100%' }}
-                  resizeMode="contain"
-                />
+            {cards.map((c) => (
+              <View
+                key={c.title}
+                style={[
+                  styles.card,
+                  {
+                    borderRadius: scale(16),
+                    paddingVertical: vscale(14),
+                    paddingHorizontal: spacing(16),
+                    borderWidth: scale(1),
+                    minHeight: vscale(74),
+                    shadowRadius: scale(8),
+                    elevation: scale(2),
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.iconContainer,
+                    {
+                      width: scale(52),
+                      height: scale(52),
+                      borderRadius: scale(26),
+                      marginRight: spacing(14),
+                      backgroundColor: c.bg,
+                      borderWidth: scale(1),
+                      borderColor: '#E8EAED',
+                    },
+                  ]}
+                >
+                  <Image
+                    source={c.image}
+                    style={{ width: scale(34), height: scale(34) }}
+                    resizeMode="contain"
+                  />
+                  <View style={styles.iconFallback} pointerEvents="none">
+                    <Icon name={c.icon} size={scale(20)} color={c.fg} />
+                  </View>
+                </View>
+                <View style={styles.cardContent}>
+                  <Text style={[styles.cardTitle, { fontSize: ms(16), marginBottom: vscale(4) }]}>{c.title}</Text>
+                  <Text style={[styles.cardDescription, { fontSize: ms(13) }]}>{c.desc}</Text>
+                </View>
               </View>
-              <View style={styles.cardContent}>
-                <Text style={[styles.cardTitle, { fontSize: ms(16), marginBottom: vscale(4) }]}>Observe Only</Text>
-                <Text style={[styles.cardDescription, { fontSize: ms(13) }]}>Stay aware, keep distance.</Text>
-              </View>
-            </View>
-
-            <View style={[styles.card, {
-              borderRadius: scale(16),
-              padding: spacing(16),
-              borderWidth: scale(1),
-              shadowRadius: scale(8),
-              elevation: scale(2)
-            }]}>
-              <View style={[styles.iconContainer, { width: scale(48), height: scale(48), marginRight: spacing(16) }]}>
-                <Image
-                  source={require('../../../assets/images/safety-2.png')}
-                  style={{ width: '100%', height: '100%' }}
-                  resizeMode="contain"
-                />
-              </View>
-              <View style={styles.cardContent}>
-                <Text style={[styles.cardTitle, { fontSize: ms(16), marginBottom: vscale(4) }]}>Leave Anytime</Text>
-                <Text style={[styles.cardDescription, { fontSize: ms(13) }]}>You can exit without explanation.</Text>
-              </View>
-            </View>
-
-            <View style={[styles.card, {
-              borderRadius: scale(16),
-              padding: spacing(16),
-              borderWidth: scale(1),
-              shadowRadius: scale(8),
-              elevation: scale(2)
-            }]}>
-              <View style={[styles.iconContainer, { width: scale(48), height: scale(48), marginRight: spacing(16) }]}>
-                <Image
-                  source={require('../../../assets/images/safety-3.png')}
-                  style={{ width: '100%', height: '100%' }}
-                  resizeMode="contain"
-                />
-              </View>
-              <View style={styles.cardContent}>
-                <Text style={[styles.cardTitle, { fontSize: ms(16), marginBottom: vscale(4) }]}>Call Authorities</Text>
-                <Text style={[styles.cardDescription, { fontSize: ms(13) }]}>If anything feels unsafe.</Text>
-              </View>
-            </View>
+            ))}
           </View>
-
-          <View style={styles.spacer} />
 
           {/* Buttons */}
           <Button
@@ -425,6 +436,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 16,
   },
+  iconFallback: {
+    position: 'absolute',
+    right: 6,
+    bottom: 6,
+  },
   cardContent: {
     flex: 1,
   },
@@ -437,9 +453,6 @@ const styles = StyleSheet.create({
   cardDescription: {
     fontSize: 13,
     color: '#7F8C8D',
-  },
-  spacer: {
-    flex: 1,
   },
   continueButton: {
     backgroundColor: '#D3453D',

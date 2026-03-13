@@ -25,16 +25,26 @@ const toggleAvailability = async (userId, { isAvailable, location }) => {
 
   // Available on karne pe location zaroori hai
   if (isAvailable) {
-    if (!location) {
-      const err = new Error('Location required when turning availability on')
-      err.statusCode = 400
-      throw err
+    let lng = location?.lng
+    let lat = location?.lat
+
+    if (!isValidCoordinates(lng, lat)) {
+      const coords = user?.location?.coordinates
+      const hasStored =
+        Array.isArray(coords) &&
+        coords.length === 2 &&
+        typeof coords[0] === 'number' &&
+        typeof coords[1] === 'number'
+      if (hasStored) {
+        lng = coords[0]
+        lat = coords[1]
+      }
     }
 
-    const { lng, lat } = location
     if (!isValidCoordinates(lng, lat)) {
-      const err = new Error('Invalid coordinates')
+      const err = new Error('Location required when turning availability on')
       err.statusCode = 400
+      err.code = 'LOCATION_REQUIRED'
       throw err
     }
 

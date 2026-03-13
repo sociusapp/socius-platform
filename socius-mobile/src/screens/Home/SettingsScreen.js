@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../components/common/Header';
 import { useResponsive } from '../../utils/responsive';
-import { loadAuth, loadAvailabilityPreference, saveAvailabilityPreference } from '../../services/storage/asyncStorage.service';
+import { loadAuth, loadAvailabilityPreference, loadAvailabilityUpdatedAt, loadLastKnownLocation, saveAvailabilityPreference } from '../../services/storage/asyncStorage.service';
 import { getProfile } from '../../services/api/user.api';
 import { toggleAvailability } from '../../services/api/incident.api';
 import { requestLocationPermission, getCurrentPosition } from '../../services/location/geolocation.service';
@@ -12,6 +13,8 @@ import { requestLocationPermission, getCurrentPosition } from '../../services/lo
 const SettingsScreen = ({ navigation }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
   const [isAvailable, setIsAvailable] = useState(true);
+  const availabilityReqSeqRef = useRef(0);
+  const availabilityErrorShownAtRef = useRef(0);
 
   useEffect(() => {
     (async () => {
@@ -25,17 +28,53 @@ const SettingsScreen = ({ navigation }) => {
     })();
   }, []);
 
-  const fetchAvailabilityStatus = async () => {
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        try {
+          const localValue = await loadAvailabilityPreference();
+          if (!cancelled && typeof localValue === 'boolean') {
+            setIsAvailable(localValue);
+          }
+        } catch (e) { }
+        fetchAvailabilityStatus();
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
+
+  const fetchAvailabilityStatus = async ({ forceApply = false } = {}) => {
     try {
       const { accessToken } = await loadAuth();
       if (!accessToken) return;
       const response = await getProfile(accessToken);
       if (response?.success && response?.data) {
         const value = !!response.data.isAvailable;
-        setIsAvailable(value);
-        try {
-          await saveAvailabilityPreference(value);
-        } catch (e) { }
+        let shouldApplyServer = true;
+        if (!forceApply) {
+          try {
+            const [localValue, updatedAt] = await Promise.all([
+              loadAvailabilityPreference(),
+              loadAvailabilityUpdatedAt(),
+            ]);
+            if (typeof localValue === 'boolean' && typeof updatedAt === 'number') {
+              const recentlyChanged = Date.now() - updatedAt < 4000;
+              if (recentlyChanged && localValue !== value) {
+                shouldApplyServer = false;
+              }
+            }
+          } catch (e) { }
+        }
+
+        if (shouldApplyServer) {
+          setIsAvailable(value);
+          try {
+            await saveAvailabilityPreference(value);
+          } catch (e) { }
+        }
       }
     } catch (error) {
       console.log('Error fetching availability:', error);
@@ -43,47 +82,76 @@ const SettingsScreen = ({ navigation }) => {
   };
 
   const handleAvailabilityToggle = async (value) => {
-    const previousValue = isAvailable;
-    // Optimistic update
+    if (value === isAvailable) return;
+
     setIsAvailable(value);
     try {
       await saveAvailabilityPreference(value);
     } catch (e) { }
-    
-    try {
-      const { accessToken } = await loadAuth();
-      if (!accessToken) {
-        setIsAvailable(previousValue);
-        try {
-          await saveAvailabilityPreference(previousValue);
-        } catch (e) { }
-        return;
-      }
 
-      if (value) {
-        // Get location if turning ON
-        const hasPermission = await requestLocationPermission();
-        let location = null;
-        if (hasPermission) {
-          const pos = await getCurrentPosition();
-          if (pos && pos.coords) {
-            location = {
-              lng: pos.coords.longitude,
-              lat: pos.coords.latitude
-            };
+    const seq = (availabilityReqSeqRef.current || 0) + 1;
+    availabilityReqSeqRef.current = seq;
+
+    (async () => {
+      try {
+        const { accessToken } = await loadAuth();
+        if (!accessToken) return;
+
+        if (value === true) {
+          let location = null;
+          try {
+            const cached = await loadLastKnownLocation();
+            if (typeof cached?.latitude === 'number' && typeof cached?.longitude === 'number') {
+              location = { lng: cached.longitude, lat: cached.latitude };
+            }
+          } catch (e) { }
+
+          try {
+            const hasPermission = await requestLocationPermission();
+            if (hasPermission) {
+              const pos = await getCurrentPosition({ timeoutMs: 1500, fallbackToLastKnown: true });
+              if (pos && pos.coords) {
+                location = {
+                  lng: pos.coords.longitude,
+                  lat: pos.coords.latitude,
+                };
+              }
+            }
+          } catch (e) { }
+
+          const payload = location ? { isAvailable: true, location } : { isAvailable: true };
+          const res = await toggleAvailability(accessToken, payload);
+          const serverValue = res?.data?.isAvailable;
+          if (availabilityReqSeqRef.current === seq && typeof serverValue === 'boolean') {
+            setIsAvailable(serverValue);
+            try { await saveAvailabilityPreference(serverValue); } catch (e) { }
+          }
+        } else {
+          const res = await toggleAvailability(accessToken, { isAvailable: false });
+          const serverValue = res?.data?.isAvailable;
+          if (availabilityReqSeqRef.current === seq && typeof serverValue === 'boolean') {
+            setIsAvailable(serverValue);
+            try { await saveAvailabilityPreference(serverValue); } catch (e) { }
           }
         }
-        await toggleAvailability(accessToken, { isAvailable: true, location });
-      } else {
-        await toggleAvailability(accessToken, { isAvailable: false });
+      } catch (error) {
+        if (availabilityReqSeqRef.current !== seq) return;
+        setTimeout(async () => {
+          if (availabilityReqSeqRef.current !== seq) return;
+          try {
+            await fetchAvailabilityStatus({ forceApply: true });
+            const now = Date.now();
+            if (now - (availabilityErrorShownAtRef.current || 0) > 4000) {
+              availabilityErrorShownAtRef.current = now;
+              const apiMessage =
+                error?.response?.data?.message ||
+                error?.response?.data?.errors?.[0]?.message;
+              Alert.alert('Unable to update', apiMessage || 'Unable to update availability. Please try again.');
+            }
+          } catch (e) { }
+        }, 1500);
       }
-    } catch (error) {
-      console.error('Error toggling availability:', error);
-      setIsAvailable(previousValue);
-      try {
-        await saveAvailabilityPreference(previousValue);
-      } catch (e) { }
-    }
+    })();
   };
 
   const sections = [

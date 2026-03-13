@@ -6,7 +6,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Button from '../../components/common/Button';
 import { useResponsive } from '../../utils/responsive';
 import { LinearGradient } from 'expo-linear-gradient';
-import { clearAuth, loadAuth, loadAvailabilityPreference, saveAvailabilityPreference } from '../../services/storage/asyncStorage.service';
+import { clearAuth, loadAuth, loadAvailabilityPreference, loadAvailabilityUpdatedAt, loadLastKnownLocation, saveAvailabilityPreference } from '../../services/storage/asyncStorage.service';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getProfile, getHome, updateProfile, getEmergencyContacts, deleteEmergencyContact as apiDeleteEmergencyContact } from '../../services/api/user.api';
 import { toggleAvailability } from '../../services/api/incident.api';
@@ -228,7 +228,7 @@ const ProfileScreen = ({ navigation }) => {
         const hasPermission = await requestLocationPermission();
         let location = null;
         if (hasPermission) {
-          const pos = await getCurrentPosition();
+          const pos = await getCurrentPosition({ timeoutMs: 7000, fallbackToLastKnown: true });
           if (pos && pos.coords) {
             location = {
               lng: pos.coords.longitude,
@@ -236,12 +236,39 @@ const ProfileScreen = ({ navigation }) => {
             };
           }
         }
-        await toggleAvailability(accessToken, { isAvailable: true, location });
+        if (!location) {
+          try {
+            const cached = await loadLastKnownLocation();
+            if (typeof cached?.latitude === 'number' && typeof cached?.longitude === 'number') {
+              location = { lng: cached.longitude, lat: cached.latitude };
+            }
+          } catch (e) { }
+        }
+        const payload = location ? { isAvailable: true, location } : { isAvailable: true };
+        const res = await toggleAvailability(accessToken, payload);
+        const serverValue = res?.data?.isAvailable;
+        if (typeof serverValue === 'boolean') {
+          applyAvailability(serverValue);
+          try { await saveAvailabilityPreference(serverValue); } catch (e) { }
+        }
       } else {
-        await toggleAvailability(accessToken, { isAvailable: false });
+        const res = await toggleAvailability(accessToken, { isAvailable: false });
+        const serverValue = res?.data?.isAvailable;
+        if (typeof serverValue === 'boolean') {
+          applyAvailability(serverValue);
+          try { await saveAvailabilityPreference(serverValue); } catch (e) { }
+        }
       }
     } catch (error) {
       console.error('Error toggling availability:', error);
+      const apiMessage =
+        error?.response?.data?.message ||
+        error?.response?.data?.errors?.[0]?.message;
+      showAlert(
+        'Unable to update',
+        apiMessage || 'Unable to update availability. Please try again.',
+        [{ text: 'OK', onPress: closeAlert }]
+      );
       // Revert on error
       applyAvailability(previousValue);
       try {
@@ -308,10 +335,26 @@ const ProfileScreen = ({ navigation }) => {
       if (success && data) {
         setProfile(data);
         if (typeof data.isAvailable === 'boolean') {
-          applyAvailability(data.isAvailable);
+          let shouldApplyServer = true;
           try {
-            await saveAvailabilityPreference(!!data.isAvailable);
+            const [localValue, updatedAt] = await Promise.all([
+              loadAvailabilityPreference(),
+              loadAvailabilityUpdatedAt(),
+            ]);
+            if (typeof localValue === 'boolean' && typeof updatedAt === 'number') {
+              const recentlyChanged = Date.now() - updatedAt < 4000;
+              if (recentlyChanged && localValue !== data.isAvailable) {
+                shouldApplyServer = false;
+              }
+            }
           } catch (e) { }
+
+          if (shouldApplyServer) {
+            applyAvailability(data.isAvailable);
+            try {
+              await saveAvailabilityPreference(!!data.isAvailable);
+            } catch (e) { }
+          }
         }
         if (data.associations) {
           const assoc = data.associations || {};
