@@ -11,6 +11,7 @@ import {
   TouchableWithoutFeedback
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useReducedMotion } from '../../utils/motion';
 
 const { width, height } = Dimensions.get('window');
 
@@ -28,6 +29,7 @@ const CustomAlert = ({
   const [showModal, setShowModal] = useState(visible);
   const scaleValue = useRef(new Animated.Value(0)).current;
   const opacityValue = useRef(new Animated.Value(0)).current;
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
     toggleModal(visible);
@@ -36,6 +38,11 @@ const CustomAlert = ({
   const toggleModal = (visible) => {
     if (visible) {
       setShowModal(true);
+      if (reducedMotion) {
+        scaleValue.setValue(1);
+        opacityValue.setValue(1);
+        return;
+      }
       Animated.parallel([
         Animated.spring(scaleValue, {
           toValue: 1,
@@ -52,6 +59,13 @@ const CustomAlert = ({
       ]).start();
     } else {
       if (dismissDurationMs === 0) {
+        scaleValue.setValue(0);
+        opacityValue.setValue(0);
+        setShowModal(false);
+        if (onClose) onClose();
+        return;
+      }
+      if (reducedMotion) {
         scaleValue.setValue(0);
         opacityValue.setValue(0);
         setShowModal(false);

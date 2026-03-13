@@ -5,6 +5,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../../components/common/Header';
 import Button from '../../../components/common/Button';
 import CustomAlert from '../../../components/common/CustomAlert';
+import MotionView from '../../../components/common/MotionView';
 import { useResponsive } from '../../../utils/responsive';
 import { createHelpRequest, getMyActiveHelpRequest } from '../../../services/api/incident.api';
 import { requestLocationPermission, getCurrentPosition, reverseGeocode, formatLocationLabel } from '../../../services/location/geolocation.service';
@@ -222,12 +223,28 @@ const ReviewRequestScreen = ({ navigation, route }) => {
         error.response.data?.errors?.[0]?.message;
       console.log('[DailyHelp] createHelpRequest: error', status, messageFromServer, error.response?.data);
 
-      if (status === 404 && error.response.data?.code === 'NO_HELPERS_FOUND') {
+      const code = error.response.data?.code;
+      if (status === 400 && code === 'SELF_HELP_NOT_ALLOWED') {
         showAlert(
-          'No helpers nearby',
-          messageFromServer || 'No available helpers were found within 500m right now. Please try again later.',
+          'Not possible',
+          messageFromServer || 'You cannot send a help request to your own account.',
           [{ text: 'OK', onPress: closeAlert, type: 'primary' }],
-          'account-search-outline',
+          'account-off-outline',
+          '#DC5C69'
+        );
+        return;
+      }
+
+      if (status === 404 && (code === 'NO_HELPERS_FOUND' || code === 'NO_HELPERS_AVAILABLE')) {
+        const isBusy = code === 'NO_HELPERS_AVAILABLE';
+        showAlert(
+          isBusy ? 'Helpers are busy' : 'No helpers nearby',
+          messageFromServer ||
+            (isBusy
+              ? 'Nearby helpers are currently busy. Please try again in a few minutes.'
+              : 'No available helpers were found within 500m right now. Please try again later.'),
+          [{ text: 'OK', onPress: closeAlert, type: 'primary' }],
+          isBusy ? 'account-clock-outline' : 'account-search-outline',
           '#DC5C69'
         );
         return;
@@ -301,13 +318,16 @@ const ReviewRequestScreen = ({ navigation, route }) => {
       >
         <View style={{ width: contentWidth }}>
           {/* Title Section */}
-          <View style={[styles.titleSection, { marginBottom: vscale(15) }]}>
-            <Text style={[styles.mainTitle, { fontSize: ms(22), marginBottom: vscale(8) }]}>Review your request</Text>
-            <Text style={[styles.subtitle, { fontSize: ms(16) }]}>This is what nearby people will see.</Text>
-          </View>
+          <MotionView preset="fadeUp" duration={220}>
+            <View style={[styles.titleSection, { marginBottom: vscale(15) }]}>
+              <Text style={[styles.mainTitle, { fontSize: ms(22), marginBottom: vscale(8) }]}>Review your request</Text>
+              <Text style={[styles.subtitle, { fontSize: ms(16) }]}>This is what nearby people will see.</Text>
+            </View>
+          </MotionView>
 
           {/* Your request card */}
-          <View
+          <MotionView preset="fadeUp" duration={220} delay={50}>
+            <View
             style={[
               styles.requestCard,
               {
@@ -442,7 +462,8 @@ const ReviewRequestScreen = ({ navigation, route }) => {
                 {timeText}
               </Text>
             </View>
-          </View>
+            </View>
+          </MotionView>
 
           {/* Info Box 1 */}
           <View style={[styles.infoBox, { 
@@ -476,6 +497,7 @@ const ReviewRequestScreen = ({ navigation, route }) => {
           <View style={[styles.spacer, { height: vscale(20) }]} />
 
           {/* Buttons Container */}
+          <MotionView preset="fadeUp" duration={220} delay={90}>
           <View style={[styles.buttonsContainer, { gap: vscale(12), marginBottom: vscale(20) }]}>
             <Button
               title="Share Request"
@@ -494,6 +516,7 @@ const ReviewRequestScreen = ({ navigation, route }) => {
               accessibilityLabel="Edit request details"
             />
           </View>
+          </MotionView>
 
           <View style={[styles.bottomSpacer, { height: vscale(20) }]} />
         </View>

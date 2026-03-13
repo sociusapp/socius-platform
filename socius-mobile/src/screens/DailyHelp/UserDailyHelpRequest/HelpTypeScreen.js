@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../../components/common/Header';
 import Button from '../../../components/common/Button';
+import MotionView from '../../../components/common/MotionView';
 import { useResponsive } from '../../../utils/responsive';
 import BottomActionBar from '../../../components/common/BottomActionBar';
 
@@ -69,33 +70,38 @@ const HelpTypeScreen = ({ navigation }) => {
         >
           <View style={{ width: contentWidth }}>
             {/* Title Section */}
-            <View style={[styles.titleSection, { marginBottom: vscale(28) }]}>
-              <Text style={[styles.mainTitle, { fontSize: ms(22), marginBottom: vscale(5), lineHeight: ms(34) }]}>What kind of help do you need?</Text>
-              <Text style={[styles.subtitle, { fontSize: ms(16) }]}>Choose something simple and local.</Text>
-            </View>
+            <MotionView preset="fadeUp" duration={220}>
+              <View style={[styles.titleSection, { marginBottom: vscale(28) }]}>
+                <Text style={[styles.mainTitle, { fontSize: ms(22), marginBottom: vscale(5), lineHeight: ms(34) }]}>What kind of help do you need?</Text>
+                <Text style={[styles.subtitle, { fontSize: ms(16) }]}>Choose something simple and local.</Text>
+              </View>
+            </MotionView>
 
             {/* Search Bar */}
-            <View style={[styles.searchContainer, { 
-              paddingHorizontal: spacing(16), 
-              paddingVertical: vscale(12), 
-              borderRadius: scale(28),
-              borderWidth: scale(1),
-              marginBottom: vscale(24),
-              shadowOffset: { width: 0, height: vscale(2) },
-              shadowRadius: scale(6),
-              elevation: scale(2)
-            }]}>
-              <Icon name="magnify" size={scale(20)} color="#999999" style={[styles.searchIcon, { marginRight: spacing(10) }]} />
-              <TextInput
-                style={[styles.searchInput, { fontSize: ms(15) }]}
-                placeholder="Search for help (e.g., print, tool, lift)"
-                placeholderTextColor="#999999"
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-              />
-            </View>
+            <MotionView preset="fadeUp" duration={220} delay={50}>
+              <View style={[styles.searchContainer, { 
+                paddingHorizontal: spacing(16), 
+                paddingVertical: vscale(12), 
+                borderRadius: scale(28),
+                borderWidth: scale(1),
+                marginBottom: vscale(24),
+                shadowOffset: { width: 0, height: vscale(2) },
+                shadowRadius: scale(6),
+                elevation: scale(2)
+              }]}>
+                <Icon name="magnify" size={scale(20)} color="#999999" style={[styles.searchIcon, { marginRight: spacing(10) }]} />
+                <TextInput
+                  style={[styles.searchInput, { fontSize: ms(15) }]}
+                  placeholder="Search for help (e.g., print, tool, lift)"
+                  placeholderTextColor="#999999"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+              </View>
+            </MotionView>
 
             {/* Help Type Grid */}
+            <MotionView preset="fadeUp" duration={220} delay={80}>
             <View style={[styles.gridContainer, { marginBottom: vscale(20) }]}>
               {filteredHelpTypes.map((helpType) => (
                 <TouchableOpacity
@@ -124,17 +130,20 @@ const HelpTypeScreen = ({ navigation }) => {
                 </TouchableOpacity>
               ))}
             </View>
+            </MotionView>
 
             {/* Info Text */}
-            <View style={[styles.infoContainer, { 
-              paddingHorizontal: spacing(14), 
-              paddingVertical: vscale(12), 
-              borderRadius: scale(12),
-              borderWidth: scale(1),
-              marginBottom: vscale(24)
-            }]}>
-              <Text style={[styles.infoText, { fontSize: ms(12), lineHeight: ms(20) }]}>Requests should be small, time-limited, and non-monetary.</Text>
-            </View>
+            <MotionView preset="fadeUp" duration={220} delay={110}>
+              <View style={[styles.infoContainer, { 
+                paddingHorizontal: spacing(14), 
+                paddingVertical: vscale(12), 
+                borderRadius: scale(12),
+                borderWidth: scale(1),
+                marginBottom: vscale(24)
+              }]}>
+                <Text style={[styles.infoText, { fontSize: ms(12), lineHeight: ms(20) }]}>Requests should be small, time-limited, and non-monetary.</Text>
+              </View>
+            </MotionView>
           </View>
         </ScrollView>
 

@@ -2,6 +2,20 @@ const { rateLimit } = require('../config/redis')
 const { tooMany } = require('../utils/response')
 const logger = require('../utils/logger')
 
+const formatWindow = (windowSeconds) => {
+  const s = Number(windowSeconds) || 0
+  if (s <= 0) return 'a moment'
+  if (s % 3600 === 0) {
+    const h = s / 3600
+    return `${h} hour${h === 1 ? '' : 's'}`
+  }
+  if (s % 60 === 0) {
+    const m = s / 60
+    return `${m} minute${m === 1 ? '' : 's'}`
+  }
+  return `${s} second${s === 1 ? '' : 's'}`
+}
+
 /**
  * Rate limiter factory
  * @param {string} prefix - Redis key prefix
@@ -25,7 +39,8 @@ const createRateLimiter = (prefix, maxRequests, windowSeconds, keyFn) => {
       res.setHeader('X-RateLimit-Remaining', result.remaining)
 
       if (!result.allowed) {
-        return tooMany(res, `Too many requests. Please try again after ${windowSeconds} seconds.`)
+        res.setHeader('Retry-After', Number(windowSeconds) || 0)
+        return tooMany(res, `Too many requests. Please try again after ${formatWindow(windowSeconds)}.`)
       }
 
       next()

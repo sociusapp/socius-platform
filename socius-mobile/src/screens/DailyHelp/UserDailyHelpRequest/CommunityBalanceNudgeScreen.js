@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../../components/common/Header';
 import Button from '../../../components/common/Button';
+import MotionView from '../../../components/common/MotionView';
 import { useResponsive } from '../../../utils/responsive';
 
 const CommunityBalanceNudgeScreen = ({ navigation, route }) => {
@@ -43,41 +44,49 @@ const CommunityBalanceNudgeScreen = ({ navigation, route }) => {
         showsVerticalScrollIndicator={false}
       >
         <View style={{ width: contentWidth }}>
-          <View style={[styles.card, { borderRadius: scale(18), borderWidth: scale(1), paddingHorizontal: spacing(18), paddingVertical: vscale(18), marginBottom: vscale(18), shadowOffset: { width: 0, height: vscale(2) }, shadowRadius: scale(6), elevation: scale(2) }]}>
-            <View style={[styles.iconWrap, { width: scale(52), height: scale(52), borderRadius: scale(26), marginBottom: vscale(12) }]}>
-              <Icon name="hand-heart" size={scale(28)} color="#DC5C69" />
+          <MotionView preset="fadeUp" duration={220}>
+            <View style={[styles.card, { borderRadius: scale(18), borderWidth: scale(1), paddingHorizontal: spacing(18), paddingVertical: vscale(18), marginBottom: vscale(18), shadowOffset: { width: 0, height: vscale(2) }, shadowRadius: scale(6), elevation: scale(2) }]}>
+              <View style={[styles.iconWrap, { width: scale(52), height: scale(52), borderRadius: scale(26), marginBottom: vscale(12) }]}>
+                <Icon name="hand-heart" size={scale(28)} color="#DC5C69" />
+              </View>
+              <Text style={[styles.title, { fontSize: ms(18), marginBottom: vscale(8) }]}>Thanks for asking for support.</Text>
+              <Text style={[styles.body, { fontSize: ms(14), lineHeight: ms(20) }]}>
+                You have asked for help a few times recently. Many people here also offer help when they are able.
+              </Text>
             </View>
-            <Text style={[styles.title, { fontSize: ms(18), marginBottom: vscale(8) }]}>Thanks for asking for support.</Text>
-            <Text style={[styles.body, { fontSize: ms(14), lineHeight: ms(20) }]}>
-              You have asked for help a few times recently. Many people here also offer help when they are able.
-            </Text>
-          </View>
+          </MotionView>
 
-          <View style={{ marginBottom: vscale(20) }}>
-            <Text style={[styles.subheading, { fontSize: ms(14), marginBottom: vscale(8) }]}>Would you like to set how you can help others?</Text>
-            <Text style={[styles.body, { fontSize: ms(13), lineHeight: ms(20) }]}>
-              You are never required to help. Choosing what you are open to simply lets Socius know when to ask you.
-            </Text>
-          </View>
+          <MotionView preset="fadeUp" duration={220} delay={40}>
+            <View style={{ marginBottom: vscale(20) }}>
+              <Text style={[styles.subheading, { fontSize: ms(14), marginBottom: vscale(8) }]}>Would you like to set how you can help others?</Text>
+              <Text style={[styles.body, { fontSize: ms(13), lineHeight: ms(20) }]}>
+                You are never required to help. Choosing what you are open to simply lets Socius know when to ask you.
+              </Text>
+            </View>
+          </MotionView>
 
-          <Button
-            title="Set Ways to Help"
-            onPress={handleSetWaysToHelp}
-            variant="gradient"
-            size="large"
-            fullWidth
-            icon={<Icon name="hand-heart" size={scale(18)} color="#FFFFFF" />}
-            accessibilityLabel="Set ways you can help others"
-          />
-          <Button
-            title="Continue without setting now"
-            onPress={handleContinueRequest}
-            variant="white"
-            size="large"
-            fullWidth
-            icon={<Icon name="arrow-right" size={scale(18)} color="#2C3E50" />}
-            accessibilityLabel="Continue to your active request"
-          />
+          <MotionView preset="fadeUp" duration={220} delay={80}>
+            <Button
+              title="Set Ways to Help"
+              onPress={handleSetWaysToHelp}
+              variant="gradient"
+              size="large"
+              fullWidth
+              icon={<Icon name="hand-heart" size={scale(18)} color="#FFFFFF" />}
+              accessibilityLabel="Set ways you can help others"
+            />
+          </MotionView>
+          <MotionView preset="fadeUp" duration={220} delay={110}>
+            <Button
+              title="Continue without setting now"
+              onPress={handleContinueRequest}
+              variant="white"
+              size="large"
+              fullWidth
+              icon={<Icon name="arrow-right" size={scale(18)} color="#2C3E50" />}
+              accessibilityLabel="Continue to your active request"
+            />
+          </MotionView>
 
           <View style={[styles.footerNote, { marginTop: vscale(10) }]}>
             <Text style={[styles.footerText, { fontSize: ms(12) }]}>There is no penalty for only asking for help.</Text>

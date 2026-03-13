@@ -1,10 +1,15 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Animated, View } from 'react-native';
+import { useReducedMotion } from '../../utils/motion';
 
-const usePulse = ({ min = 0.35, max = 0.85, durationMs = 900 } = {}) => {
+const usePulse = ({ min = 0.35, max = 0.85, durationMs = 900, enabled = true } = {}) => {
   const opacity = useRef(new Animated.Value(max)).current;
 
   useEffect(() => {
+    if (!enabled) {
+      opacity.setValue(1);
+      return;
+    }
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(opacity, { toValue: min, duration: durationMs, useNativeDriver: true }),
@@ -13,7 +18,7 @@ const usePulse = ({ min = 0.35, max = 0.85, durationMs = 900 } = {}) => {
     );
     loop.start();
     return () => loop.stop();
-  }, [durationMs, max, min, opacity]);
+  }, [durationMs, enabled, max, min, opacity]);
 
   return opacity;
 };
@@ -26,7 +31,8 @@ const SkeletonBox = ({
   backgroundColor = '#E5E7EB',
   pulse = true,
 }) => {
-  const opacity = usePulse();
+  const reducedMotion = useReducedMotion();
+  const opacity = usePulse({ enabled: pulse && !reducedMotion });
   const baseStyle = useMemo(
     () => ({
       width,
@@ -38,7 +44,7 @@ const SkeletonBox = ({
     [backgroundColor, height, radius, width]
   );
 
-  if (!pulse) {
+  if (!pulse || reducedMotion) {
     return <View style={[baseStyle, style]} />;
   }
 

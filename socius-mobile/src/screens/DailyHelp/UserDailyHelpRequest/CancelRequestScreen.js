@@ -6,6 +6,7 @@ import Header from '../../../components/common/Header';
 import { LinearGradient } from 'expo-linear-gradient';
 import Button from '../../../components/common/Button';
 import CustomAlert from '../../../components/common/CustomAlert';
+import MotionView from '../../../components/common/MotionView';
 import { useResponsive } from '../../../utils/responsive';
 import { cancelHelpRequest } from '../../../services/api/incident.api';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
@@ -164,6 +165,7 @@ const CancelRequestScreen = ({ navigation, route }) => {
       >
         <View style={{ width: contentWidth }}>
           {/* Dialog Card */}
+          <MotionView preset="fadeUp" duration={220}>
           <View style={[styles.dialogCard, {
             borderRadius: scale(24),
             borderWidth: scale(1),
@@ -202,13 +204,17 @@ const CancelRequestScreen = ({ navigation, route }) => {
             {/* Subtitle */}
             <Text style={[styles.dialogSubtitle, { fontSize: ms(15) }]}>You can close this anytime.</Text>
           </View>
+          </MotionView>
 
           {/* Info Section */}
+          <MotionView preset="fadeUp" duration={220} delay={40}>
           <View style={[styles.infoSection, { marginBottom: vscale(20) }]}>
             <Text style={[styles.infoText, { fontSize: ms(15), lineHeight: ms(24) }]}>Please select a reason for cancelling.</Text>
           </View>
+          </MotionView>
 
           {/* Reason Selection */}
+          <MotionView preset="fadeUp" duration={220} delay={70}>
           <View style={{ width: '100%', marginBottom: vscale(24) }}>
             {cancelReasonOptions.map((opt, idx) => {
               const isSelected = cancelReason === opt.key;
@@ -257,10 +263,12 @@ const CancelRequestScreen = ({ navigation, route }) => {
               );
             })}
           </View>
+          </MotionView>
 
           {/* Spacer */}
           <View style={[styles.spacer, { height: vscale(20) }]} />
 
+          <MotionView preset="fadeUp" duration={220} delay={110}>
           <View style={{ width: '100%' }}>
             <Button
               title="Cancel Request"
@@ -273,16 +281,19 @@ const CancelRequestScreen = ({ navigation, route }) => {
               accessibilityLabel="Cancel this request now"
             />
           </View>
+          </MotionView>
 
           {/* Keep Active Button */}
-          <Button
-            title="Keep Request Active"
-            onPress={handleKeepActive}
-            variant="white"
-            fullWidth
-            icon={<Icon name="clock-outline" size={scale(18)} color="#2C3E50" />}
-            accessibilityLabel="Keep request active and go back"
-          />
+          <MotionView preset="fadeUp" duration={220} delay={140}>
+            <Button
+              title="Keep Request Active"
+              onPress={handleKeepActive}
+              variant="white"
+              fullWidth
+              icon={<Icon name="clock-outline" size={scale(18)} color="#2C3E50" />}
+              accessibilityLabel="Keep request active and go back"
+            />
+          </MotionView>
 
           {/* Footer Text */}
           <View style={styles.footerSection}>

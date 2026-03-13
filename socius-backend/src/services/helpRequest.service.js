@@ -4,6 +4,7 @@ const Verification = require('../models/Verification')
 const PresenceRequest = require('../models/PresenceRequest')
 const { findHelpersForRequest } = require('./location.service')
 const { sendHelpRequestAlert, sendMatchedNotification, sendCancelAlert } = require('./notification.service')
+const { findNearbyAvailableUsers } = require('../utils/geoQuery')
 const {
   updateHelpRequestLocation,
   getNearbyHelpRequestIds,
@@ -110,6 +111,44 @@ const createRequest = async (requesterId, { category, description, location, ite
   }
 
   if (helpers.length === 0) {
+    let availableNearbyExcludingSelf = 0
+    let availableNearbyIncludingSelf = 0
+    try {
+      const candidatesExcludingSelf = await findNearbyAvailableUsers({
+        lng: location.lng,
+        lat: location.lat,
+        radiusMeters: GEO.DEFAULT_RADIUS_METERS,
+        excludeIds: [requesterId],
+        limit: 50,
+        requireAvailability: true,
+      })
+      availableNearbyExcludingSelf = candidatesExcludingSelf.length
+
+      const candidatesIncludingSelf = await findNearbyAvailableUsers({
+        lng: location.lng,
+        lat: location.lat,
+        radiusMeters: GEO.DEFAULT_RADIUS_METERS,
+        excludeIds: [],
+        limit: 10,
+        requireAvailability: true,
+      })
+      availableNearbyIncludingSelf = candidatesIncludingSelf.length
+    } catch (e) { }
+
+    if (availableNearbyIncludingSelf > 0 && availableNearbyExcludingSelf === 0) {
+      const err = new Error('You cannot send a help request to your own account. Ask another nearby user to be available and try again.')
+      err.statusCode = 400
+      err.code = 'SELF_HELP_NOT_ALLOWED'
+      throw err
+    }
+
+    if (availableNearbyExcludingSelf > 0) {
+      const err = new Error('Nearby helpers are currently busy. Please try again in a few minutes.')
+      err.statusCode = 404
+      err.code = 'NO_HELPERS_AVAILABLE'
+      throw err
+    }
+
     const attempt = await logRequestAttempt({
       requesterId,
       requestKind: 'help_request',
