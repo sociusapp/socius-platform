@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useResponsive } from '../../../utils/responsive';
+import MotionPressable from '../../../components/common/MotionPressable';
+import MotionTextInput from '../../../components/common/MotionTextInput';
 
 const CATEGORY_TITLES = {
   calm_presence: 'Need Calm Presence',
@@ -70,12 +72,11 @@ const CreateAwarenessScreen = ({ navigation, route }) => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={[styles.header, { paddingHorizontal: spacing(16), paddingVertical: vscale(12), borderBottomWidth: scale(1) }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.headerBtn, { padding: scale(8) }]}>
+        <MotionPressable onPress={() => navigation.goBack()} style={[styles.headerBtn, { padding: scale(8) }]}>
           <Icon name="arrow-left" size={scale(24)} color="#A83A30" />
-        </TouchableOpacity>
+        </MotionPressable>
         <Text style={[styles.headerTitle, { fontSize: ms(20) }]}>Socius</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={[styles.headerBtn, { padding: scale(8) }]}>
-        </TouchableOpacity>
+        <MotionPressable onPress={() => navigation.navigate('Settings')} style={[styles.headerBtn, { padding: scale(8) }]} />
       </View>
 
       <ScrollView contentContainerStyle={[styles.scroll, { paddingHorizontal: spacing(20), paddingTop: vscale(10), paddingBottom: vscale(60) }]} showsVerticalScrollIndicator={false}>
@@ -92,17 +93,34 @@ const CreateAwarenessScreen = ({ navigation, route }) => {
             overScrollMode="never"
           >
             {chips.map((chip) => (
-              <TouchableOpacity key={chip.id} style={[styles.chip, selectedChip === chip.id && styles.chipActive, { borderRadius: scale(999), paddingHorizontal: spacing(12), paddingVertical: vscale(6), minHeight: vscale(36), shadowRadius: scale(3), elevation: scale(2) }]} activeOpacity={0.85} onPress={() => setSelectedChip(chip.id)}>
+              <MotionPressable
+                key={chip.id}
+                style={[
+                  styles.chip,
+                  selectedChip === chip.id && styles.chipActive,
+                  {
+                    borderRadius: scale(999),
+                    paddingHorizontal: spacing(12),
+                    paddingVertical: vscale(6),
+                    minHeight: vscale(36),
+                    shadowRadius: scale(3),
+                    elevation: scale(2),
+                  },
+                ]}
+                onPress={() => setSelectedChip(chip.id)}
+                pressScale={0.98}
+              >
                 <Icon name={chip.icon} size={scale(18)} color="#C94444" style={{ marginRight: spacing(6) }} />
                 <Text style={[styles.chipText, selectedChip === chip.id && styles.chipTextActive, { fontSize: ms(13) }]}>{chip.label}</Text>
-              </TouchableOpacity>
+              </MotionPressable>
             ))}
           </ScrollView>
 
           <View style={[styles.searchWrap, { borderRadius: scale(12), paddingHorizontal: spacing(16), paddingVertical: vscale(2), marginTop: vscale(10), marginBottom: vscale(16), shadowRadius: scale(6), elevation: scale(2) }]}>
             <Icon name="magnify" size={scale(22)} color="#999999" />
-            <TextInput
-              style={[styles.searchInput, { marginLeft: spacing(8), fontSize: ms(15) }]}
+            <MotionTextInput
+              containerStyle={{ flex: 1, marginLeft: spacing(8), borderRadius: scale(12), paddingVertical: 0, paddingHorizontal: 0, borderWidth: 0, backgroundColor: 'transparent', shadowOpacity: 0, elevation: 0 }}
+              inputStyle={[styles.searchInput, { fontSize: ms(15) }]}
               placeholder="Search within this category"
               placeholderTextColor="#9AA1A9"
               value={query}
@@ -111,13 +129,27 @@ const CreateAwarenessScreen = ({ navigation, route }) => {
           </View>
 
           {items.map((item) => (
-            <TouchableOpacity key={item.id} style={[styles.listCard, { borderRadius: scale(16), paddingHorizontal: spacing(16), paddingVertical: vscale(16), marginBottom: vscale(12), shadowRadius: scale(8), elevation: scale(3) }]} activeOpacity={0.9} onPress={() => handleSelect(item)}>
+            <MotionPressable
+              key={item.id}
+              style={[
+                styles.listCard,
+                {
+                  borderRadius: scale(16),
+                  paddingHorizontal: spacing(16),
+                  paddingVertical: vscale(16),
+                  marginBottom: vscale(12),
+                  shadowRadius: scale(8),
+                  elevation: scale(3),
+                },
+              ]}
+              onPress={() => handleSelect(item)}
+            >
               <View style={{ flex: 1 }}>
                 <Text style={[styles.listTitle, { fontSize: ms(15), marginBottom: vscale(4) }]}>{item.title}</Text>
                 <Text style={[styles.listDesc, { fontSize: ms(12) }]}>{item.desc}</Text>
               </View>
               <Icon name="chevron-right" size={scale(22)} color="#9AA1A9" />
-            </TouchableOpacity>
+            </MotionPressable>
           ))}
 
           <View style={[styles.footerNoteWrap, { marginTop: vscale(6) }]}>
@@ -225,4 +257,3 @@ const styles = StyleSheet.create({
 });
 
 export default CreateAwarenessScreen;
-

@@ -19,6 +19,7 @@ import {
   ToastAndroid,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -43,6 +44,7 @@ import { buildChatBlockedCopy } from '../../utils/closureMessages';
 
 const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser }) => {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
   const SOCIUS_PRIMARY = '#C84D59';
   const WHATSAPP_TEXTURE_URI =
     'https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png';
@@ -512,6 +514,19 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser }) =>
   const userImage = getFullImageUrl(targetUser?.profileImage);
   const displayName = otherUserName || targetUser?.fullName || 'User';
 
+  const startCall = async () => {
+    if (!session || !userId || chatBlockedRef.current) return;
+    const otherId = String(session.requesterId?._id) === String(userId) ? session.helperId?._id : session.requesterId?._id;
+    if (!otherId) return;
+    const callId = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    navigation.navigate('P2PCall', {
+      callId,
+      otherUserId: String(otherId),
+      otherUserName: displayName,
+      isCaller: true,
+    });
+  };
+
   const toggleLocalReaction = (message, currentUserId, emoji) => {
     const reactions = Array.isArray(message.reactions) ? [...message.reactions] : [];
     const existingIndex = reactions.findIndex((r) => String(r.userId) === String(currentUserId));
@@ -704,7 +719,7 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser }) =>
           <View style={{ flex: 1, backgroundColor: '#F5F5F5' }}>
             {/* Header */}
             <View style={styles.header}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
                 <TouchableOpacity onPress={handleClose} style={styles.backButton}>
                   <Icon name="arrow-back" size={24} color="#fff" />
                 </TouchableOpacity>
@@ -721,7 +736,17 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser }) =>
                 </TouchableOpacity>
               </View>
             
-              <View style={styles.headerIcons} />
+              <View style={styles.headerIcons}>
+                <TouchableOpacity
+                  onPress={startCall}
+                  disabled={chatBlocked}
+                  style={styles.iconButton}
+                  accessibilityRole="button"
+                  accessibilityLabel="Call"
+                >
+                  <Icon name="phone" size={22} color="#fff" />
+                </TouchableOpacity>
+              </View>
             </View>
 
             {/* Chat Body & Input */}
@@ -859,6 +884,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 10,
     paddingVertical: 10,
     backgroundColor: 'rgba(200, 77, 89, 0.88)',
@@ -899,6 +925,11 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     marginLeft: 15,
+    padding: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.18)',
   },
   loadingContainer: {
     flex: 1,
@@ -1024,6 +1055,96 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 3,
+  },
+  callRequestButton: {
+    backgroundColor: '#C84D59',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 4,
+    shadowColor: '#C84D59',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    marginRight: 6,
+  },
+  callCard: {
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    maxWidth: '90%',
+  },
+  callCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  callIconBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FFF0F1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+    borderWidth: 1,
+    borderColor: '#F1D7DB',
+  },
+  callCardTitle: {
+    color: '#0F172A',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  callCardSubtitle: {
+    color: '#475569',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  callActionsRow: {
+    flexDirection: 'row',
+    marginTop: 10,
+  },
+  callAcceptBtn: {
+    flex: 1,
+    backgroundColor: '#C84D59',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  callAcceptText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  callDeclineBtn: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  callDeclineText: {
+    color: '#475569',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  callNowButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#22C55E',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 10,
   },
   replyPreviewContainer: {
     padding: 10,

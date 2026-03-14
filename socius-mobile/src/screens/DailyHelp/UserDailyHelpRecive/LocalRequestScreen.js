@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../../components/common/Header';
@@ -12,6 +12,7 @@ import { loadAuth } from '../../../services/storage/asyncStorage.service';
 import { getSocket } from '../../../services/socket/socket.service';
 import NativeCallService from '../../../services/notifications/NativeCallService';
 import CustomAlert from '../../../components/common/CustomAlert';
+import { baseURL } from '../../../services/api/client';
 
 const LocalRequestScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
@@ -19,6 +20,7 @@ const LocalRequestScreen = ({ navigation, route }) => {
   const [request, setRequest] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const requestId = route?.params?.requestId;
+  const baseRoot = useMemo(() => String(baseURL || '').replace(/\/api\/?$/, ''), []);
 
   // Custom Alert State
   const [alertVisible, setAlertVisible] = useState(false);
@@ -51,81 +53,43 @@ const LocalRequestScreen = ({ navigation, route }) => {
       if (data.requestId === requestId) {
         // Stop the alarm/notification if it's still ringing
         NativeCallService.cancelCallNotification(requestId);
-        
-        showAlert(
-          'Request Closed', 
-          'Someone else has accepted this request.', 
-          [{ 
-            text: 'OK', 
-            onPress: () => {
-              closeAlert();
-              // Small delay to allow modal to close before unmounting
-              setTimeout(() => {
-                navigation.reset({
-                  index: 0,
-                  routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
-                });
-              }, 100);
-            } 
-          }]
-        );
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+        });
       }
     };
 
-    const handleRequestCancelled = (data) => {
+    const handleRequestClosed = (data) => {
       if (data.requestId === requestId) {
         NativeCallService.cancelCallNotification(requestId);
-        showAlert(
-          'Request Cancelled', 
-          'The user has cancelled this request.', 
-          [{ 
-            text: 'OK', 
-            onPress: () => {
-              closeAlert();
-              setTimeout(() => {
-                navigation.reset({
-                  index: 0,
-                  routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
-                });
-              }, 100);
-            } 
-          }]
-        );
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+        });
       }
     };
 
     const handleRequestExpired = (data) => {
       if (data.requestId === requestId) {
         NativeCallService.cancelCallNotification(requestId);
-        showAlert(
-          'Request Expired', 
-          'This request has expired.', 
-          [{ 
-            text: 'OK', 
-            onPress: () => {
-              closeAlert();
-              setTimeout(() => {
-                navigation.reset({
-                  index: 0,
-                  routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
-                });
-              }, 100);
-            } 
-          }]
-        );
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+        });
       }
     };
 
     if (socket) {
       socket.on('help:request_taken', handleRequestTaken);
-      socket.on('help:request_cancelled', handleRequestCancelled);
+      socket.on('help:request_closed', handleRequestClosed);
       socket.on('help:request_expired', handleRequestExpired);
     }
 
     return () => {
       if (socket) {
         socket.off('help:request_taken', handleRequestTaken);
-        socket.off('help:request_cancelled', handleRequestCancelled);
+        socket.off('help:request_closed', handleRequestClosed);
         socket.off('help:request_expired', handleRequestExpired);
       }
     };
@@ -433,10 +397,23 @@ const LocalRequestScreen = ({ navigation, route }) => {
               marginBottom: vscale(10),
               gap: spacing(10)
             }]}>
-              <Icon name="printer" size={scale(22)} color="#DC5C69" />
-              <Text style={[styles.requestText, { fontSize: ms(15), lineHeight: vscale(22) }]}>
-                {request?.description || 'Local help request'}
-              </Text>
+              {request?.categoryIcon ? (
+                <Image
+                  source={{ uri: `${baseRoot}${request.categoryIcon}` }}
+                  style={{ width: scale(22), height: scale(22), borderRadius: scale(6) }}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Icon name="printer" size={scale(22)} color="#DC5C69" />
+              )}
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.requestText, { fontSize: ms(14), lineHeight: vscale(20), fontWeight: '700' }]} numberOfLines={1}>
+                  {String(request?.categoryName || request?.category || 'General Help').replace(/_/g, ' ').toUpperCase()}
+                </Text>
+                <Text style={[styles.requestText, { fontSize: ms(15), lineHeight: vscale(22) }]} numberOfLines={2}>
+                  {request?.description || 'Local help request'}
+                </Text>
+              </View>
             </View>
             <View style={[styles.metaRow, { gap: spacing(6) }]}>
               <Icon name="map-marker" size={scale(18)} color="#999999" />

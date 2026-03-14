@@ -15,6 +15,7 @@ const AddDetailsScreen = ({ navigation, route }) => {
   const category = route?.params?.category;
   const reason = route?.params?.reason;
   const query = route?.params?.query;
+  const requestId = route?.params?.requestId;
   const [description, setDescription] = useState('');
   const [selectedTime, setSelectedTime] = useState('30 minutes');
   const [customTimeVisible, setCustomTimeVisible] = useState(false);
@@ -47,6 +48,9 @@ const AddDetailsScreen = ({ navigation, route }) => {
   };
 
   useEffect(() => {
+    if (typeof route?.params?.description === 'string') {
+      setDescription(route.params.description);
+    }
     const loadDbLocation = async () => {
       try {
         const auth = await loadAuth();
@@ -115,6 +119,7 @@ const AddDetailsScreen = ({ navigation, route }) => {
       reason,
       query,
       location: dbLocation,
+      requestId,
     });
   };
 

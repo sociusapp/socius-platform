@@ -15,5 +15,23 @@ export default {
     if (SociusCallModule) {
       SociusCallModule.cancelCallNotification(uuid);
     }
-  }
+  },
+
+  playHelpRequestSound: () => {
+    if (SociusCallModule?.playHelpRequestSound) {
+      SociusCallModule.playHelpRequestSound();
+    }
+  },
+
+  startHelpRequestRingtone: () => {
+    if (SociusCallModule?.startHelpRequestRingtone) {
+      SociusCallModule.startHelpRequestRingtone();
+    }
+  },
+
+  stopRingtone: () => {
+    if (SociusCallModule?.stopRingtone) {
+      SociusCallModule.stopRingtone();
+    }
+  },
 };

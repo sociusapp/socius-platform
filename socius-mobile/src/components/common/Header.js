@@ -4,12 +4,12 @@
 import React from 'react';
 import {
   View,
-  TouchableOpacity,
   Text,
   StyleSheet,
   Image,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import MotionPressable from './MotionPressable';
 
 const Header = ({
   title,
@@ -26,13 +26,13 @@ const Header = ({
     <View style={[styles.container, { backgroundColor }, style]}>
       <View style={styles.leftSection}>
         {backButton && onBackPress && (
-          <TouchableOpacity
+          <MotionPressable
             style={styles.backButton}
             onPress={onBackPress}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <Icon name={backIcon} size={24} color="#A83A30" />
-          </TouchableOpacity>
+          </MotionPressable>
         )}
       </View>
 

@@ -7,6 +7,8 @@ const USER_ID_KEY = 'userId';
 const AVAILABILITY_PREFERENCE_KEY = 'availabilityPreference.isAvailable';
 const AVAILABILITY_UPDATED_AT_KEY = 'availabilityPreference.updatedAt';
 const LAST_KNOWN_LOCATION_KEY = 'location.lastKnown.v1';
+const ACTIVE_HELP_REQUEST_ID_KEY = 'request.active.help.id.v1';
+const ACTIVE_PRESENCE_REQUEST_ID_KEY = 'request.active.presence.id.v1';
 
 const saveAuth = async ({ accessToken, refreshToken, role, userId }) => {
   const tasks = [];
@@ -41,6 +43,8 @@ const clearAuth = async () => {
     AsyncStorage.removeItem(USER_ID_KEY),
     AsyncStorage.removeItem(AVAILABILITY_PREFERENCE_KEY),
     AsyncStorage.removeItem(AVAILABILITY_UPDATED_AT_KEY),
+    AsyncStorage.removeItem(ACTIVE_HELP_REQUEST_ID_KEY),
+    AsyncStorage.removeItem(ACTIVE_PRESENCE_REQUEST_ID_KEY),
   ]);
 };
 
@@ -94,6 +98,32 @@ const loadLastKnownLocation = async () => {
   }
 };
 
+const saveActiveHelpRequestId = async (requestId) => {
+  if (!requestId) return;
+  await AsyncStorage.setItem(ACTIVE_HELP_REQUEST_ID_KEY, String(requestId));
+};
+
+const loadActiveHelpRequestId = async () => {
+  return AsyncStorage.getItem(ACTIVE_HELP_REQUEST_ID_KEY);
+};
+
+const clearActiveHelpRequestId = async () => {
+  await AsyncStorage.removeItem(ACTIVE_HELP_REQUEST_ID_KEY);
+};
+
+const saveActivePresenceRequestId = async (requestId) => {
+  if (!requestId) return;
+  await AsyncStorage.setItem(ACTIVE_PRESENCE_REQUEST_ID_KEY, String(requestId));
+};
+
+const loadActivePresenceRequestId = async () => {
+  return AsyncStorage.getItem(ACTIVE_PRESENCE_REQUEST_ID_KEY);
+};
+
+const clearActivePresenceRequestId = async () => {
+  await AsyncStorage.removeItem(ACTIVE_PRESENCE_REQUEST_ID_KEY);
+};
+
 export {
   saveAuth,
   loadAuth,
@@ -103,4 +133,10 @@ export {
   loadAvailabilityUpdatedAt,
   saveLastKnownLocation,
   loadLastKnownLocation,
+  saveActiveHelpRequestId,
+  loadActiveHelpRequestId,
+  clearActiveHelpRequestId,
+  saveActivePresenceRequestId,
+  loadActivePresenceRequestId,
+  clearActivePresenceRequestId,
 };

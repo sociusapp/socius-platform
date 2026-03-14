@@ -67,6 +67,9 @@ import ReportConcernScreen from '../screens/Home/ReportConcernScreen';
 import PrepareStayReadyScreen from '../screens/Home/PrepareStayReadyScreen';
 import LocationMapScreen from '../screens/Home/LocationMapScreen';
 
+// ==================== CALL SCREENS ====================
+import P2PCallScreen from '../screens/Call/P2PCallScreen';
+
 // ==================== PREPARE TAB SCREENS ====================
 import SafetyTipsScreen from '../screens/Prepare/SafetyTipsScreen';
 import WhenToAskPresenceScreen from '../screens/Prepare/WhenToAskPresenceScreen';
@@ -267,6 +270,13 @@ const StackNavigator = () => {
       <Stack.Screen name="ViewDetailsIgnore" component={ViewDetailsIgnoreScreen} />
       <Stack.Screen name="Reminder" component={ReminderScreen} />
       <Stack.Screen name="EmergencyHelp" component={EmergencyHelpScreen} />
+
+      {/* ==================== CALLS ==================== */}
+      <Stack.Screen
+        name="P2PCall"
+        component={P2PCallScreen}
+        options={{ headerShown: false, animation: 'fade' }}
+      />
 
       {/* ==================== MODALS ==================== */}
       <Stack.Screen

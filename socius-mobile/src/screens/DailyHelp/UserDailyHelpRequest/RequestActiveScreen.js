@@ -9,7 +9,7 @@ import Button from '../../../components/common/Button';
 import { SkeletonBox, SkeletonCircle, SkeletonSpacer } from '../../../components/common/Skeleton';
 import { useResponsive } from '../../../utils/responsive';
 import { getMyActiveHelpRequest, cancelHelpRequest } from '../../../services/api/incident.api';
-import { loadAuth } from '../../../services/storage/asyncStorage.service';
+import { clearActiveHelpRequestId, loadAuth, saveActiveHelpRequestId } from '../../../services/storage/asyncStorage.service';
 import { connectSocket, disconnectSocket } from '../../../services/socket/socket.service';
 import CustomAlert from '../../../components/common/CustomAlert';
 
@@ -26,6 +26,9 @@ const RequestSuccessScreen = ({ navigation, route }) => {
 
   useEffect(() => {
     requestRef.current = request;
+    if (request?.id || request?._id) {
+      saveActiveHelpRequestId(request.id || request._id).catch(() => {});
+    }
   }, [request]);
 
   useEffect(() => {
@@ -147,6 +150,8 @@ const RequestSuccessScreen = ({ navigation, route }) => {
     }
 
     navigation.navigate('AddDetails', {
+      requestId: request.id || request._id,
+      category: request.category,
       description: request.description || '',
       time: '',
       helpType: {
@@ -237,13 +242,18 @@ const RequestSuccessScreen = ({ navigation, route }) => {
           
           if (activeRequest) {
             setRequest(activeRequest);
+            if (activeRequest?.id || activeRequest?._id) {
+              saveActiveHelpRequestId(activeRequest.id || activeRequest._id).catch(() => {});
+            }
           } else {
             setRequest(null);
+            clearActiveHelpRequestId().catch(() => {});
 
             showNoActiveRequest();
           }
         } else {
           showNoActiveRequest();
+          clearActiveHelpRequestId().catch(() => {});
         }
       } catch (error) {
         console.log('Error loading active request:', error);
@@ -463,6 +473,13 @@ const RequestSuccessScreen = ({ navigation, route }) => {
               {request?.description || 'Your help request'}
             </Text>
             <Text style={[styles.requestSubtitle, { fontSize: ms(14), lineHeight: ms(21) }]}>Shared with nearby available people</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: vscale(10) }}>
+              <Icon name="timer-outline" size={scale(16)} color="#6C757D" style={{ marginRight: spacing(8) }} />
+              <Text style={{ fontSize: ms(13), color: '#495057', fontWeight: '600' }}>Time needed:</Text>
+              <Text style={{ fontSize: ms(13), color: '#495057', marginLeft: spacing(6) }}>
+                {request?.requestedDurationLabel || request?.time || '—'}
+              </Text>
+            </View>
           </View>
 
           {/* Notification Info */}

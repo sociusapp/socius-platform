@@ -3,14 +3,13 @@
 
 import React from 'react';
 import {
-  Pressable,
   Text,
   ActivityIndicator,
   View,
   StyleSheet,
-  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import MotionPressable from './MotionPressable';
 
 const styles = StyleSheet.create({
   buttonContainer: {
@@ -183,15 +182,13 @@ const Button = ({
 
   return (
     <View style={[styles.buttonContainer, fullWidth && { width: '100%' }]}>
-      <Pressable
-        style={({ pressed, hovered }) => [
+      <MotionPressable
+        style={[
           styles.buttonBase,
           getButtonVariantStyle(),
           fullWidth && styles.fullWidth,
           getSizeStyle(),
           (disabled || loading) && { opacity: 0.6 },
-          (pressed && !(disabled || loading)) && { opacity: 0.92, transform: [{ scale: 0.99 }] },
-          (hovered && !(disabled || loading)) && { opacity: 0.96 },
           style,
         ]}
         onPress={onPress}
@@ -216,7 +213,7 @@ const Button = ({
         ) : (
           <Text style={[getTextStyle(), textStyle]}>{title}</Text>
         )}
-      </Pressable>
+      </MotionPressable>
     </View>
   );
 };

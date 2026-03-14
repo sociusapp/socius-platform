@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, Image } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import MotionPressable from './MotionPressable';
 
 const HomeHeader = ({ onSettingsPress, onLogoPress, onLocationPress, locationLabel }) => {
   const labelText = typeof locationLabel === 'string' && locationLabel.trim().length > 0 ? locationLabel : 'Updating location…';
@@ -8,10 +9,9 @@ const HomeHeader = ({ onSettingsPress, onLogoPress, onLocationPress, locationLab
   return (
     <View style={styles.container}>
       <View style={styles.logoSection}>
-        <TouchableOpacity
+        <MotionPressable
           style={styles.brandRow}
           onPress={onLogoPress}
-          activeOpacity={0.8}
           accessibilityRole="button"
           accessibilityLabel="Socius home"
         >
@@ -20,12 +20,11 @@ const HomeHeader = ({ onSettingsPress, onLogoPress, onLocationPress, locationLab
             style={styles.logoImage}
           />
           <Text style={styles.logoText}>Socius</Text>
-        </TouchableOpacity>
+        </MotionPressable>
 
-        <TouchableOpacity
+        <MotionPressable
           style={styles.locationRow}
           onPress={onLocationPress}
-          activeOpacity={0.85}
           accessibilityRole="button"
           accessibilityLabel="Open location map"
         >
@@ -34,17 +33,17 @@ const HomeHeader = ({ onSettingsPress, onLogoPress, onLocationPress, locationLab
             {labelText}
           </Text>
           <Icon name="chevron-right" size={18} color="#CBD5E1" style={styles.locationChevron} />
-        </TouchableOpacity>
+        </MotionPressable>
       </View>
 
-      <TouchableOpacity 
+      <MotionPressable
         style={styles.settingsButton}
         onPress={onSettingsPress}
         accessibilityRole="button"
         accessibilityLabel="Open settings"
       >
         <Icon name="cog" size={24} color="#999999" />
-      </TouchableOpacity>
+      </MotionPressable>
     </View>
   );
 };

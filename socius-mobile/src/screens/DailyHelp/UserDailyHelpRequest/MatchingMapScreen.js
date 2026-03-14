@@ -1,8 +1,9 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, Linking, Alert, Dimensions, ScrollView, Image, Animated, NativeModules } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { BackHandler, View, Text, StyleSheet, TouchableOpacity, Platform, Linking, Alert, Dimensions, ScrollView, Image, Animated, NativeModules, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import { useFocusEffect } from '@react-navigation/native';
 import Header from '../../../components/common/Header';
 import Button from '../../../components/common/Button';
 import { useResponsive } from '../../../utils/responsive';
@@ -25,6 +26,7 @@ const MatchingMapScreen = ({ navigation, route }) => {
   const [request, setRequest] = useState(prefillRequest);
   const [chatVisible, setChatVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [sessionId, setSessionId] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
@@ -86,6 +88,14 @@ const MatchingMapScreen = ({ navigation, route }) => {
   const chatVisibleRef = useRef(chatVisible);
   const requestId = route?.params?.requestId;
   const perf = route?.params?.perf;
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -105,15 +115,42 @@ const MatchingMapScreen = ({ navigation, route }) => {
     return { uri };
   };
 
-  const handleOpenMaps = () => {
-    if (request?.location?.coordinates) {
+  const handleOpenMaps = async () => {
+    try {
+      if (!request?.location?.coordinates) return;
       const [longitude, latitude] = request.location.coordinates;
       const label = request.description || 'Help Request';
-      const url = Platform.select({
-        ios: `maps:0,0?q=${label}@${latitude},${longitude}`,
-        android: `geo:0,0?q=${latitude},${longitude}(${label})`,
-      });
-      Linking.openURL(url);
+
+      const lat = Number(latitude);
+      const lng = Number(longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+      if (Platform.OS === 'android') {
+        const navUrl = `google.navigation:q=${lat},${lng}`;
+        const canOpenNav = await Linking.canOpenURL(navUrl);
+        if (canOpenNav) {
+          await Linking.openURL(navUrl);
+          return;
+        }
+
+        const web = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
+          `${lat},${lng}`
+        )}&destination_place_id=&travelmode=walking`;
+        await Linking.openURL(web);
+        return;
+      }
+
+      const googleMaps = `comgooglemaps://?daddr=${encodeURIComponent(`${lat},${lng}`)}&directionsmode=walking`;
+      const canOpenGoogleMaps = await Linking.canOpenURL(googleMaps);
+      if (canOpenGoogleMaps) {
+        await Linking.openURL(googleMaps);
+        return;
+      }
+
+      const appleMaps = `http://maps.apple.com/?daddr=${encodeURIComponent(`${lat},${lng}`)}&q=${encodeURIComponent(label)}`;
+      await Linking.openURL(appleMaps);
+    } catch (e) {
+      showAlert('Unable to open maps', 'Please install Google Maps or try again.', [{ text: 'OK', onPress: closeAlert }]);
     }
   };
 
@@ -122,6 +159,51 @@ const MatchingMapScreen = ({ navigation, route }) => {
       requestId: request?.id || request?._id || requestId,
     });
   };
+
+  const refreshRequestDetails = useCallback(async () => {
+    if (!requestId) return false;
+    try {
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Request timeout')), 15000)
+      );
+      const auth = await loadAuth();
+      if (!auth?.accessToken) return false;
+
+      const fetchPromise = getHelpRequestById(auth.accessToken, requestId);
+      const response = await Promise.race([fetchPromise, timeoutPromise]);
+
+      if (!mountedRef.current) return false;
+      if (response?.success && response?.data) {
+        const requestData = response.data.request || response.data;
+        const volunteerData = response.data.volunteer || requestData.volunteer;
+        setRequest((prev) => ({
+          ...prev,
+          ...requestData,
+          volunteer: volunteerData,
+          status: requestData.status,
+        }));
+
+        getSessionByRequest(auth.accessToken, requestId)
+          .then((sessionRes) => {
+            if (mountedRef.current && sessionRes?.success && sessionRes?.data) {
+              setSessionId(sessionRes.data._id);
+            }
+          })
+          .catch(() => {});
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }, [requestId]);
+
+  const handleRefresh = useCallback(async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    await refreshRequestDetails();
+    if (mountedRef.current) setRefreshing(false);
+  }, [refreshRequestDetails, refreshing]);
 
   const handleCancelRequest = () => {
     const rid = request?.id || request?._id || requestId;
@@ -541,12 +623,60 @@ const MatchingMapScreen = ({ navigation, route }) => {
   const statusForChat = String(request?.status || '').toLowerCase();
   const isChatAllowed = ['accepted', 'in_progress', 'matched', 'en_route', 'arrived', 'active'].includes(statusForChat);
 
+  const openCancelRequestScreen = useCallback(() => {
+    const rid = request?.id || request?._id || requestId;
+    if (!rid) {
+      showAlert('Error', 'Request ID missing.', [{ text: 'OK', onPress: closeAlert }]);
+      return;
+    }
+    navigation.navigate('CancelRequest', { requestId: rid });
+  }, [navigation, request, requestId]);
+
+  const showLeaveConfirm = useCallback(() => {
+    showAlert(
+      'Active request',
+      'Your request is still active. You can cancel it if you no longer need help.\n\nDo you want to stay here?',
+      [
+        { text: 'Stay', style: 'cancel', onPress: closeAlert },
+        {
+          text: 'Cancel request',
+          style: 'destructive',
+          onPress: () => {
+            closeAlert();
+            openCancelRequestScreen();
+          },
+        },
+      ].filter(Boolean),
+      'alert-circle-outline',
+      '#DC5C69'
+    );
+  }, [openCancelRequestScreen]);
+
   const handleBackPress = () => {
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
-    });
+    showLeaveConfirm();
   };
+
+  useFocusEffect(
+    useCallback(() => {
+      const onHardwareBack = () => {
+        showLeaveConfirm();
+        return true;
+      };
+
+      const sub = BackHandler.addEventListener('hardwareBackPress', onHardwareBack);
+      return () => sub.remove();
+    }, [showLeaveConfirm])
+  );
+
+  useEffect(() => {
+    const unsub = navigation.addListener('beforeRemove', (e) => {
+      if (e.data.action?.type === 'GO_BACK' || e.data.action?.type === 'POP') {
+        e.preventDefault();
+        showLeaveConfirm();
+      }
+    });
+    return unsub;
+  }, [navigation, showLeaveConfirm]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -570,7 +700,21 @@ const MatchingMapScreen = ({ navigation, route }) => {
         }
       />
       
-      <ScrollView style={{flex: 1}} contentContainerStyle={{flexGrow: 1}}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ flexGrow: 1 }}
+        alwaysBounceVertical
+        bounces
+        overScrollMode="always"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={['#DC5C69']}
+            tintColor="#DC5C69"
+          />
+        }
+      >
         <View style={styles.contentContainer}>
           
           {/* Map Card */}
@@ -627,12 +771,12 @@ const MatchingMapScreen = ({ navigation, route }) => {
                   <View style={{ height: 12, backgroundColor: '#E5E7EB', borderRadius: 8, width: '70%' }} />
                 </View>
               ) : (
-                <Text style={styles.cardDescription}>
+                <Text style={styles.cardDescription} numberOfLines={2}>
                   {request?.description || "Waiting at the specified location."}
                 </Text>
               )}
               <View style={styles.illustrationContainer}>
-                 <Icon name="map-marker-radius" size={60} color="#8B6F47" />
+                 <Icon name="map-marker-radius" size={38} color="#8B6F47" />
               </View>
             </View>
           </View>
@@ -654,7 +798,7 @@ const MatchingMapScreen = ({ navigation, route }) => {
                  )}
               </View>
               <View style={styles.profileInfo}>
-                <Text style={styles.profileName}>You</Text>
+                <Text style={styles.profileName} numberOfLines={1}>You</Text>
                 <Text style={styles.profileRole}>Waiting</Text>
               </View>
             </View>
@@ -681,7 +825,7 @@ const MatchingMapScreen = ({ navigation, route }) => {
               </>
             ) : (
               <>
-                <Text style={styles.profileName}>
+                <Text style={styles.profileName} numberOfLines={1}>
                   {request?.volunteer?.firstName || request?.volunteer?.name || request?.volunteer?.fullName || request?.volunteer?.username || "Volunteer"}
                 </Text>
                 <Text style={styles.profileRole}>Coming to help</Text>
@@ -839,7 +983,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   mapPreviewContainer: {
-    height: 180,
+    height: 150,
     width: '100%',
     position: 'relative',
   },
@@ -872,7 +1016,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 13,
     color: '#888',
-    paddingVertical: 12,
+    paddingVertical: 10,
     backgroundColor: '#FAFAFA',
     borderTopWidth: 1,
     borderTopColor: '#F0F0F0',
@@ -880,8 +1024,8 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: '#FFF',
     borderRadius: 20,
-    padding: 16, // Reduced from 20
-    marginBottom: 16, // Reduced from 20
+    padding: 14,
+    marginBottom: 14,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
@@ -892,38 +1036,35 @@ const styles = StyleSheet.create({
     fontSize: 16, // Reduced from 18
     fontWeight: '700',
     color: '#A83A30', // Dark Red/Brown
-    marginBottom: 12, // Reduced from 16
+    marginBottom: 8,
   },
   cardContentRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
   },
   cardDescription: {
     flex: 1,
-    fontSize: 15, // Reduced from 16
+    fontSize: 14,
     color: '#444',
-    lineHeight: 22, // Reduced from 24
-    marginRight: 16,
+    lineHeight: 20,
+    marginRight: 12,
   },
   illustrationContainer: {
-    width: 60, // Reduced from 80
-    height: 60, // Reduced from 80
+    width: 40,
+    alignItems: 'flex-end',
     justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-    borderRadius: 12,
   },
   profilesContainer: {
     flexDirection: 'row',
     gap: 16,
-    marginBottom: 16, // Reduced from 20
+    marginBottom: 14,
   },
   profileCard: {
     flex: 1,
     backgroundColor: '#FFF',
     borderRadius: 20,
-    padding: 10, // Reduced from 12
+    padding: 10,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -932,12 +1073,13 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   profileImageContainer: {
-    width: '100%',
-    height: 120, // Fixed height instead of aspectRatio: 1
+    width: '86%',
+    aspectRatio: 1,
+    maxWidth: 140,
     borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: '#F0F0F0',
-    marginBottom: 8, // Reduced from 12
+    marginBottom: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -951,37 +1093,39 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   profileName: {
-    fontSize: 18,
+    fontSize: 16,
+    lineHeight: 20,
     fontWeight: '700',
     color: '#222',
-    marginBottom: 4,
+    marginBottom: 2,
     textAlign: 'center',
   },
   profileRole: {
-    fontSize: 14,
+    fontSize: 13,
+    lineHeight: 18,
     color: '#666',
     fontWeight: '500',
     textAlign: 'center',
     borderTopWidth: 1,
     borderTopColor: '#EEE',
     width: '100%',
-    paddingTop: 8,
-    marginTop: 4,
+    paddingTop: 6,
+    marginTop: 2,
   },
   sharedInfoText: {
     textAlign: 'center',
     fontSize: 14,
     color: '#666',
     fontStyle: 'italic',
-    marginBottom: 24,
+    marginBottom: 16,
   },
   safetyInfoBox: {
     backgroundColor: '#FFF8F0', // Light Beige
     borderRadius: 16,
-    padding: 16,
+    padding: 14,
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 32,
+    marginBottom: 20,
     borderWidth: 1,
     borderColor: '#F0E6D8',
   },
@@ -992,7 +1136,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   bottomContainer: {
-    gap: 16,
+    gap: 14,
   },
   primaryButton: {
     backgroundColor: '#DC5C69', // Socius Red

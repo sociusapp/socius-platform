@@ -3,7 +3,7 @@ import { View, Text, Image, StyleSheet, Dimensions, Animated, Platform, Touchabl
 import { useNavigation } from '@react-navigation/native';
 import { useResponsive } from '../../utils/responsive';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { loadAuth } from '../../services/storage/asyncStorage.service';
+import { loadActiveHelpRequestId, loadAuth } from '../../services/storage/asyncStorage.service';
 import { getHome } from '../../services/api/user.api';
 import { getMyActiveHelpRequest, getActivePresenceRequest } from '../../services/api/incident.api';
 import notifee from '@notifee/react-native';
@@ -87,6 +87,13 @@ const SplashScreen = () => {
         }, 2000);
 
         if (accessToken) {
+          try {
+            const cachedActiveHelpId = await loadActiveHelpRequestId();
+            if (cachedActiveHelpId) {
+              addLog('cached active request present');
+            }
+          } catch (e) {}
+
           // 1. Check for active help request or presence request
           try {
             addLog('checking active requests');
@@ -99,12 +106,18 @@ const SplashScreen = () => {
             if (helpRes.status === 'fulfilled' && helpRes.value?.success && helpRes.value?.data) {
               let request = helpRes.value.data;
               if (request.activeRequest) request = request.activeRequest;
-              const activeStatuses = ['PENDING', 'SEARCHING', 'ACCEPTED', 'IN_PROGRESS', 'matched'];
+              const status = String(request?.status || '').toLowerCase();
+              const activeStatuses = ['open', 'matching', 'matched', 'active'];
 
-              if (request && activeStatuses.includes(request.status)) {
+              if (request && activeStatuses.includes(status)) {
                 if (fallbackTimer) clearTimeout(fallbackTimer);
                 await ExpoSplashScreen.hideAsync().catch(() => { });
-                navigation.reset({ index: 0, routes: [{ name: 'RequestActive' }] });
+                const requestId = request?._id || request?.id;
+                if (requestId && ['matched', 'active'].includes(status)) {
+                  navigation.reset({ index: 0, routes: [{ name: 'RequesterMatchingMap', params: { requestId } }] });
+                } else {
+                  navigation.reset({ index: 0, routes: [{ name: 'RequestActive' }] });
+                }
                 if (failSafeTimer) clearTimeout(failSafeTimer);
                 return;
               }

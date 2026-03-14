@@ -8,6 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useResponsive } from '../../utils/responsive';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getFcmToken } from '../../services/firebase/config';
+import { getMessaging, onTokenRefresh } from '@react-native-firebase/messaging';
 import { loadAuth, loadAvailabilityPreference, loadAvailabilityUpdatedAt, saveAvailabilityPreference, loadLastKnownLocation, saveLastKnownLocation } from '../../services/storage/asyncStorage.service';
 import { updateDeviceToken } from '../../services/api/auth.api';
 import * as Device from 'expo-device';
@@ -242,6 +243,21 @@ const HomeScreen = ({ navigation }) => {
       } catch (e) { }
       fetchAvailabilityStatus();
     })();
+  }, []);
+
+
+  useEffect(() => {
+    const messaging = getMessaging();
+    const unsubscribe = onTokenRefresh(messaging, async (newToken) => {
+      try {
+        const { accessToken } = await loadAuth();
+        if (!accessToken || !newToken) return;
+        await updateDeviceToken(accessToken, { deviceToken: newToken, platform: Platform.OS });
+      } catch (e) {}
+    });
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
   }, []);
 
   useFocusEffect(

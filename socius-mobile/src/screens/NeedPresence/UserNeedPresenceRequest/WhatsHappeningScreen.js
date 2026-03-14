@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../../components/common/Header';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useResponsive } from '../../../utils/responsive';
+import MotionPressable from '../../../components/common/MotionPressable';
+import MotionTextInput from '../../../components/common/MotionTextInput';
 
 const WhatsHappeningScreen = ({ navigation }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
@@ -19,9 +21,9 @@ const WhatsHappeningScreen = ({ navigation }) => {
       <Header 
         onBackPress={() => navigation.goBack()}
         rightComponent={
-          <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={{ padding: spacing(8) }}>
+          <MotionPressable onPress={() => navigation.navigate('Settings')} style={{ padding: spacing(8) }}>
             <Icon name="cog" size={scale(24)} color="#999999" />
-          </TouchableOpacity>
+          </MotionPressable>
         }
         style={{ borderBottomWidth: scale(1), borderBottomColor: '#E8EAED' }}
       />
@@ -48,8 +50,9 @@ const WhatsHappeningScreen = ({ navigation }) => {
             elevation: scale(1)
           }]}>
             <Icon name="magnify" size={scale(22)} color="#999999" />
-            <TextInput
-              style={[styles.searchInput, { marginLeft: spacing(8), fontSize: ms(14) }]}
+            <MotionTextInput
+              containerStyle={{ flex: 1, marginLeft: spacing(8), borderRadius: scale(16), paddingVertical: 0, paddingHorizontal: 0, borderWidth: 0, backgroundColor: 'transparent', shadowOpacity: 0, elevation: 0 }}
+              inputStyle={[styles.searchInput, { fontSize: ms(14) }]}
               placeholder="Search (e.g. unsafe walk, blood, car issue)"
               placeholderTextColor="#9AA1A9"
               value={query}
@@ -57,7 +60,7 @@ const WhatsHappeningScreen = ({ navigation }) => {
             />
           </View>
 
-          <TouchableOpacity 
+          <MotionPressable 
             style={[styles.card, { 
               borderRadius: scale(16), 
               borderWidth: scale(1), 
@@ -66,8 +69,7 @@ const WhatsHappeningScreen = ({ navigation }) => {
               marginBottom: vscale(12),
               shadowRadius: scale(6),
               elevation: scale(2)
-            }]} 
-            activeOpacity={0.9} 
+            }]}
             onPress={() => navigateToCreate('calm_presence')}
           >
             <LinearGradient 
@@ -82,9 +84,9 @@ const WhatsHappeningScreen = ({ navigation }) => {
               <Text style={[styles.cardTitle, { fontSize: ms(15), marginBottom: vscale(4) }]}>I need calm presence</Text>
               <Text style={[styles.cardDesc, { fontSize: ms(12) }]}>Something feels off and I don’t want to be alone.</Text>
             </View>
-          </TouchableOpacity>
+          </MotionPressable>
 
-          <TouchableOpacity 
+          <MotionPressable 
             style={[styles.card, { 
               borderRadius: scale(16), 
               borderWidth: scale(1), 
@@ -93,8 +95,7 @@ const WhatsHappeningScreen = ({ navigation }) => {
               marginBottom: vscale(12),
               shadowRadius: scale(6),
               elevation: scale(2)
-            }]} 
-            activeOpacity={0.9} 
+            }]}
             onPress={() => navigateToCreate('care_support')}
           >
             <LinearGradient 
@@ -109,9 +110,9 @@ const WhatsHappeningScreen = ({ navigation }) => {
               <Text style={[styles.cardTitle, { fontSize: ms(15), marginBottom: vscale(4) }]}>Someone needs care or support</Text>
               <Text style={[styles.cardDesc, { fontSize: ms(12) }]}>This is about care, comfort, or assistance.</Text>
             </View>
-          </TouchableOpacity>
+          </MotionPressable>
 
-          <TouchableOpacity 
+          <MotionPressable 
             style={[styles.card, { 
               borderRadius: scale(16), 
               borderWidth: scale(1), 
@@ -120,8 +121,7 @@ const WhatsHappeningScreen = ({ navigation }) => {
               marginBottom: vscale(12),
               shadowRadius: scale(6),
               elevation: scale(2)
-            }]} 
-            activeOpacity={0.9} 
+            }]}
             onPress={() => navigateToCreate('right_help')}
           >
             <LinearGradient 
@@ -136,9 +136,9 @@ const WhatsHappeningScreen = ({ navigation }) => {
               <Text style={[styles.cardTitle, { fontSize: ms(15), marginBottom: vscale(4) }]}>We need the right help</Text>
               <Text style={[styles.cardDesc, { fontSize: ms(12) }]}>Specific help or resources are needed.</Text>
             </View>
-          </TouchableOpacity>
+          </MotionPressable>
 
-          <TouchableOpacity 
+          <MotionPressable 
             style={[styles.card, { 
               borderRadius: scale(16), 
               borderWidth: scale(1), 
@@ -147,8 +147,7 @@ const WhatsHappeningScreen = ({ navigation }) => {
               marginBottom: vscale(12),
               shadowRadius: scale(6),
               elevation: scale(2)
-            }]} 
-            activeOpacity={0.9} 
+            }]}
             onPress={() => navigateToCreate('prevent_fix')}
           >
             <LinearGradient 
@@ -163,7 +162,7 @@ const WhatsHappeningScreen = ({ navigation }) => {
               <Text style={[styles.cardTitle, { fontSize: ms(15), marginBottom: vscale(4) }]}>Let’s prevent or fix something</Text>
               <Text style={[styles.cardDesc, { fontSize: ms(12) }]}>A local issue that could become a problem.</Text>
             </View>
-          </TouchableOpacity>
+          </MotionPressable>
 
           <View style={[styles.footerNoteWrap, { marginTop: vscale(6) }]}>
             <View style={[styles.sectionDivider, { height: scale(1), marginVertical: vscale(10) }]} />
@@ -267,4 +266,3 @@ const styles = StyleSheet.create({
 });
 
 export default WhatsHappeningScreen;
-

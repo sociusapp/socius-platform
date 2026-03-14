@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../../components/common/Header';
@@ -7,13 +7,14 @@ import Button from '../../../components/common/Button';
 import CustomAlert from '../../../components/common/CustomAlert';
 import MotionView from '../../../components/common/MotionView';
 import { useResponsive } from '../../../utils/responsive';
-import { createHelpRequest, getMyActiveHelpRequest } from '../../../services/api/incident.api';
+import { createHelpRequest, updateHelpRequest, getMyActiveHelpRequest } from '../../../services/api/incident.api';
 import { requestLocationPermission, getCurrentPosition, reverseGeocode, formatLocationLabel } from '../../../services/location/geolocation.service';
-import { loadAuth } from '../../../services/storage/asyncStorage.service';
+import { loadAuth, saveActiveHelpRequestId } from '../../../services/storage/asyncStorage.service';
 
 const ReviewRequestScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
-  const { description, time, helpType, location } = route?.params || {};
+  const { description, time, helpType, location, category: explicitCategory } = route?.params || {};
+  const requestId = route?.params?.requestId;
   const [submitting, setSubmitting] = useState(false);
   const [locationLabel, setLocationLabel] = useState('');
   
@@ -49,8 +50,19 @@ const ReviewRequestScreen = ({ navigation, route }) => {
   const helpTypeLabel = helpType?.label || 'Everyday Help';
   const helpTypeIcon = helpType?.icon || 'flower';
   const helpTypeColor = helpType?.color || '#DC5C69';
+  const helpTypeImage = helpType?.iconUrl || null;
 
   const mapHelpTypeToCategory = () => {
+    if (typeof explicitCategory === 'string' && explicitCategory.length > 0) {
+      return explicitCategory;
+    }
+    const direct =
+      (typeof helpType?.category === 'string' && helpType.category) ||
+      (typeof helpType?.slug === 'string' && helpType.slug) ||
+      (typeof helpType?.id === 'string' && helpType.id) ||
+      null;
+    if (direct) return direct;
+
     const id = helpType?.id;
     switch (id) {
       case 1: return 'print_document';
@@ -165,29 +177,108 @@ const ReviewRequestScreen = ({ navigation, route }) => {
         return;
       }
 
+      let addressLabel = locationLabel;
+      if (!addressLabel) {
+        try {
+          const place = await reverseGeocode({
+            latitude,
+            longitude,
+          });
+          addressLabel = formatLocationLabel(place, { fallback: '' });
+        } catch (e) {
+        }
+      }
+
       payload = {
         category: mapHelpTypeToCategory(),
         description: requestText,
+        time: timeText,
         location: {
           lng: longitude,
           lat: latitude,
+          address: addressLabel || '',
         },
         itemReturnRequired: false,
       };
 
-      const response = await createHelpRequest(token, payload);
+      const response = requestId
+        ? await updateHelpRequest(token, requestId, payload)
+        : await createHelpRequest(token, payload);
 
       if (response?.success) {
-        const createdRequest = response?.data?.request || response?.data;
-        const showNudge = !!response?.data?.showNudge;
-        console.log('[DailyHelp] createHelpRequest: success', response?.data);
+        const updatedOrCreatedRequest = response?.data?.request || response?.data;
+        const showNudge = requestId ? false : !!response?.data?.showNudge;
+        const noHelpersFound = !!response?.data?.noHelpersFound;
+        const helperAvailabilityHint = response?.data?.helperAvailabilityHint || null;
+        const attemptId = response?.data?.attemptId || null;
+        console.log('[DailyHelp] helpRequest submit: success', response?.data);
 
-        if (showNudge) {
-          navigation.navigate('CommunityBalanceNudge', { requestId: createdRequest?._id, initialRequest: createdRequest });
+        if (updatedOrCreatedRequest?._id || updatedOrCreatedRequest?.id) {
+          saveActiveHelpRequestId(updatedOrCreatedRequest._id || updatedOrCreatedRequest.id).catch(() => {});
+        }
+
+        if (noHelpersFound) {
+          const ref = attemptId ? `\n\nRef: ${attemptId}` : '';
+          const title =
+            helperAvailabilityHint === 'only_self_available'
+              ? 'No One Else Nearby'
+              : helperAvailabilityHint === 'helpers_busy_or_ineligible'
+                ? 'Nearby Helpers Are Busy'
+                : 'No Helpers Nearby';
+          const message =
+            helperAvailabilityHint === 'only_self_available'
+              ? `No one else is available within 500m of your location right now. ${ref}`
+              : helperAvailabilityHint === 'helpers_busy_or_ineligible' 
+                ? `There are people nearby, but they’re not available right now. Please try again in a few minutes.${ref}`
+                : `No available helpers were found within 500m right now. Please try again later.${ref}`;
+
+          showAlert(
+            title,
+            message,
+            [{
+              text: 'Continue',
+              onPress: () => {
+                closeAlert();
+                if (!requestId && showNudge) {
+                  navigation.navigate('CommunityBalanceNudge', { requestId: updatedOrCreatedRequest?._id, initialRequest: updatedOrCreatedRequest });
+                } else if (requestId) {
+                  navigation.navigate('RequestActive', { initialRequest: updatedOrCreatedRequest, updated: true });
+                } else {
+                  navigation.navigate('RequestActive', { initialRequest: updatedOrCreatedRequest });
+                }
+              },
+              type: 'primary'
+            }],
+            'account-search-outline',
+            '#DC5C69'
+          );
           return;
         }
 
-        navigation.navigate('RequestActive', { initialRequest: createdRequest });
+        if (!requestId && showNudge) {
+          navigation.navigate('CommunityBalanceNudge', { requestId: updatedOrCreatedRequest?._id, initialRequest: updatedOrCreatedRequest });
+          return;
+        }
+
+        if (requestId) {
+          showAlert(
+            'Request updated',
+            'Your active request has been updated successfully.',
+            [{
+              text: 'OK',
+              onPress: () => {
+                closeAlert();
+                navigation.navigate('RequestActive', { initialRequest: updatedOrCreatedRequest, updated: true });
+              },
+              type: 'primary'
+            }],
+            'check-circle',
+            '#22C55E'
+          );
+          return;
+        }
+
+        navigation.navigate('RequestActive', { initialRequest: updatedOrCreatedRequest });
         return;
       }
 
@@ -200,7 +291,7 @@ const ReviewRequestScreen = ({ navigation, route }) => {
       );
     } catch (error) {
       console.log(
-        'createHelpRequest error',
+        'helpRequest submit error',
         error?.message,
         error?.response?.status,
         error?.response?.data
@@ -221,15 +312,16 @@ const ReviewRequestScreen = ({ navigation, route }) => {
       const messageFromServer =
         error.response.data?.message ||
         error.response.data?.errors?.[0]?.message;
-      console.log('[DailyHelp] createHelpRequest: error', status, messageFromServer, error.response?.data);
+      console.log('[DailyHelp] helpRequest submit: error', status, messageFromServer, error.response?.data);
 
       const code = error.response.data?.code;
       if (status === 400 && code === 'SELF_HELP_NOT_ALLOWED') {
+        const ref = error.response.data?.data?.attemptId ? `\n\nRef: ${error.response.data.data.attemptId}` : '';
         showAlert(
-          'Not possible',
-          messageFromServer || 'You cannot send a help request to your own account.',
+          'No One Else Nearby',
+          messageFromServer || `No one else is available within 500m of your location right now. Ask a nearby user to be available and try again.${ref}`,
           [{ text: 'OK', onPress: closeAlert, type: 'primary' }],
-          'account-off-outline',
+          'account-search-outline',
           '#DC5C69'
         );
         return;
@@ -252,7 +344,7 @@ const ReviewRequestScreen = ({ navigation, route }) => {
         return;
       }
 
-      if (status === 409) {
+      if (!requestId && status === 409) {
         try {
           const auth = await loadAuth();
           const token = auth?.accessToken;
@@ -282,6 +374,17 @@ const ReviewRequestScreen = ({ navigation, route }) => {
           [{ text: 'View Request', onPress: () => { closeAlert(); navigation.navigate('RequestActive'); }, type: 'primary' }],
           'information',
           '#2196F3'
+        );
+        return;
+      }
+
+      if (requestId && status === 409) {
+        showAlert(
+          'Unable to update',
+          messageFromServer || 'This request cannot be updated right now.',
+          [{ text: 'OK', onPress: closeAlert, type: 'primary' }],
+          'alert-circle',
+          '#DC5C69'
         );
         return;
       }
@@ -369,7 +472,15 @@ const ReviewRequestScreen = ({ navigation, route }) => {
               ]}
             >
               <View style={[styles.requestRowLeft, { marginRight: spacing(12) }]}>
-                <Icon name={helpTypeIcon} size={scale(20)} color={helpTypeColor} />
+                {helpTypeImage ? (
+                  <Image
+                    source={{ uri: helpTypeImage }}
+                    style={{ width: scale(20), height: scale(20), borderRadius: scale(6) }}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <Icon name={helpTypeIcon} size={scale(20)} color={helpTypeColor} />
+                )}
                 <Text
                   style={[
                     styles.requestRowLabel,
@@ -385,7 +496,7 @@ const ReviewRequestScreen = ({ navigation, route }) => {
                   { fontSize: ms(14), maxWidth: '60%' },
                 ]}
               >
-                {helpTypeLabel}
+                {String(helpTypeLabel || '').toUpperCase()}
               </Text>
             </View>
 

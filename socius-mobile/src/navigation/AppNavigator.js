@@ -1,16 +1,20 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { NavigationContainer, createNavigationContainerRef, CommonActions } from '@react-navigation/native';
-import notifee, { EventType } from '@notifee/react-native';
+import notifee, { AndroidStyle, EventType } from '@notifee/react-native';
 import { AppState, NativeEventEmitter, NativeModules, Platform } from 'react-native';
 import StackNavigator from './StackNavigator';
 import { onNotificationOpened, getInitialNotification, onMessageForeground } from '../services/firebase/messaging';
-import { CHANNELS, handleIncomingCallMessage } from '../services/notifications/SociusNotificationService';
+import { CHANNELS, handleIncomingCallMessage, initNotifeeChannels } from '../services/notifications/SociusNotificationService';
 import { connectSocket } from '../services/socket/socket.service';
 import CustomAlert from '../components/common/CustomAlert';
+import IncomingHelpRequestModal from '../components/notifications/IncomingHelpRequestModal';
 import { loadAuth } from '../services/storage/asyncStorage.service';
 import { declineHelpAsVolunteer } from '../services/api/volunteer.api';
 import { getMyActiveHelpRequest } from '../services/api/incident.api';
 import { buildClosureInitiatedCopy, buildRequestClosedCopy } from '../utils/closureMessages';
+import NativeCallService from '../services/notifications/NativeCallService';
+import { getFcmToken } from '../services/firebase/config';
+import { updateDeviceToken } from '../services/api/auth.api';
 
 const { SociusCallModule } = NativeModules;
 
@@ -119,6 +123,9 @@ const AppNavigator = () => {
     setAlertVisible(false);
   };
 
+  const [incomingHelpVisible, setIncomingHelpVisible] = useState(false);
+  const [incomingHelpData, setIncomingHelpData] = useState(null);
+
   useEffect(() => {
     if (SociusCallModule) {
       const eventEmitter = new NativeEventEmitter(SociusCallModule);
@@ -179,17 +186,38 @@ const AppNavigator = () => {
     const appStateRef = { current: AppState.currentState };
     const appStateSub = AppState.addEventListener('change', (nextState) => {
       appStateRef.current = nextState;
+      if (nextState !== 'active') {
+        setIncomingHelpVisible(false);
+        NativeCallService.stopRingtone();
+      }
     });
+
+    initNotifeeChannels().catch(() => {});
+
+    (async () => {
+      try {
+        const { accessToken } = await loadAuth();
+        if (!accessToken) return;
+        const token = await getFcmToken().catch(() => null);
+        if (!token) return;
+        await updateDeviceToken(accessToken, { deviceToken: token, platform: Platform.OS }).catch(() => {});
+      } catch (e) {}
+    })();
 
     const displayUpdateNotification = async ({ title, body, data }) => {
       if (Platform.OS !== 'android') return;
       try {
+        const status = String(data?.status || '').toLowerCase();
+        const requestId = String(data?.requestId || '');
+        const id = status && requestId ? `update:${status}:${requestId}` : undefined;
         await notifee.displayNotification({
+          id,
           title,
           body,
           android: {
             channelId: CHANNELS.UPDATES,
             pressAction: { id: 'default' },
+            style: { type: AndroidStyle.BIGTEXT, text: body },
           },
           data,
         });
@@ -205,6 +233,27 @@ const AppNavigator = () => {
         }
 
         const type = String(data.type || '').toLowerCase();
+
+        if ((type.includes('help_request') || type === 'help_request_alert') && data.requestId) {
+          loadAuth()
+            .then((auth) => {
+              const token = auth?.accessToken || null;
+              NativeCallService.startHelpRequestRingtone();
+              setIncomingHelpData({
+                requestId: data.requestId,
+                category: data.category,
+                categoryName: data.categoryName,
+                categoryIcon: data.categoryIcon,
+                description: data.description,
+                distanceMeters: data.distanceMeters ? Number(data.distanceMeters) : 0,
+                area: data.area,
+                token,
+              });
+              setIncomingHelpVisible(true);
+            })
+            .catch(() => {});
+          return;
+        }
 
         if (type === 'help_request_alert' && data.requestId) {
           navigationRef.navigate('LocalRequest', { requestId: data.requestId });
@@ -233,25 +282,63 @@ const AppNavigator = () => {
     const unsubscribeForeground = onMessageForeground(async remoteMessage => {
       console.log('[AppNavigator] foreground message', remoteMessage?.data || remoteMessage);
 
+      const data = remoteMessage?.data || {};
+      const upperType = String(data.type || '').toUpperCase();
+
+      const isHelpRequest =
+        upperType.includes('HELP_REQUEST') ||
+        upperType === 'HELP_REQUEST_ALERT' ||
+        upperType.includes('HELP_REQUEST_ALERT');
+
+      if (Platform.OS === 'android' && isHelpRequest) {
+        const auth = await loadAuth().catch(() => null);
+        const token = auth?.accessToken || null;
+
+        try {
+          NativeCallService.startHelpRequestRingtone();
+        } catch (e) {}
+
+        setIncomingHelpData((prev) => ({
+          ...(prev || {}),
+          requestId: data.requestId,
+          category: data.category,
+          categoryName: data.categoryName,
+          categoryIcon: data.categoryIcon,
+          description: data.description,
+          distanceMeters: data.distanceMeters ? Number(data.distanceMeters) : 0,
+          area: data.area,
+          token,
+        }));
+        setIncomingHelpVisible(true);
+        return;
+      }
+
       const handledByCallKeep = await handleIncomingCallMessage(remoteMessage);
       if (handledByCallKeep) {
         return;
       }
 
-      const notification = remoteMessage?.notification || {};
-      const data = remoteMessage?.data || {};
-      const title = notification.title || '';
-      const body = notification.body || '';
-
       const dataType = String(data.type || '').toLowerCase();
       const status = String(data.status || '').toLowerCase();
       if (dataType === 'request_status') {
         if (status === 'matched') {
-          await displayUpdateNotification({
-            title: title || 'Match found',
-            body: body || 'A volunteer has accepted your request. Tap to open the meeting screen.',
-            data: { ...data, type: 'request_status', status: 'matched' },
-          });
+          showAlert(
+            'Match found',
+            'A volunteer accepted your request.',
+            [
+              {
+                text: 'Open',
+                onPress: () => {
+                  closeAlert();
+                  openRequesterMeeting(data.requestId);
+                },
+                style: 'primary',
+              },
+              { text: 'OK', onPress: closeAlert },
+            ],
+            'account-heart',
+            '#28C76F'
+          );
           return;
         }
         if (status === 'closing') {
@@ -261,11 +348,23 @@ const AppNavigator = () => {
             initiatedBy: data.initiatedBy,
             occurredAt: data.occurredAt,
           });
-          await displayUpdateNotification({
-            title: title || copy.title,
-            body: body || copy.message,
-            data: { ...data, type: 'request_status', status: 'closing' },
-          });
+          showAlert(
+            copy.title,
+            copy.message,
+            [
+              {
+                text: 'Open',
+                onPress: () => {
+                  closeAlert();
+                  openRequesterMeeting(data.requestId);
+                },
+                style: 'primary',
+              },
+              { text: 'Later', onPress: closeAlert },
+            ],
+            'alert-circle-outline',
+            '#DC5C69'
+          );
           return;
         }
         if (status === 'closed') {
@@ -275,19 +374,31 @@ const AppNavigator = () => {
             reason: data.reason,
             occurredAt: data.occurredAt,
           });
-          await displayUpdateNotification({
-            title: title || copy.title,
-            body: body || copy.message,
-            data: { ...data, type: 'request_status', status: 'closed' },
-          });
+          showAlert(
+            copy.title,
+            copy.message,
+            [
+              {
+                text: 'Open activity',
+                onPress: () => {
+                  closeAlert();
+                  navigateToActivity(data.requestId, 'closed');
+                },
+                style: 'primary',
+              },
+              { text: 'OK', onPress: closeAlert },
+            ],
+            'check-circle',
+            '#28C76F'
+          );
           return;
         }
       }
 
       if (data.type === 'REVIEW_DECISION') {
         showAlert(
-          title || 'Notification',
-          body || '',
+          remoteMessage?.notification?.title || 'Notification',
+          remoteMessage?.notification?.body || '',
           [{
             text: 'OK',
             onPress: () => {
@@ -313,8 +424,10 @@ const AppNavigator = () => {
           'check-circle',
           '#28C76F'
         );
-      } else if (body) {
+      } else if (remoteMessage?.notification?.body) {
         // Customize alert based on content
+        const title = remoteMessage?.notification?.title || '';
+        const body = remoteMessage?.notification?.body || '';
         let icon = 'bell-ring';
         let iconColor = '#DC5C69';
         let buttons = [{ text: 'OK', onPress: closeAlert }];
@@ -394,6 +507,27 @@ const AppNavigator = () => {
           return;
         }
 
+        if (String(data.type || '').toLowerCase().includes('help_request') && data.requestId) {
+          loadAuth()
+            .then((auth) => {
+              const token = auth?.accessToken || null;
+              NativeCallService.startHelpRequestRingtone();
+              setIncomingHelpData({
+                requestId: data.requestId,
+                category: data.category,
+                categoryName: data.categoryName,
+                categoryIcon: data.categoryIcon,
+                description: data.description,
+                distanceMeters: data.distanceMeters ? Number(data.distanceMeters) : 0,
+                area: data.area,
+                token,
+              });
+              setIncomingHelpVisible(true);
+            })
+            .catch(() => {});
+          return;
+        }
+
         if (data.type === 'HELP_REQUEST_ALERT' && data.requestId) {
           navigationRef.navigate('LocalRequest', { requestId: data.requestId });
         }
@@ -433,6 +567,69 @@ const AppNavigator = () => {
 
     const showUpdate = async (title, message, { requestId, status, requestType, reason, occurredAt, initiatedBy }) => {
       const isActive = appStateRef.current === 'active';
+      if (isActive) {
+        if (String(status).toLowerCase() === 'matched') {
+          showAlert(
+            'Match found',
+            'A volunteer accepted your request.',
+            [
+              {
+                text: 'Open',
+                onPress: () => {
+                  closeAlert();
+                  openRequesterMeeting(requestId);
+                },
+                style: 'primary',
+              },
+              { text: 'OK', onPress: closeAlert },
+            ],
+            'account-heart',
+            '#28C76F'
+          );
+          return;
+        }
+        if (String(status).toLowerCase() === 'closing') {
+          showAlert(
+            title,
+            message,
+            [
+              {
+                text: 'Open',
+                onPress: () => {
+                  closeAlert();
+                  openRequesterMeeting(requestId);
+                },
+                style: 'primary',
+              },
+              { text: 'Later', onPress: closeAlert },
+            ],
+            'alert-circle-outline',
+            '#DC5C69'
+          );
+          return;
+        }
+        if (String(status).toLowerCase() === 'closed') {
+          showAlert(
+            title,
+            message,
+            [
+              {
+                text: 'Open activity',
+                onPress: () => {
+                  closeAlert();
+                  navigateToActivity(requestId, 'closed');
+                },
+                style: 'primary',
+              },
+              { text: 'OK', onPress: closeAlert },
+            ],
+            'check-circle',
+            '#28C76F'
+          );
+          return;
+        }
+      }
+
       if (!isActive) {
         await displayUpdateNotification({
           title,
@@ -469,6 +666,7 @@ const AppNavigator = () => {
       const s = await connectSocket();
       if (!mounted || !s) return;
       socket = s;
+      const lastOfferCallIdRef = { current: null };
 
       socket.on('help:closure_initiated', (payload) => {
         const requestId = payload?.requestId;
@@ -501,6 +699,32 @@ const AppNavigator = () => {
           { requestId, status: 'closed', requestType: payload?.requestType, reason: payload?.reason, occurredAt: payload?.occurredAt }
         );
       });
+
+      socket.on('call:signal', (payload) => {
+        const type = String(payload?.type || '');
+        if (type !== 'offer') return;
+        const callId = payload?.callId;
+        const fromUserId = payload?.fromUserId;
+        const offer = payload?.data;
+        if (!callId || !fromUserId || !offer) return;
+        if (lastOfferCallIdRef.current === String(callId)) return;
+        lastOfferCallIdRef.current = String(callId);
+
+        const run = () => {
+          if (!navigationRef.isReady()) {
+            setTimeout(run, 250);
+            return;
+          }
+          navigationRef.navigate('P2PCall', {
+            callId: String(callId),
+            otherUserId: String(fromUserId),
+            otherUserName: 'Socius User',
+            isCaller: false,
+            initialOffer: offer,
+          });
+        };
+        run();
+      });
     };
 
     setupSocket();
@@ -510,6 +734,7 @@ const AppNavigator = () => {
       if (socket) {
         socket.off('help:closure_initiated');
         socket.off('help:request_closed');
+        socket.off('call:signal');
       }
       appStateSub?.remove?.();
       if (typeof unsubscribeOpened === 'function') {
@@ -529,6 +754,47 @@ const AppNavigator = () => {
       <NavigationContainer ref={navigationRef}>
         <StackNavigator />
       </NavigationContainer>
+      <IncomingHelpRequestModal
+        visible={incomingHelpVisible}
+        data={incomingHelpData}
+        onClose={() => {
+          setIncomingHelpVisible(false);
+          NativeCallService.stopRingtone();
+        }}
+        onDecline={async () => {
+          const requestId = incomingHelpData?.requestId;
+          const token = incomingHelpData?.token;
+          setIncomingHelpVisible(false);
+          NativeCallService.stopRingtone();
+          if (token && requestId) {
+            try {
+              await declineHelpAsVolunteer(token, requestId);
+            } catch (e) {}
+          }
+        }}
+        onView={() => {
+          const requestId = incomingHelpData?.requestId;
+          const category = incomingHelpData?.category;
+          const categoryName = incomingHelpData?.categoryName;
+          const categoryIcon = incomingHelpData?.categoryIcon;
+          const description = incomingHelpData?.description;
+          const distanceMeters = incomingHelpData?.distanceMeters;
+          const area = incomingHelpData?.area;
+          setIncomingHelpVisible(false);
+          NativeCallService.stopRingtone();
+          if (navigationRef.isReady()) {
+            navigationRef.navigate('SomeoneNeedsHelp', {
+              requestId,
+              category,
+              categoryName,
+              categoryIcon,
+              description,
+              distanceMeters,
+              area,
+            });
+          }
+        }}
+      />
       <CustomAlert
         visible={alertVisible}
         title={alertConfig.title}

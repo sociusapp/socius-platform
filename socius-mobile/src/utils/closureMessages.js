@@ -8,25 +8,20 @@ const normalizeReason = (value) => {
   return v.replace(/_/g, ' ')
 }
 
-const formatTimestamp = (iso) => {
-  if (!iso) return null
-  try {
-    return new Date(iso).toLocaleString('en-US')
-  } catch (e) {
-    return null
-  }
-}
+const titleCase = (text) =>
+  String(text || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase())
 
-const formatRequestLabel = ({ requestType, requestId }) => {
+const formatRequestLabel = ({ requestType }) => {
   const type = String(requestType || 'request').replace(/_/g, ' ').trim()
-  const id = String(requestId || '').trim()
-  if (!id) return type || 'Request'
-  return `${type} (${id})`
+  const label = titleCase(type || 'Request')
+  return label.endsWith('Request') ? label : `${label} request`
 }
 
 const buildClosureInitiatedCopy = ({ requestId, requestType = 'Help request', initiatedBy, occurredAt }) => {
-  const label = formatRequestLabel({ requestType, requestId })
-  const when = formatTimestamp(occurredAt)
+  const label = formatRequestLabel({ requestType })
   const by =
     initiatedBy === 'requester'
       ? 'The requester'
@@ -34,30 +29,37 @@ const buildClosureInitiatedCopy = ({ requestId, requestType = 'Help request', in
       ? 'The helper'
       : 'A participant'
 
-  const timePart = when ? `\nTime: ${when}` : ''
   return {
-    title: 'Request closure started',
-    message: `${by} started closing ${label}.\nPlease complete your closure steps to finalize.${timePart}`,
+    title: 'Closure started',
+    message: `${by} started closing your ${label}.\nOpen Socius to review and complete the closure.`,
   }
 }
 
 const buildRequestClosedCopy = ({ requestId, requestType = 'Help request', reason, occurredAt }) => {
-  const label = formatRequestLabel({ requestType, requestId })
-  const when = formatTimestamp(occurredAt)
+  const label = formatRequestLabel({ requestType })
   const normalizedReason = normalizeReason(reason)
-  const timePart = when ? `\nTime: ${when}` : ''
+  const reasonPart =
+    normalizedReason === 'cancelled'
+      ? 'It was cancelled.'
+      : normalizedReason === 'auto closed'
+      ? 'It was auto-closed.'
+      : 'It was closed.'
   return {
     title: 'Request closed',
-    message: `${label} has been closed.\nReason: ${normalizedReason}.${timePart}`,
+    message: `Your ${label} is no longer active.\n${reasonPart}`,
   }
 }
 
 const buildChatBlockedCopy = ({ requestId, requestType = 'Help request', reason, occurredAt }) => {
-  const label = formatRequestLabel({ requestType, requestId })
-  const when = formatTimestamp(occurredAt)
+  const label = formatRequestLabel({ requestType })
   const normalizedReason = normalizeReason(reason)
-  const timePart = when ? `\nTime: ${when}` : ''
-  return `Messaging is disabled because ${label} is closed.\nReason: ${normalizedReason}.${timePart}`
+  const reasonPart =
+    normalizedReason === 'cancelled'
+      ? 'It was cancelled.'
+      : normalizedReason === 'auto closed'
+      ? 'It was auto-closed.'
+      : 'It was closed.'
+  return `Messaging is disabled because your ${label} is no longer active.\n${reasonPart}`
 }
 
 export {

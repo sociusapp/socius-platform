@@ -43,8 +43,12 @@ export const useReducedMotion = () => {
 };
 
 export const motionDurations = {
-  micro: 140,
-  short: 220,
-  medium: 280,
+  micro: 200,
+  short: 260,
+  medium: 320,
+  long: 400,
 };
 
+export const motionDefaults = {
+  durationMs: motionDurations.short,
+};

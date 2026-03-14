@@ -283,10 +283,10 @@ const SafetyComesFirstScreen = ({ navigation, route }) => {
                   styles.card,
                   {
                     borderRadius: scale(16),
-                    paddingVertical: vscale(14),
+                    paddingVertical: vscale(12),
                     paddingHorizontal: spacing(16),
                     borderWidth: scale(1),
-                    minHeight: vscale(74),
+                    minHeight: vscale(66),
                     shadowRadius: scale(8),
                     elevation: scale(2),
                   },
@@ -296,10 +296,10 @@ const SafetyComesFirstScreen = ({ navigation, route }) => {
                   style={[
                     styles.iconContainer,
                     {
-                      width: scale(52),
-                      height: scale(52),
-                      borderRadius: scale(26),
-                      marginRight: spacing(14),
+                      width: scale(46),
+                      height: scale(46),
+                      borderRadius: scale(23),
+                      marginRight: spacing(12),
                       backgroundColor: c.bg,
                       borderWidth: scale(1),
                       borderColor: '#E8EAED',
@@ -311,12 +311,24 @@ const SafetyComesFirstScreen = ({ navigation, route }) => {
                     style={{ width: scale(34), height: scale(34) }}
                     resizeMode="contain"
                   />
-                  <View style={styles.iconFallback} pointerEvents="none">
-                    <Icon name={c.icon} size={scale(20)} color={c.fg} />
+                  <View
+                    style={[
+                      styles.cornerBadge,
+                      {
+                        borderRadius: scale(999),
+                        width: scale(18),
+                        height: scale(18),
+                        right: scale(-2),
+                        bottom: scale(-2),
+                      },
+                    ]}
+                    pointerEvents="none"
+                  >
+                    <Icon name={c.icon} size={scale(12)} color={c.fg} />
                   </View>
                 </View>
                 <View style={styles.cardContent}>
-                  <Text style={[styles.cardTitle, { fontSize: ms(16), marginBottom: vscale(4) }]}>{c.title}</Text>
+                  <Text style={[styles.cardTitle, { fontSize: ms(14), marginBottom: vscale(3), letterSpacing: 0.6 }]}>{String(c.title).toUpperCase()}</Text>
                   <Text style={[styles.cardDescription, { fontSize: ms(13) }]}>{c.desc}</Text>
                 </View>
               </View>
@@ -435,11 +447,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16,
+    overflow: 'hidden',
   },
-  iconFallback: {
+  cornerBadge: {
     position: 'absolute',
-    right: 6,
-    bottom: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderWidth: 1,
+    borderColor: '#E8EAED',
   },
   cardContent: {
     flex: 1,

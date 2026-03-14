@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -10,6 +10,8 @@ import { requestLocationPermission, getCurrentPosition } from '../../../services
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
 import CancelRequestModal from '../UserNeedPresenceRecive/CancelRequestModal';
 import CustomAlert from '../../../components/common/CustomAlert';
+import MotionPressable from '../../../components/common/MotionPressable';
+import MotionTextInput from '../../../components/common/MotionTextInput';
 
 const ShareLocationScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
@@ -240,9 +242,9 @@ const ShareLocationScreen = ({ navigation, route }) => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={[styles.header, { paddingHorizontal: spacing(16), paddingVertical: vscale(12), borderBottomWidth: scale(1) }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.headerBtn, { padding: scale(8), width: scale(40) }]}>
+        <MotionPressable onPress={() => navigation.goBack()} style={[styles.headerBtn, { padding: scale(8), width: scale(40) }]}>
           <Icon name="arrow-left" size={scale(24)} color="#666666" />
-        </TouchableOpacity>
+        </MotionPressable>
         <Text style={[styles.headerTitle, { fontSize: ms(18) }]}>{getTitle()}</Text>
         <View style={[styles.headerBtn, { width: scale(40) }]} />
       </View>
@@ -251,8 +253,18 @@ const ShareLocationScreen = ({ navigation, route }) => {
         <View style={{ width: contentWidth }}>
           <View style={[styles.card, { borderRadius: scale(12), padding: spacing(16), marginBottom: vscale(16), shadowRadius: scale(6), elevation: scale(3), borderWidth: scale(1) }]}>
             <Text style={[styles.label, { fontSize: ms(14), marginBottom: vscale(8) }]}>Add one line <Text style={[styles.optional, { fontSize: ms(14) }]}>(optional)</Text></Text>
-            <TextInput
-              style={[styles.input, { borderRadius: scale(8), paddingHorizontal: spacing(12), paddingVertical: vscale(10), fontSize: ms(14), minHeight: vscale(48), marginBottom: vscale(8), borderWidth: scale(1) }]}
+            <MotionTextInput
+              containerStyle={{
+                backgroundColor: '#F9FAFB',
+                borderWidth: scale(1),
+                borderColor: '#E8EAED',
+                borderRadius: scale(8),
+                paddingHorizontal: spacing(12),
+                paddingVertical: vscale(10),
+                minHeight: vscale(48),
+                marginBottom: vscale(8),
+              }}
+              inputStyle={{ fontSize: ms(14), color: '#2C3E50', textAlignVertical: 'top' }}
               placeholder="Anything helpful others should know (optional)"
               placeholderTextColor="#999999"
               value={note}
@@ -295,9 +307,9 @@ const ShareLocationScreen = ({ navigation, route }) => {
             style={[styles.actionButton, { marginTop: vscale(8), marginBottom: vscale(16), borderRadius: scale(30), shadowRadius: scale(8), elevation: scale(5) }]}
           />
 
-          <TouchableOpacity onPress={() => setCancelModalVisible(true)} style={[styles.footerLink, { padding: scale(8) }]}>
+          <MotionPressable onPress={() => setCancelModalVisible(true)} style={[styles.footerLink, { padding: scale(8) }]}>
             <Text style={[styles.footerText, { fontSize: ms(14) }]}>Cancel and go back</Text>
-          </TouchableOpacity>
+          </MotionPressable>
         </View>
       </ScrollView>
 

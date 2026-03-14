@@ -27,6 +27,12 @@ const createHelpRequest = (token, payload) => {
     .then((response) => response.data);
 };
 
+const updateHelpRequest = (token, id, payload) => {
+  return api
+    .patch(`/help-request/${encodeURIComponent(id)}`, payload, authConfig(token))
+    .then((response) => response.data);
+};
+
 const acceptHelpRequest = (token, id) => {
   return api
     .patch(`/help-request/${encodeURIComponent(id)}/accept`, undefined, authConfig(token))
@@ -146,6 +152,7 @@ export {
   getMyActiveHelpRequest,
   getHelpRequestById,
   createHelpRequest,
+  updateHelpRequest,
   acceptHelpRequest,
   declineHelpRequest,
   cancelHelpRequest,

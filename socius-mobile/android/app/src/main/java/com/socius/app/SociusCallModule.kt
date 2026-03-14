@@ -19,7 +19,10 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
 import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.media.MediaPlayer
+import android.net.Uri
 import android.os.Build
 import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
@@ -43,6 +46,9 @@ class SociusCallModule(private val reactContext: ReactApplicationContext) :
     init { reactContext.addActivityEventListener(this) }
 
     override fun getName(): String = "SociusCallModule"
+
+    private var helpRequestPlayer: MediaPlayer? = null
+    private var helpRequestFocusRequest: AudioFocusRequest? = null
 
     // ─────────────────────────────────────────────────────────────
     //  Config per notification type
@@ -379,13 +385,9 @@ class SociusCallModule(private val reactContext: ReactApplicationContext) :
 
                 val localIconId = reactContext.resources.getIdentifier(localIconName, "drawable", reactContext.packageName)
                 
-                var rawAvatar: Bitmap? = if (localIconId != 0) {
-                    BitmapFactory.decodeResource(reactContext.resources, localIconId)
-                } else {
-                    null
-                }
+                var rawAvatar: Bitmap? = null
 
-                if (rawAvatar == null && !avatarUrl.isNullOrEmpty()) {
+                if (!avatarUrl.isNullOrEmpty()) {
                     try {
                         val url = java.net.URL(avatarUrl)
                         val connection = url.openConnection() as java.net.HttpURLConnection
@@ -394,6 +396,10 @@ class SociusCallModule(private val reactContext: ReactApplicationContext) :
                         val input = connection.inputStream
                         rawAvatar = BitmapFactory.decodeStream(input)
                     } catch (e: Exception) { }
+                }
+
+                if (rawAvatar == null && localIconId != 0) {
+                    rawAvatar = BitmapFactory.decodeResource(reactContext.resources, localIconId)
                 }
                 
                 val finalAvatar = if (rawAvatar != null) {
@@ -422,6 +428,7 @@ class SociusCallModule(private val reactContext: ReactApplicationContext) :
                     putExtra("call_uuid", uuid)
                     putExtra("name", name)
                     putExtra("info", info)
+                    putExtra("avatar_url", avatarUrl ?: "")
                     payload?.let { putExtra("payload", it) }
                 }
                 
@@ -481,45 +488,11 @@ class SociusCallModule(private val reactContext: ReactApplicationContext) :
                     notificationBuilder.setSound(soundUri)
                 }
                 
-                val customLayoutId = reactContext.resources.getIdentifier("notification_call_custom", "layout", reactContext.packageName)
-                if (customLayoutId != 0) {
-                    val remoteViews = RemoteViews(reactContext.packageName, customLayoutId)
-                    
-                    val titleId  = reactContext.resources.getIdentifier("tv_title", "id", reactContext.packageName)
-                    val bodyId   = reactContext.resources.getIdentifier("tv_body", "id", reactContext.packageName)
-                    val avatarId = reactContext.resources.getIdentifier("iv_avatar", "id", reactContext.packageName)
-
-                    if (titleId != 0) {
-                        val safeTitle = if (isHelpRequest) "Help Request" else (name.takeIf { it.isNotBlank() } ?: "Socius")
-                        remoteViews.setTextViewText(titleId, "$safeTitle · Socius · now")
-                    }
-                    if (bodyId  != 0) remoteViews.setTextViewText(bodyId, body)
-                    if (avatarId != 0) remoteViews.setImageViewBitmap(avatarId, finalAvatar)
-                    
-                    val declineBtnId = reactContext.resources.getIdentifier("btn_decline", "id", reactContext.packageName)
-                    val answerBtnId  = reactContext.resources.getIdentifier("btn_answer", "id", reactContext.packageName)
-                    
-                    if (declineBtnId != 0) {
-                        remoteViews.setTextViewText(declineBtnId, cfg.declineLabel)
-                        remoteViews.setOnClickPendingIntent(declineBtnId, declinePendingIntent)
-                        val declineBgId = reactContext.resources.getIdentifier("bg_btn_decline", "drawable", reactContext.packageName)
-                        if (declineBgId != 0) remoteViews.setInt(declineBtnId, "setBackgroundResource", declineBgId)
-                    }
-                    if (answerBtnId != 0) {
-                        remoteViews.setTextViewText(answerBtnId, cfg.acceptLabel)
-                        remoteViews.setOnClickPendingIntent(answerBtnId, acceptPendingIntent)
-                        val acceptBgId = reactContext.resources.getIdentifier("bg_btn_answer", "drawable", reactContext.packageName)
-                        if (acceptBgId != 0) remoteViews.setInt(answerBtnId, "setBackgroundResource", acceptBgId)
-                    }
-                    
-                    notificationBuilder.setCustomContentView(remoteViews)
-                    notificationBuilder.setCustomHeadsUpContentView(remoteViews)
-                    notificationBuilder.setColorized(true)
-                } else {
-                    notificationBuilder.addAction(0, cfg.declineLabel, declinePendingIntent)
-                    notificationBuilder.addAction(0, cfg.acceptLabel, acceptPendingIntent)
-                    notificationBuilder.setLargeIcon(finalAvatar)
-                }
+                notificationBuilder
+                    .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+                    .addAction(0, cfg.declineLabel, declinePendingIntent)
+                    .addAction(0, cfg.acceptLabel, acceptPendingIntent)
+                    .setLargeIcon(finalAvatar)
                     
                 val notification = notificationBuilder.build()
                 notification.flags = notification.flags or android.app.Notification.FLAG_INSISTENT
@@ -598,6 +571,90 @@ class SociusCallModule(private val reactContext: ReactApplicationContext) :
                 val mediaPlayer = MediaPlayer.create(context, resId)
                 mediaPlayer.setOnCompletionListener { mp -> mp.release() }
                 mediaPlayer.start()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    @ReactMethod
+    fun playHelpRequestSound() {
+        try {
+            val context = reactContext
+            val resId = context.resources.getIdentifier("help_request", "raw", context.packageName)
+            if (resId != 0) {
+                val attrs = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+                val uri = Uri.parse("android.resource://${context.packageName}/$resId")
+                val mediaPlayer = MediaPlayer().apply {
+                    setAudioAttributes(attrs)
+                    setDataSource(context, uri)
+                    isLooping = false
+                    prepare()
+                    setOnCompletionListener { mp -> mp.release() }
+                    start()
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    @ReactMethod
+    fun startHelpRequestRingtone() {
+        try {
+            val context = reactContext
+            val resId = context.resources.getIdentifier("help_request", "raw", context.packageName)
+            if (resId == 0) return
+            stopRingtone()
+
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val attrs = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                    .setAudioAttributes(attrs)
+                    .setOnAudioFocusChangeListener { }
+                    .build()
+                helpRequestFocusRequest = req
+                audioManager.requestAudioFocus(req)
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager.requestAudioFocus(null, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+            }
+
+            val uri = Uri.parse("android.resource://${context.packageName}/$resId")
+            helpRequestPlayer = MediaPlayer().apply {
+                setAudioAttributes(attrs)
+                setDataSource(context, uri)
+                isLooping = true
+                prepare()
+                start()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    @ReactMethod
+    fun stopRingtone() {
+        try {
+            helpRequestPlayer?.stop()
+            helpRequestPlayer?.release()
+            helpRequestPlayer = null
+            val context = reactContext
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                helpRequestFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+                helpRequestFocusRequest = null
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager.abandonAudioFocus(null)
             }
         } catch (e: Exception) {
             e.printStackTrace()

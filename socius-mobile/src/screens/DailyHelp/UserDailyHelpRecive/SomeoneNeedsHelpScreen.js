@@ -1,5 +1,5 @@
 import { getHelpRequestById } from '../../../services/api/incident.api';
-import { declineHelpAsVolunteer } from '../../../services/api/volunteer.api';
+import { acceptHelpAsVolunteer } from '../../../services/api/volunteer.api';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
 import { getSocket } from '../../../services/socket/socket.service';
 import React, { useEffect, useState } from 'react';
@@ -11,15 +11,26 @@ import Button from '../../../components/common/Button';
 import { SkeletonBox, SkeletonCircle, SkeletonSpacer } from '../../../components/common/Skeleton';
 import CustomAlert from '../../../components/common/CustomAlert';
 import { useResponsive } from '../../../utils/responsive';
+import { baseURL } from '../../../services/api/client';
 
 const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
 
-  const { requestId: paramRequestId, category: paramCategory, description: paramDescription, distanceMeters: paramDistance, area: paramArea } = route.params || {};
+  const {
+    requestId: paramRequestId,
+    category: paramCategory,
+    categoryName: paramCategoryName,
+    categoryIcon: paramCategoryIcon,
+    description: paramDescription,
+    distanceMeters: paramDistance,
+    area: paramArea,
+  } = route.params || {};
 
   const [loading, setLoading] = useState(false);
   const [requestData, setRequestData] = useState({
     category: paramCategory,
+    categoryName: paramCategoryName,
+    categoryIcon: paramCategoryIcon,
     description: paramDescription,
     distanceMeters: paramDistance,
     area: paramArea
@@ -64,77 +75,41 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
     const socket = getSocket();
     const handleRequestTaken = (data) => {
       if (data.requestId === requestId) {
-        showAlert(
-          'Request Closed',
-          'Someone else has accepted this request.',
-          [{
-            text: 'OK',
-            onPress: () => {
-              closeAlert();
-              setTimeout(() => {
-                navigation.reset({
-                  index: 0,
-                  routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
-                });
-              }, 100);
-            }
-          }]
-        );
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+        });
       }
     };
 
-    const handleRequestCancelled = (data) => {
+    const handleRequestClosed = (data) => {
       if (data.requestId === requestId) {
-        showAlert(
-          'Request Cancelled',
-          'The user has cancelled this request.',
-          [{
-            text: 'OK',
-            onPress: () => {
-              closeAlert();
-              setTimeout(() => {
-                navigation.reset({
-                  index: 0,
-                  routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
-                });
-              }, 100);
-            }
-          }]
-        );
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+        });
       }
     };
 
     const handleRequestExpired = (data) => {
       if (data.requestId === requestId) {
-        showAlert(
-          'Request Expired',
-          'This request has expired.',
-          [{
-            text: 'OK',
-            onPress: () => {
-              closeAlert();
-              setTimeout(() => {
-                navigation.reset({
-                  index: 0,
-                  routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
-                });
-              }, 100);
-            }
-          }]
-        );
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+        });
       }
     };
 
     if (socket) {
       socket.on('help:request_taken', handleRequestTaken);
-      socket.on('help:request_cancelled', handleRequestCancelled);
+      socket.on('help:request_closed', handleRequestClosed);
       socket.on('help:request_expired', handleRequestExpired);
     }
 
     return () => {
       if (socket) {
         socket.off('help:request_taken', handleRequestTaken);
-        socket.off('help:request_cancelled', handleRequestCancelled);
+        socket.off('help:request_closed', handleRequestClosed);
         socket.off('help:request_expired', handleRequestExpired);
       }
     };
@@ -204,6 +179,8 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
 
           setRequestData({
             category: req.category,
+            categoryName: req.categoryName,
+            categoryIcon: req.categoryIcon,
             description: req.description,
             distanceMeters: req.distanceMeters || paramDistance, // Keep param distance if available (might be calculated locally)
             area: req.location?.address || 'Nearby'
@@ -315,11 +292,6 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
     if (isDeclining) return;
     try {
       setIsDeclining(true);
-      const auth = await loadAuth();
-      const token = auth?.accessToken;
-      if (token && requestId) {
-        await declineHelpAsVolunteer(token, requestId);
-      }
     } catch (error) {
       console.error('Failed to decline request:', error);
     } finally {
@@ -425,14 +397,22 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
               <View style={[styles.summaryDivider, { marginVertical: vscale(6) }]} />
 
               <View style={[styles.summaryRow, { paddingVertical: vscale(4) }]}>
-                <Icon name="tag-outline" size={scale(25)} color="#5A6F7D" />
+                {requestData?.categoryIcon ? (
+                  <Image
+                    source={{ uri: `${baseURL.replace(/\/api\/?$/, '')}${requestData.categoryIcon}` }}
+                    style={{ width: scale(25), height: scale(25), borderRadius: scale(7) }}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <Icon name="tag-outline" size={scale(25)} color="#5A6F7D" />
+                )}
                 <Text
                   style={[
                     styles.summaryText,
                     { fontSize: ms(15), marginLeft: spacing(12) },
                   ]}
                 >
-                  {requestData.category ? requestData.category.replace('_', ' ') : 'General Help'}
+                  {String(requestData?.categoryName || requestData?.category || 'General Help').replace(/_/g, ' ').toUpperCase()}
                 </Text>
               </View>
 

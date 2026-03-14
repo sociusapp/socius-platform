@@ -19,52 +19,24 @@
         android:layout_centerInParent="true"
         android:gravity="center"
         android:orientation="vertical"
-        android:padding="32dp">
+        android:padding="28dp">
 
         <TextView
             android:id="@+id/tv_type"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="22dp"
+            android:layout_marginBottom="14dp"
             android:text="Socius"
             android:textColor="#BDBDBD"
             android:textSize="14sp"
             android:letterSpacing="0.05"
             android:textStyle="bold" />
 
-        <FrameLayout
-            android:layout_width="112dp"
-            android:layout_height="112dp">
-
-            <ImageView
-                android:layout_width="112dp"
-                android:layout_height="112dp"
-                android:background="@drawable/bg_lock_avatar" />
-
-            <ImageView
-                android:id="@+id/iv_icon"
-                android:layout_width="112dp"
-                android:layout_height="112dp"
-                android:src="@drawable/notif_alarm_icon"
-                android:scaleType="centerCrop" />
-
-            <ImageView
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:layout_gravity="bottom|start"
-                android:layout_marginStart="4dp"
-                android:layout_marginBottom="4dp"
-                android:background="@drawable/bg_app_badge"
-                android:padding="2dp"
-                android:src="@mipmap/ic_launcher_round" />
-        </FrameLayout>
-
         <TextView
             android:id="@+id/tv_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:text="Someone Needs Help"
+            android:text="Help Request"
             android:textColor="#FFFFFF"
             android:textSize="26sp"
             android:textStyle="bold"
@@ -74,24 +46,161 @@
             android:id="@+id/tv_body"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Incoming voice call"
+            android:layout_marginTop="6dp"
+            android:text="Someone nearby needs help"
             android:textColor="#C7C7C7"
             android:textSize="16sp"
             android:gravity="center"
             android:lineSpacingExtra="4dp" />
 
-        <TextView
-            android:id="@+id/tv_info"
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:id="@+id/card_container"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:text=""
-            android:textColor="#9E9E9E"
-            android:textSize="13sp"
-            android:gravity="center"
-            android:maxLines="2"
-            android:ellipsize="end" />
+            android:layout_marginTop="18dp"
+            android:background="@drawable/bg_lock_card"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <FrameLayout
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="@drawable/bg_lock_icon_circle">
+
+                    <ImageView
+                        android:id="@+id/iv_icon"
+                        android:layout_width="44dp"
+                        android:layout_height="44dp"
+                        android:scaleType="centerCrop"
+                        android:src="@drawable/notif_help_icon" />
+                </FrameLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="12dp"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/tv_category"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="CATEGORY"
+                        android:textColor="#0F172A"
+                        android:textStyle="bold"
+                        android:textSize="18sp"
+                        android:maxLines="1"
+                        android:ellipsize="end" />
+
+                    <TextView
+                        android:id="@+id/tv_meta"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="0.0 km away"
+                        android:textColor="#64748B"
+                        android:textSize="13sp"
+                        android:maxLines="1"
+                        android:ellipsize="end" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/tv_status"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_lock_status_open"
+                    android:paddingHorizontal="10dp"
+                    android:paddingVertical="6dp"
+                    android:text="OPEN"
+                    android:textColor="#DC5C69"
+                    android:textStyle="bold"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="14dp"
+                android:layout_marginBottom="14dp"
+                android:background="#E2E8F0" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="10dp">
+
+                <ImageView
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:src="@drawable/ic_text"
+                    android:tint="#64748B" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:text="DESCRIPTION"
+                    android:textColor="#334155"
+                    android:textStyle="bold"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/tv_description"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="10dp"
+                    android:text="—"
+                    android:textColor="#0F172A"
+                    android:textSize="14sp"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <ImageView
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:src="@drawable/ic_pin"
+                    android:tint="#64748B" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:text="LOCATION"
+                    android:textColor="#334155"
+                    android:textStyle="bold"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/tv_location"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="10dp"
+                    android:text="—"
+                    android:textColor="#0F172A"
+                    android:textSize="14sp"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+            </LinearLayout>
+
+        </LinearLayout>
 
     </LinearLayout>
 

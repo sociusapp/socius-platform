@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, FlatList, Animated, Dimensions, TextInput, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useIsFocused } from '@react-navigation/native';
@@ -11,6 +11,8 @@ import { SkeletonBox, SkeletonCircle, SkeletonSpacer } from '../../components/co
 import { useResponsive } from '../../utils/responsive';
 import { getMyActiveHelpRequest, getNearbyHelpRequests } from '../../services/api/incident.api';
 import { getHistory } from '../../services/api/user.api';
+import { api } from '../../services/api/client';
+import { getHelpCategories } from '../../services/api/helpCategories.api';
 import { loadAuth, loadLastKnownLocation, saveLastKnownLocation } from '../../services/storage/asyncStorage.service';
 import { getCurrentPosition } from '../../services/location/geolocation.service';
 import CustomAlert from '../../components/common/CustomAlert';
@@ -20,6 +22,10 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CommunityScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
   const cardWidth = (contentWidth - spacing(24)) / 3;
+  const baseRoot = useMemo(() => {
+    const base = String(api?.defaults?.baseURL || '');
+    return base.replace(/\/api\/?$/, '');
+  }, []);
   const isFocused = useIsFocused();
   const [activeRequest, setActiveRequest] = useState(null);
   const [activeHelp, setActiveHelp] = useState(null);
@@ -31,6 +37,7 @@ const CommunityScreen = ({ navigation, route }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
   const [expandedId, setExpandedId] = useState(null);
+  const [categoriesBySlug, setCategoriesBySlug] = useState({});
 
   const scrollX = useRef(new Animated.Value(0)).current;
   const flatListRef = useRef(null);
@@ -69,6 +76,7 @@ const CommunityScreen = ({ navigation, route }) => {
   const fetchNearbyRequests = async () => {
     setLoadingNearby(true);
     try {
+      await fetchCategoriesIndex();
       const auth = await loadAuth();
       if (auth?.accessToken) {
         let coords = null;
@@ -133,13 +141,46 @@ const CommunityScreen = ({ navigation, route }) => {
 
   const handleViewAndAcceptRequest = (req) => {
     if (!req?._id) return;
+    const resolved = resolveCategoryMeta(req.category, req.categoryName, req.categoryIcon);
     navigation.navigate('SomeoneNeedsHelp', {
       requestId: req._id,
       category: req.category,
+      categoryName: resolved.name,
+      categoryIcon: resolved.iconPath || req.categoryIcon,
       description: req.description,
       distanceMeters: req.distanceMeters,
       area: req?.location?.address || req?.location?.whereToFindText || null,
     });
+  };
+
+  const fetchCategoriesIndex = async () => {
+    try {
+      const res = await getHelpCategories();
+      const items = res?.data?.items || res?.items || [];
+      const next = {};
+      (Array.isArray(items) ? items : []).forEach((c) => {
+        const slug = String(c?.slug || '').toLowerCase();
+        if (!slug) return;
+        next[slug] = {
+          slug,
+          name: c?.name || c?.slug,
+          iconUrl: c?.iconUrl || null,
+          updatedAt: c?.updatedAt || c?.createdAt || null,
+        };
+      });
+      setCategoriesBySlug(next);
+    } catch (e) { }
+  };
+
+  const resolveCategoryMeta = (slugLike, fallbackName, fallbackIconPath) => {
+    const slug = String(slugLike || '').toLowerCase();
+    const meta = slug ? categoriesBySlug?.[slug] : null;
+    const name = meta?.name || fallbackName || slugLike || 'General Help';
+    const iconPath = meta?.iconUrl || fallbackIconPath || null;
+    const version = meta?.updatedAt ? `?v=${encodeURIComponent(String(meta.updatedAt))}` : '';
+    const iconPathWithVersion = iconPath ? `${iconPath}${version}` : null;
+    const iconUri = iconPathWithVersion ? `${baseRoot}${iconPathWithVersion}` : null;
+    return { name, iconPath: iconPathWithVersion, iconUri };
   };
 
   useEffect(() => {
@@ -184,6 +225,7 @@ const CommunityScreen = ({ navigation, route }) => {
   const fetchHistory = async () => {
     setLoadingHistory(true);
     try {
+      await fetchCategoriesIndex();
       const auth = await loadAuth();
       if (auth?.accessToken) {
         const res = await getHistory(auth.accessToken);
@@ -208,7 +250,9 @@ const CommunityScreen = ({ navigation, route }) => {
 
   const onTabPress = (tabName, index) => {
     setActiveTab(tabName);
-    flatListRef.current?.scrollToIndex({ index, animated: true });
+    requestAnimationFrame(() => {
+      flatListRef.current?.scrollToOffset({ offset: SCREEN_WIDTH * index, animated: true });
+    });
   };
 
   useEffect(() => {
@@ -271,11 +315,6 @@ const CommunityScreen = ({ navigation, route }) => {
     'Respect and restraint',
   ];
 
-  const copyToClipboard = async (text, label = 'Content') => {
-    // Requires rebuild for native module
-    showAlert('Info', `${label}: ${text}`, [{ text: 'OK', onPress: closeAlert, style: 'primary' }]);
-  };
-
   const getFilteredHistory = () => {
     let filtered = historyData;
 
@@ -312,6 +351,28 @@ const CommunityScreen = ({ navigation, route }) => {
   const renderHistoryItem = ({ item }) => {
     const isHelp = item.type === 'help_request' || item.type === 'help_provided';
     const isMyRequest = item.isMyRequest;
+    const raw = item?.data || {};
+    const resolvedCategory = resolveCategoryMeta(
+      raw?.category || item.category,
+      raw?.categoryName || item.title,
+      raw?.categoryIcon
+    );
+    const locationLabel =
+      raw?.location?.address ||
+      raw?.location?.whereToFindText ||
+      (Array.isArray(raw?.location?.coordinates) && raw.location.coordinates.length === 2
+        ? `${Number(raw.location.coordinates[1]).toFixed(4)}, ${Number(raw.location.coordinates[0]).toFixed(4)}`
+        : null);
+    const timeNeededLabel =
+      isHelp ? (raw?.requestedDurationLabel || raw?.time || null) : null;
+    const toTitleCase = (value) => {
+      const s = String(value || '').replace(/_/g, ' ').trim();
+      if (!s) return '';
+      return s
+        .split(/\s+/)
+        .map((w) => (w.length ? w[0].toUpperCase() + w.slice(1).toLowerCase() : ''))
+        .join(' ');
+    };
 
     const getStatusStyle = (status) => {
       switch (status?.toLowerCase()) {
@@ -388,12 +449,50 @@ const CommunityScreen = ({ navigation, route }) => {
       setExpandedId(isExpanded ? null : item._id);
     };
 
+    const showLeftIcon = () => {
+      if (isMyRequest && !item.otherUser) {
+        const categoryIcon = item?.data?.categoryIcon;
+        return (
+          <View
+            style={[
+              styles.avatarPlaceholder,
+              {
+                backgroundColor: '#FFF0F1',
+                width: scale(44),
+                height: scale(44),
+                borderRadius: scale(22),
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderWidth: 1,
+                borderColor: '#F1D7DB',
+              },
+            ]}
+          >
+            {categoryIcon ? (
+              <Image
+                source={{ uri: `${baseRoot}${categoryIcon}` }}
+                style={{ width: scale(22), height: scale(22), borderRadius: scale(6) }}
+                resizeMode="cover"
+              />
+            ) : (
+              <Image
+                source={require('../../assets/icons/icon-03.png')}
+                style={{ width: scale(22), height: scale(22), borderRadius: scale(6) }}
+                resizeMode="contain"
+              />
+            )}
+          </View>
+        );
+      }
+      return renderAvatar(item.otherUser, false);
+    };
+
     return (
       <TouchableOpacity
         style={[styles.historyCard, {
           marginBottom: vscale(12),
           borderRadius: scale(16),
-          padding: scale(16),
+          padding: scale(14),
           backgroundColor: '#FFFFFF',
           shadowColor: "#000",
           shadowOffset: { width: 0, height: 2 },
@@ -407,32 +506,34 @@ const CommunityScreen = ({ navigation, route }) => {
         activeOpacity={0.9}
       >
         <View style={{ flexDirection: 'row' }}>
-          {/* Left: Avatar/Icon */}
-          <View style={{ marginRight: spacing(12) }}>
-            {isMyRequest ? (
-              item.otherUser ? renderAvatar(item.otherUser, false) : (
-                <View style={[styles.avatarPlaceholder, { backgroundColor: '#FFF0F1', width: scale(48), height: scale(48), borderRadius: scale(24), alignItems: 'center', justifyContent: 'center' }]}>
-                  <Icon name="hand-heart" size={scale(24)} color="#DC5C69" />
-                </View>
-              )
-            ) : (
-              renderAvatar(item.otherUser, false)
-            )}
-          </View>
+          {!isHelp ? (
+            <View style={{ marginRight: spacing(12) }}>
+              {showLeftIcon()}
+            </View>
+          ) : null}
 
           {/* Right: Content */}
           <View style={{ flex: 1 }}>
             {/* Header: Title & Status */}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: vscale(4) }}>
               <View style={{ flex: 1, marginRight: spacing(8) }}>
-                <Text style={{ fontSize: ms(16), fontWeight: '700', color: '#1E293B' }} numberOfLines={1}>
-                  {item.title || (isMyRequest ? 'Help Request' : 'Help Provided')}
-                </Text>
-                {item.category && (
-                  <Text style={{ fontSize: ms(12), color: '#64748B', marginTop: 2, textTransform: 'uppercase' }}>
-                    {item.category}
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  {resolvedCategory?.iconUri ? (
+                    <Image
+                      source={{ uri: resolvedCategory.iconUri }}
+                      style={{ width: scale(18), height: scale(18), borderRadius: scale(5), marginRight: spacing(8) }}
+                      resizeMode="cover"
+                    />
+                  ) : null}
+                  <Text style={{ fontSize: ms(16), fontWeight: '700', color: '#1E293B', flex: 1 }} numberOfLines={1}>
+                    {String(resolvedCategory?.name || (isMyRequest ? 'Help Request' : 'Help Provided')).replace(/_/g, ' ').toUpperCase()}
                   </Text>
-                )}
+                </View>
+                {!isHelp && (raw?.categoryName || item.category) ? (
+                  <Text style={{ fontSize: ms(12), color: '#64748B', marginTop: 2, fontWeight: '600' }}>
+                    {String(raw?.categoryName || item.category).replace(/_/g, ' ').toUpperCase()}
+                  </Text>
+                ) : null}
               </View>
               <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg, paddingHorizontal: spacing(8), paddingVertical: vscale(4), borderRadius: scale(6) }]}>
                 <Text style={[styles.statusText, { color: statusStyle.color, fontSize: ms(11), fontWeight: '700' }]}>
@@ -448,15 +549,25 @@ const CommunityScreen = ({ navigation, route }) => {
               </Text>
             )}
 
-            {/* Location Info (New) */}
-            {(item.location?.address || item.address) && (
+            {/* Location Info */}
+            {locationLabel && (
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: vscale(8) }}>
                 <Icon name="map-marker-outline" size={scale(14)} color="#94A3B8" style={{ marginRight: spacing(4) }} />
                 <Text style={{ fontSize: ms(12), color: '#64748B', flex: 1 }} numberOfLines={1}>
-                  {item.location?.address || item.address}
+                  {locationLabel}
                 </Text>
               </View>
             )}
+
+            {/* Time Needed (Help requests only) */}
+            {timeNeededLabel ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: vscale(8) }}>
+                <Icon name="timer-outline" size={scale(14)} color="#94A3B8" style={{ marginRight: spacing(4) }} />
+                <Text style={{ fontSize: ms(12), color: '#64748B', flex: 1 }} numberOfLines={1}>
+                  {timeNeededLabel}
+                </Text>
+              </View>
+            ) : null}
 
             {/* Cancellation Reason */}
             {isCancelled && cancellationReason && (
@@ -654,6 +765,16 @@ const CommunityScreen = ({ navigation, route }) => {
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         keyExtractor={(item) => item}
+        getItemLayout={(_, index) => ({
+          length: SCREEN_WIDTH,
+          offset: SCREEN_WIDTH * index,
+          index,
+        })}
+        onScrollToIndexFailed={({ index }) => {
+          requestAnimationFrame(() => {
+            flatListRef.current?.scrollToOffset({ offset: SCREEN_WIDTH * index, animated: true });
+          });
+        }}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { x: scrollX } } }],
           { useNativeDriver: false }
@@ -942,6 +1063,7 @@ const CommunityScreen = ({ navigation, route }) => {
                   ) : nearbyRequests.length > 0 ? (
                     nearbyRequests.map((req, index) => {
                       const statusLower = String(req?.status || 'open').toLowerCase();
+                      const resolvedCategory = resolveCategoryMeta(req.category, req.categoryName, req.categoryIcon);
                       const badgeCfg =
                         statusLower === 'matched'
                           ? { bg: '#E0F2FE', fg: '#0369A1', pulse: '#0EA5E9' }
@@ -975,15 +1097,23 @@ const CommunityScreen = ({ navigation, route }) => {
                             marginRight: spacing(12),
                             marginBottom: 0
                           }]}>
-                            <Icon
-                              name={req.category === 'Medical' ? 'medical-bag' : 'hand-heart'}
-                              size={scale(24)}
-                              color={req.category === 'Medical' ? '#DC5C69' : '#0EA5E9'}
-                            />
+                            {resolvedCategory?.iconUri ? (
+                              <Image
+                                source={{ uri: resolvedCategory.iconUri }}
+                                style={{ width: scale(26), height: scale(26), borderRadius: scale(7) }}
+                                resizeMode="cover"
+                              />
+                            ) : (
+                              <Icon
+                                name={req.category === 'Medical' ? 'medical-bag' : 'hand-heart'}
+                                size={scale(24)}
+                                color={req.category === 'Medical' ? '#DC5C69' : '#0EA5E9'}
+                              />
+                            )}
                           </View>
                           <View style={{ flex: 1 }}>
                             <Text style={[styles.activeCardTitle, { fontSize: ms(16), color: '#1E293B', marginBottom: 2 }]}>
-                              {req.category || 'General Help'}
+                              {String(resolvedCategory?.name || req.categoryName || req.category || 'General Help').replace(/_/g, ' ').toUpperCase()}
                             </Text>
                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                               <Icon name="map-marker" size={scale(12)} color="#64748B" style={{ marginRight: 2 }} />
@@ -1012,10 +1142,39 @@ const CommunityScreen = ({ navigation, route }) => {
                         </View>
 
                         {/* Content: Description */}
-                        <View style={{ marginBottom: vscale(16) }}>
+                        <View style={{ marginBottom: vscale(12) }}>
                           <Text style={{ fontSize: ms(14), color: '#334155', lineHeight: ms(20) }}>
                             {req.description}
                           </Text>
+                        </View>
+
+                        {/* Timing */}
+                        <View style={{ marginBottom: vscale(16) }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: vscale(6) }}>
+                            <Icon name="map-marker-outline" size={scale(14)} color="#64748B" style={{ marginRight: 6 }} />
+                            <Text style={{ fontSize: ms(12), color: '#475569', fontWeight: '700' }}>LOCATION</Text>
+                            <Text style={{ fontSize: ms(12), color: '#475569', marginLeft: 6, flex: 1 }} numberOfLines={1}>
+                              {req?.location?.address ||
+                                req?.location?.whereToFindText ||
+                                (Array.isArray(req?.location?.coordinates) && req.location.coordinates.length === 2
+                                  ? `${Number(req.location.coordinates[1]).toFixed(4)}, ${Number(req.location.coordinates[0]).toFixed(4)}`
+                                  : 'Location shared')}
+                            </Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: vscale(6) }}>
+                            <Icon name="clock-outline" size={scale(14)} color="#64748B" style={{ marginRight: 6 }} />
+                            <Text style={{ fontSize: ms(12), color: '#475569', fontWeight: '700' }}>REQUESTED AT</Text>
+                            <Text style={{ fontSize: ms(12), color: '#475569', marginLeft: 6 }}>
+                              {req.createdAt ? new Date(req.createdAt).toLocaleString('en-IN') : '—'}
+                            </Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Icon name="timer-outline" size={scale(14)} color="#64748B" style={{ marginRight: 6 }} />
+                            <Text style={{ fontSize: ms(12), color: '#475569', fontWeight: '700' }}>TIME NEEDED</Text>
+                            <Text style={{ fontSize: ms(12), color: '#475569', marginLeft: 6 }}>
+                              {req.requestedDurationLabel || req.time || 'Not specified'}
+                            </Text>
+                          </View>
                         </View>
 
                         {/* Footer: Actions */}
@@ -1028,29 +1187,12 @@ const CommunityScreen = ({ navigation, route }) => {
                               paddingVertical: vscale(10),
                               borderRadius: scale(10),
                               alignItems: 'center',
-                              marginRight: spacing(8),
                               flexDirection: 'row',
                               justifyContent: 'center'
                             }}
                           >
                             <Text style={{ color: '#FFF', fontSize: ms(13), fontWeight: '600', marginRight: spacing(6) }}>View & Accept</Text>
                             <Icon name="arrow-right" size={scale(16)} color="#FFF" />
-                          </TouchableOpacity>
-
-                          <TouchableOpacity
-                            onPress={() => copyToClipboard(req._id, 'Request ID')}
-                            style={{
-                              width: scale(40),
-                              height: scale(40),
-                              backgroundColor: '#F8FAFC',
-                              borderRadius: scale(10),
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              borderWidth: 1,
-                              borderColor: '#E2E8F0'
-                            }}
-                          >
-                            <Icon name="content-copy" size={scale(18)} color="#64748B" />
                           </TouchableOpacity>
                         </View>
                       </View>

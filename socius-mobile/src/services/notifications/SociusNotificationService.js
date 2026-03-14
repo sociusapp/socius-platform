@@ -11,6 +11,7 @@ import notifee, {
 import NativeCallService from './NativeCallService';
 import { loadAuth } from '../storage/asyncStorage.service';
 import { markRequestDelivered } from '../api/incident.api';
+import { baseURL } from '../api/client';
 
 export const CHANNELS = {
   PRESENCE_ALARM: 'socius_presence_alarm',
@@ -120,6 +121,8 @@ export const handleIncomingCallMessage = async (remoteMessage) => {
       }
 
       const category = data.category || 'General Support';
+      const categoryName = data.categoryName || '';
+      const categoryIcon = data.categoryIcon || '';
       const description = data.description || '';
       const distanceMeters = parseInt(data.distanceMeters || '0', 10) || 0;
       const area = data.area || '';
@@ -146,11 +149,14 @@ export const handleIncomingCallMessage = async (remoteMessage) => {
       await showHelpAlarm({
         requestId,
         category,
+        categoryName,
+        categoryIcon,
         description,
         distanceMeters,
         area,
         trustSignals: trustSignals.filter(Boolean),
         trustEmojis: trustEmojis.filter(Boolean),
+        userImage,
       });
       return true;
     }
@@ -200,6 +206,8 @@ export const showPresenceAlarm = async ({
 export const showHelpAlarm = async ({
   requestId,
   category = 'General Support',
+  categoryName = '',
+  categoryIcon = '',
   description = '',
   distanceMeters = 0,
   area = '',
@@ -212,21 +220,33 @@ export const showHelpAlarm = async ({
     ? `${distanceMeters}m`
     : `${(distanceMeters / 1000).toFixed(1)}km`;
 
-  const info = `${category} · ${area} · ${distanceText}`;
+  const root = String(baseURL || '').replace(/\/api\/?$/, '');
+  const iconUri = categoryIcon ? `${root}${categoryIcon}` : null;
+  const displayCategory = String(categoryName || category || 'Help Request')
+    .replace(/_/g, ' ')
+    .toUpperCase();
+  const displayArea = String(area || '').trim();
+  const displayDistance = String(distanceText || '').trim();
+  const displayInfo = [displayArea, displayDistance].filter(Boolean).join(' · ');
+  const snippet = String(description || '').trim().replace(/\s+/g, ' ').slice(0, 64);
+  const info = [displayCategory, snippet, displayInfo].filter(Boolean).join('\n');
 
   const payload = JSON.stringify({
     type: 'HELP_REQUEST',
     requestId,
     category,
+    categoryName,
+    categoryIcon,
+    description,
     distanceMeters: String(distanceMeters),
     area,
   });
 
   NativeCallService.displayIncomingCall(
     requestId,
-    'Someone Nearby Needs Help',
+    'Help Request',
     info,
-    userImage,
+    iconUri || userImage,
     payload
   );
 };

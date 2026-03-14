@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../../components/common/Header';
@@ -7,24 +7,83 @@ import Button from '../../../components/common/Button';
 import MotionView from '../../../components/common/MotionView';
 import { useResponsive } from '../../../utils/responsive';
 import BottomActionBar from '../../../components/common/BottomActionBar';
+import { api } from '../../../services/api/client';
+import { getHelpCategories } from '../../../services/api/helpCategories.api';
 
 const HelpTypeScreen = ({ navigation }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedHelpType, setSelectedHelpType] = useState(null);
+  const [remoteCategories, setRemoteCategories] = useState([]);
+  const [loadingCategories, setLoadingCategories] = useState(true);
 
-  const helpTypes = [
-    { id: 1, label: 'Print / Document', icon: 'printer', color: '#5A6F7D' },
-    { id: 2, label: 'Tool / Repair', icon: 'wrench', color: '#5A6F7D' },
-    { id: 3, label: 'Carry / Lift', icon: 'package-variant', color: '#8B6F47' },
-    { id: 4, label: 'Transport Help', icon: 'car', color: '#5A6F7D' },
-    { id: 5, label: 'Small Household Help', icon: 'home-variant-outline', color: '#5A6F7D' },
-    { id: 6, label: 'Study / Office Help', icon: 'briefcase-variant-outline', color: '#5A6F7D' },
-    { id: 7, label: 'Language / Translation', icon: 'translate', color: '#5A6F7D' },
-    { id: 8, label: 'Elder / Accessibility Help', icon: 'human-cane', color: '#C94D4D' },
-    { id: 9, label: 'Tech Help (Quick Fix)', icon: 'laptop', color: '#5A6F7D' },
-    { id: 10, label: 'General Help (Last Resort)', icon: 'comment-question-outline', color: '#5A6F7D' },
-  ];
+  const fallbackHelpTypes = useMemo(() => ([
+    { id: 1, label: 'Print / Document', icon: 'printer', color: '#5A6F7D', category: 'print_document' },
+    { id: 2, label: 'Tool / Repair', icon: 'wrench', color: '#5A6F7D', category: 'tool_repair' },
+    { id: 3, label: 'Carry / Lift', icon: 'package-variant', color: '#8B6F47', category: 'carry_lift' },
+    { id: 4, label: 'Transport Help', icon: 'car', color: '#5A6F7D', category: 'transport_help' },
+    { id: 5, label: 'Small Household Help', icon: 'home-variant-outline', color: '#5A6F7D', category: 'household_help' },
+    { id: 6, label: 'Study / Office Help', icon: 'briefcase-variant-outline', color: '#5A6F7D', category: 'study_office_help' },
+    { id: 7, label: 'Language / Translation', icon: 'translate', color: '#5A6F7D', category: 'language_support' },
+    { id: 8, label: 'Elder / Accessibility Help', icon: 'human-cane', color: '#C94D4D', category: 'elder_assistance' },
+    { id: 9, label: 'Tech Help (Quick Fix)', icon: 'laptop', color: '#5A6F7D', category: 'tech_help' },
+    { id: 10, label: 'General Help (Last Resort)', icon: 'comment-question-outline', color: '#5A6F7D', category: 'general_help' },
+  ]), []);
+
+  const baseRoot = useMemo(() => {
+    const base = String(api?.defaults?.baseURL || '');
+    return base.replace(/\/api\/?$/, '');
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const run = async () => {
+      try {
+        setLoadingCategories(true);
+        const res = await getHelpCategories();
+        const items = res?.data?.items || res?.items || [];
+        if (mounted) setRemoteCategories(Array.isArray(items) ? items : []);
+      } catch (e) {
+        if (mounted) setRemoteCategories([]);
+      } finally {
+        if (mounted) setLoadingCategories(false);
+      }
+    };
+    run();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const helpTypes = useMemo(() => {
+    if (Array.isArray(remoteCategories) && remoteCategories.length) {
+      const iconMap = {
+        print_document: 'printer',
+        tool_repair: 'wrench',
+        carry_lift: 'package-variant',
+        transport_help: 'car',
+        household_help: 'home-variant-outline',
+        study_office_help: 'briefcase-variant-outline',
+        language_support: 'translate',
+        elder_assistance: 'human-cane',
+        tech_help: 'laptop',
+        general_help: 'comment-question-outline',
+      };
+      return remoteCategories
+        .filter((c) => c?.isActive !== false)
+        .sort((a, b) => (Number(a?.sortOrder || 0) - Number(b?.sortOrder || 0)))
+        .map((c, idx) => ({
+          id: c.slug || String(c._id || idx),
+          label: c.name || c.slug || 'Help',
+          description: c.description || '',
+          category: c.slug,
+          iconUrl: c.iconUrl ? `${baseRoot}${c.iconUrl}` : null,
+          icon: iconMap[String(c.slug || '').toLowerCase()] || 'help-circle-outline',
+          color: c.color || '#5A6F7D',
+        }));
+    }
+    return fallbackHelpTypes;
+  }, [remoteCategories, fallbackHelpTypes, baseRoot]);
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const filteredHelpTypes = normalizedQuery.length === 0
@@ -48,6 +107,7 @@ const HelpTypeScreen = ({ navigation }) => {
 
     navigation.navigate('AddDetails', {
       helpType: selected,
+      category: selected.category,
     });
   };
 
@@ -125,8 +185,18 @@ const HelpTypeScreen = ({ navigation }) => {
                   accessibilityRole="button"
                   accessibilityLabel={`Select help type: ${helpType.label}`}
                 >
-                  <Icon name={helpType.icon} size={scale(26)} color={helpType.color} style={styles.cardIcon} />
-                  <Text style={[styles.helpTypeLabel, { fontSize: ms(14), marginLeft: spacing(10), lineHeight: ms(20) }]}>{helpType.label}</Text>
+                  {helpType.iconUrl ? (
+                    <Image
+                      source={{ uri: helpType.iconUrl }}
+                      style={{ width: scale(26), height: scale(26), borderRadius: scale(7) }}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <Icon name={helpType.icon} size={scale(26)} color={helpType.color} style={styles.cardIcon} />
+                  )}
+                  <Text style={[styles.helpTypeLabel, { fontSize: ms(14), marginLeft: spacing(10), lineHeight: ms(20) }]}>
+                    {String(helpType.label || '').toUpperCase()}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -152,7 +222,7 @@ const HelpTypeScreen = ({ navigation }) => {
             title="Continue"
             onPress={handleContinue}
             fullWidth
-            disabled={!selectedHelpType}
+            disabled={!selectedHelpType || loadingCategories}
             icon={<Icon name="arrow-right" size={scale(18)} color="#FFFFFF" />}
             accessibilityLabel="Continue to review details"
           />

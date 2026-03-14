@@ -7,17 +7,22 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
+import android.graphics.BitmapFactory
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.socius.app.R
 import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+import kotlin.math.roundToInt
 
 class LockScreenActivity : AppCompatActivity() {
 
     private var callUuid: String? = null
     private var payload: String? = null
+    private var avatarUrl: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,11 +55,12 @@ class LockScreenActivity : AppCompatActivity() {
         // Extract data
         callUuid = intent.getStringExtra("call_uuid")
         payload = intent.getStringExtra("payload")
+        avatarUrl = intent.getStringExtra("avatar_url")
         val name = intent.getStringExtra("name") ?: "Unknown"
         val info = intent.getStringExtra("info") ?: ""
 
         // Setup UI
-        setupUI(name, info, payload)
+        setupUI(name, info, payload, avatarUrl)
 
         // Button Listeners
         findViewById<LinearLayout>(R.id.btn_accept).setOnClickListener {
@@ -75,16 +81,22 @@ class LockScreenActivity : AppCompatActivity() {
         finish()
     }
 
-    private fun setupUI(name: String, info: String, payloadStr: String?) {
-        val type = try {
-            val json = JSONObject(payloadStr ?: "{}")
-            json.optString("type", "")
-        } catch (e: Exception) { "" }
+    private fun setupUI(name: String, info: String, payloadStr: String?, avatarUrl: String?) {
+        val json = try {
+            JSONObject(payloadStr ?: "{}")
+        } catch (e: Exception) {
+            JSONObject()
+        }
+        val type = json.optString("type", "")
 
         val tvType = findViewById<TextView>(R.id.tv_type)
         val tvTitle = findViewById<TextView>(R.id.tv_title)
         val tvBody = findViewById<TextView>(R.id.tv_body)
-        val tvInfo = findViewById<TextView>(R.id.tv_info)
+        val tvCategory = findViewById<TextView>(R.id.tv_category)
+        val tvMeta = findViewById<TextView>(R.id.tv_meta)
+        val tvStatus = findViewById<TextView>(R.id.tv_status)
+        val tvDescription = findViewById<TextView>(R.id.tv_description)
+        val tvLocation = findViewById<TextView>(R.id.tv_location)
         val ivIcon = findViewById<ImageView>(R.id.iv_icon)
         val btnAccept = findViewById<LinearLayout>(R.id.btn_accept)
         val tvAcceptLabel = findViewById<TextView>(R.id.tv_accept_label)
@@ -98,6 +110,24 @@ class LockScreenActivity : AppCompatActivity() {
             ivIcon.setImageResource(R.drawable.notif_alarm_icon)
         } else {
             ivIcon.setImageResource(R.drawable.notif_help_icon)
+            val safeUrl = avatarUrl?.trim()
+            if (!safeUrl.isNullOrEmpty()) {
+                Thread {
+                    try {
+                        val url = URL(safeUrl)
+                        val connection = url.openConnection() as HttpURLConnection
+                        connection.doInput = true
+                        connection.connect()
+                        val input = connection.inputStream
+                        val bitmap = BitmapFactory.decodeStream(input)
+                        if (bitmap != null) {
+                            runOnUiThread {
+                                ivIcon.setImageBitmap(bitmap)
+                            }
+                        }
+                    } catch (e: Exception) { }
+                }.start()
+            }
         }
 
         if (type == "PRESENCE_ALARM") {
@@ -106,14 +136,46 @@ class LockScreenActivity : AppCompatActivity() {
             tvDeclineLabel.text = "Decline"
             tvTitle.text = name
             tvBody.text = "Incoming voice call"
-            tvInfo.text = info
+            tvCategory.text = name
+            tvMeta.text = info
+            tvStatus.text = "LIVE"
+            tvDescription.text = "—"
+            tvLocation.text = "—"
         } else {
             btnAccept.setBackgroundResource(R.drawable.bg_btn_answer)
             tvAcceptLabel.text = "View"
             tvDeclineLabel.text = "Not available"
             tvTitle.text = "Help Request"
             tvBody.text = "Someone nearby needs help"
-            tvInfo.text = info
+
+            val categoryName = json.optString("categoryName", "").trim()
+            val category = json.optString("category", "").trim()
+            val description = json.optString("description", "").trim()
+            val area = json.optString("area", "").trim()
+            val distanceMeters = json.optString("distanceMeters", "").trim()
+
+            val displayCategory = (if (categoryName.isNotEmpty()) categoryName else category)
+                .replace("_", " ")
+                .uppercase()
+                .ifEmpty { "HELP REQUEST" }
+
+            tvCategory.text = displayCategory
+            tvDescription.text = if (description.isNotEmpty()) description else "—"
+            tvLocation.text = if (area.isNotEmpty()) area else "—"
+            tvStatus.text = "OPEN"
+
+            val meters = distanceMeters.toIntOrNull()
+            val meta = if (meters != null) {
+                if (meters < 1000) {
+                    "${meters}m away"
+                } else {
+                    val km = meters.toFloat() / 1000f
+                    "${(km * 10f).roundToInt() / 10f} km away"
+                }
+            } else {
+                info
+            }
+            tvMeta.text = meta
         }
     }
 
