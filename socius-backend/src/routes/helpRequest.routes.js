@@ -1,6 +1,7 @@
 const router = require('express').Router()
 const {
   createRequest,
+  updateRequest,
   getMyActiveRequest,
   getRequestById,
   acceptRequest,
@@ -22,6 +23,15 @@ router.get('/nearby', authenticate, getNearbyRequests)
 
 // GET /api/help-request/:id
 router.get('/:id', authenticate, getRequestById)
+
+// PATCH /api/help-request/:id  (requester)
+router.patch(
+  '/:id',
+  authenticate,
+  requireActive,
+  validate(schemas.updateHelpRequest),
+  updateRequest
+)
 
 // POST /api/help-request
 router.post(

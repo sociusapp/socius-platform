@@ -44,6 +44,7 @@ const initSocket = (httpServer) => {
     require('../socket/chat.socket')(io, socket)
     require('../socket/alert.socket')(io, socket)
     require('../socket/presence.socket')(io, socket)
+    require('../socket/call.socket')(io, socket)
 
     socket.on('disconnect', (reason) => {
       logger.info(`Socket disconnected: ${socket.userId} — ${reason}`)

@@ -28,8 +28,8 @@ const createSession = async ({ requestId, requestType, requesterId, helperId }) 
  */
 const getSession = async (sessionId, userId) => {
   const session = await ChatSession.findById(sessionId)
-    .populate('requesterId', 'fullName profileImage')
-    .populate('helperId', 'fullName profileImage')
+    .populate('requesterId', 'fullName profileImage phone')
+    .populate('helperId', 'fullName profileImage phone')
 
   if (!session) {
     const err = new Error('Chat session not found')
@@ -243,8 +243,8 @@ const getSessionByRequest = async (requestId, userId) => {
     requestId,
     $or: [{ requesterId: userId }, { helperId: userId }],
   })
-    .populate('requesterId', 'fullName profileImage')
-    .populate('helperId', 'fullName profileImage')
+    .populate('requesterId', 'fullName profileImage phone')
+    .populate('helperId', 'fullName profileImage phone')
   
   return session
 }

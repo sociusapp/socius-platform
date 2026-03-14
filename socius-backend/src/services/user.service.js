@@ -13,7 +13,7 @@ const logger = require('../utils/logger')
 const getHistory = async (userId, { page = 1, limit = 20 } = {}) => {
   // 1. My Help Requests
   const helpRequests = await HelpRequest.find({ requesterId: userId })
-    .select('category description status createdAt location')
+    .select('category categoryName categoryIcon description status createdAt location requestedDurationLabel')
     .sort({ createdAt: -1 })
     .limit(limit)
     .lean()
@@ -39,7 +39,7 @@ const getHistory = async (userId, { page = 1, limit = 20 } = {}) => {
   })
     .populate({
       path: 'requestId',
-      select: 'category description status createdAt location requesterId',
+      select: 'category categoryName categoryIcon description status createdAt location requesterId requestedDurationLabel',
       populate: {
         path: 'requesterId',
         select: 'fullName profileImage'
@@ -94,7 +94,7 @@ const getHistory = async (userId, { page = 1, limit = 20 } = {}) => {
     history.push({
       _id: req._id,
       type: 'help_request',
-      title: req.category ? req.category.replace(/_/g, ' ') : 'Help Request',
+      title: req.categoryName || (req.category ? req.category.replace(/_/g, ' ') : 'Help Request'),
       description: req.description,
       status: req.status,
       createdAt: req.createdAt,
@@ -109,7 +109,7 @@ const getHistory = async (userId, { page = 1, limit = 20 } = {}) => {
       history.push({
         _id: match.requestId._id,
         type: 'help_provided',
-        title: match.requestId.category ? match.requestId.category.replace(/_/g, ' ') : 'Help Provided',
+        title: match.requestId.categoryName || (match.requestId.category ? match.requestId.category.replace(/_/g, ' ') : 'Help Provided'),
         description: match.requestId.description,
         status: match.requestId.status, // or match.status
         createdAt: match.createdAt, // match time
@@ -294,7 +294,4 @@ module.exports = {
   getHomeData,
   getHistory,
 }
-
-
-
 

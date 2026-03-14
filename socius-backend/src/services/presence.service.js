@@ -72,9 +72,9 @@ const createPresenceRequest = async (requesterId, { situationType, description, 
 
   logger.info(`Helpers found: ${helpers.length}`)
 
+  let helperAvailabilityHint = null
+  let attemptId = null
   if (helpers.length === 0) {
-    let availableNearbyExcludingSelf = 0
-    let availableNearbyIncludingSelf = 0
     try {
       const candidatesExcludingSelf = await findNearbyAvailableUsers({
         lng: location.lng,
@@ -84,8 +84,6 @@ const createPresenceRequest = async (requesterId, { situationType, description, 
         limit: 20,
         requireAvailability: true,
       })
-      availableNearbyExcludingSelf = candidatesExcludingSelf.length
-
       const candidatesIncludingSelf = await findNearbyAvailableUsers({
         lng: location.lng,
         lat: location.lat,
@@ -94,40 +92,33 @@ const createPresenceRequest = async (requesterId, { situationType, description, 
         limit: 5,
         requireAvailability: true,
       })
-      availableNearbyIncludingSelf = candidatesIncludingSelf.length
+
+      if (candidatesIncludingSelf.length > 0 && candidatesExcludingSelf.length === 0) {
+        helperAvailabilityHint = 'only_self_available'
+      } else if (candidatesExcludingSelf.length > 0) {
+        helperAvailabilityHint = 'helpers_busy_or_ineligible'
+      } else {
+        helperAvailabilityHint = 'no_helpers_in_radius'
+      }
+    } catch (e) {
+      helperAvailabilityHint = 'unknown'
+    }
+
+    try {
+      const attempt = await logRequestAttempt({
+        requesterId,
+        requestKind: 'presence_request',
+        outcome: 'no_helpers_found',
+        reason: 'no_helpers_in_radius',
+        situationType,
+        description,
+        location,
+        radiusMeters: GEO.PRESENCE_RADIUS_METERS,
+        helpersFound: 0,
+        meta,
+      })
+      attemptId = attempt?._id ? String(attempt._id) : null
     } catch (e) { }
-
-    if (availableNearbyIncludingSelf > 0 && availableNearbyExcludingSelf === 0) {
-      const err = new Error('You cannot send a request to your own account. Ask another nearby user to be available and try again.')
-      err.statusCode = 400
-      err.code = 'SELF_HELP_NOT_ALLOWED'
-      throw err
-    }
-
-    if (availableNearbyExcludingSelf > 0) {
-      const err = new Error('Nearby helpers are currently busy. Please try again in a few minutes.')
-      err.statusCode = 404
-      err.code = 'NO_HELPERS_AVAILABLE'
-      throw err
-    }
-
-    const attempt = await logRequestAttempt({
-      requesterId,
-      requestKind: 'presence_request',
-      outcome: 'no_helpers_found',
-      reason: 'no_helpers_in_radius',
-      situationType,
-      description,
-      location,
-      radiusMeters: GEO.PRESENCE_RADIUS_METERS,
-      helpersFound: 0,
-      meta,
-    })
-    const err = new Error('No available helpers nearby right now. Please try again later.')
-    err.statusCode = 404
-    err.code = 'NO_HELPERS_FOUND'
-    err.data = { attemptId: attempt?._id ? String(attempt._id) : null }
-    throw err
   }
 
   const request = await PresenceRequest.create({
@@ -168,7 +159,12 @@ const createPresenceRequest = async (requesterId, { situationType, description, 
   }
 
   logger.info(`Presence request created: ${request._id} by ${requesterId}`)
-  return request
+  return {
+    request,
+    noHelpersFound: helpers.length === 0,
+    helperAvailabilityHint,
+    attemptId,
+  }
 }
 
 /**

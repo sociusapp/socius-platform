@@ -18,6 +18,7 @@ const storage = multer.diskStorage({
     if (file.fieldname === 'selfie') folder = 'uploads/selfies'
     if (file.fieldname === 'updated_doc') folder = 'uploads/documents'
     if (file.fieldname === 'updated_selfie') folder = 'uploads/selfies'
+    if (file.fieldname === 'icon') folder = 'uploads/help-categories'
 
     ensureDir(folder)
     cb(null, folder)
@@ -73,6 +74,8 @@ const uploadReviewDocs = upload.fields([
   { name: 'updated_selfie', maxCount: 1 },
 ])
 
+const uploadHelpCategoryIcon = upload.single('icon')
+
 /**
  * Multer errors handle karo gracefully
  */
@@ -99,4 +102,5 @@ module.exports = {
   uploadClosureEvidence: handleUploadError(uploadClosureEvidence),
   uploadVerificationDocs: handleUploadError(uploadVerificationDocs),
   uploadReviewDocs: handleUploadError(uploadReviewDocs),
+  uploadHelpCategoryIcon: handleUploadError(uploadHelpCategoryIcon),
 }

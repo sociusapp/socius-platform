@@ -31,6 +31,9 @@ const {
 } = require('../controllers/admin.controller')
 const { authenticate } = require('../middlewares/auth')
 const { requireAdmin } = require('../middlewares/admin')
+const { validate, schemas } = require('../middlewares/validate')
+const { uploadHelpCategoryIcon } = require('../middlewares/upload')
+const helpCategoryController = require('../controllers/helpCategory.controller')
 
 // All admin routes require auth + admin role
 router.use(authenticate, requireAdmin)
@@ -122,5 +125,13 @@ router.get('/presence-requests/:id', getPresenceRequestDetails)
 router.get('/closures', getClosures)
 // GET /api/admin/closures/:id
 router.get('/closures/:id', getClosureDetails)
+
+// ─── DailyHelp Categories ─────────────────────────────────
+router.get('/help-categories', helpCategoryController.listAdmin)
+router.post('/help-categories', uploadHelpCategoryIcon, validate(schemas.adminCreateHelpCategory), helpCategoryController.createAdmin)
+router.get('/help-categories/:id', helpCategoryController.getAdmin)
+router.put('/help-categories/:id', uploadHelpCategoryIcon, validate(schemas.adminUpdateHelpCategory), helpCategoryController.updateAdmin)
+router.patch('/help-categories/:id', uploadHelpCategoryIcon, validate(schemas.adminUpdateHelpCategory), helpCategoryController.updateAdmin)
+router.delete('/help-categories/:id', helpCategoryController.deleteAdmin)
 
 module.exports = router

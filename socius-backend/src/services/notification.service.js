@@ -122,6 +122,8 @@ const sendHelpRequestAlert = async (helpers, helpRequest) => {
         type: 'HELP_REQUEST',
         requestId: String(helpRequest._id),
         category: helpRequest.category || '',
+        categoryName: helpRequest.categoryName || '',
+        categoryIcon: helpRequest.categoryIcon || '',
         description: helpRequest.description || '',
         distanceMeters: String(distance),
         area: helpRequest.location?.address || '',
@@ -151,9 +153,12 @@ const sendPresenceAlarm = async (helperIds, presenceRequest) => {
  */
 const sendMatchedNotification = async (requesterId, helperName, requestId) => {
   await notifyUser(requesterId, {
-    title: '✅ Someone is coming to help',
-    body: `${helperName} has accepted your request`,
-    data: { type: NOTIFICATION_TYPE.REQUEST_STATUS, status: 'matched', requestId: String(requestId) },
+    data: {
+      type: NOTIFICATION_TYPE.REQUEST_STATUS,
+      status: 'matched',
+      requestId: String(requestId),
+      helperName: helperName ? String(helperName) : '',
+    },
   })
 }
 
@@ -169,12 +174,7 @@ const sendChatNotification = async (receiverId, senderName, messagePreview) => {
 }
 
 const sendHelpClosureInitiatedNotification = async (receiverId, { requestId, requestType, initiatedBy, occurredAt }) => {
-  const who = initiatedBy === 'requester' ? 'Requester' : initiatedBy === 'helper' ? 'Helper' : 'Someone'
-  const when = occurredAt ? new Date(occurredAt).toLocaleString('en-US') : null
-  const typeLabel = String(requestType || 'help_request').replace(/_/g, ' ')
   await notifyUser(receiverId, {
-    title: '🧾 Request closing started',
-    body: `${who} started closing ${typeLabel} (${String(requestId)}).${when ? ` Time: ${when}.` : ''}`,
     data: {
       type: NOTIFICATION_TYPE.REQUEST_STATUS,
       status: 'closing',
@@ -188,16 +188,7 @@ const sendHelpClosureInitiatedNotification = async (receiverId, { requestId, req
 }
 
 const sendHelpRequestClosedNotification = async (receiverId, { requestId, requestType, reason, occurredAt }) => {
-  const label =
-    reason === 'auto_closed' ? 'auto closed' :
-    reason === 'cancelled' ? 'cancelled' :
-    'closed'
-  const when = occurredAt ? new Date(occurredAt).toLocaleString('en-US') : null
-  const typeLabel = String(requestType || 'help_request').replace(/_/g, ' ')
-
   await notifyUser(receiverId, {
-    title: '✅ Request closed',
-    body: `${typeLabel} (${String(requestId)}) was ${label}.${when ? ` Time: ${when}.` : ''}`,
     data: {
       type: NOTIFICATION_TYPE.REQUEST_STATUS,
       status: 'closed',

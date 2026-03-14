@@ -6,7 +6,7 @@ const { success, created } = require('../utils/response')
 const createRequest = async (req, res, next) => {
   try {
     const showNudge = await shouldShowNudge(req.user._id)
-    const request = await helpRequestService.createRequest(req.user._id, req.body, {
+    const result = await helpRequestService.createRequest(req.user._id, req.body, {
       ip: req.ip,
       userAgent: req.headers['user-agent'],
       platform: req.headers['x-platform'],
@@ -16,7 +16,17 @@ const createRequest = async (req, res, next) => {
     if (showNudge) {
       recordNudgeShown(req.user._id).catch(() => {})
     }
-    return created(res, { request, showNudge }, 'Help request created')
+    return created(
+      res,
+      {
+        request: result?.request || result,
+        showNudge,
+        noHelpersFound: !!result?.noHelpersFound,
+        helperAvailabilityHint: result?.helperAvailabilityHint || null,
+        attemptId: result?.attemptId || null,
+      },
+      'Help request created'
+    )
   } catch (err) {
     next(err)
   }
@@ -35,6 +45,15 @@ const getRequestById = async (req, res, next) => {
   try {
     const data = await helpRequestService.getRequestById(req.params.id, req.user._id)
     return success(res, data)
+  } catch (err) {
+    next(err)
+  }
+}
+
+const updateRequest = async (req, res, next) => {
+  try {
+    const request = await helpRequestService.updateRequest(req.user._id, req.params.id, req.body)
+    return success(res, { request }, 'Help request updated')
   } catch (err) {
     next(err)
   }
@@ -105,6 +124,7 @@ const getNearbyRequests = async (req, res, next) => {
 
 module.exports = {
   createRequest,
+  updateRequest,
   getMyActiveRequest,
   getRequestById,
   acceptRequest,

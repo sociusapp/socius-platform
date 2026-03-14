@@ -2,6 +2,7 @@ const HelpRequest = require('../models/HelpRequest')
 const HelpMatch = require('../models/HelpMatch')
 const Verification = require('../models/Verification')
 const PresenceRequest = require('../models/PresenceRequest')
+const HelpCategory = require('../models/HelpCategory')
 const { findHelpersForRequest } = require('./location.service')
 const { sendHelpRequestAlert, sendMatchedNotification, sendCancelAlert } = require('./notification.service')
 const { findNearbyAvailableUsers } = require('../utils/geoQuery')
@@ -21,6 +22,26 @@ const normalizeProfileImage = (path) => {
   }
   return path;
 };
+
+const normalizeUploadPath = (path) => {
+  if (!path) return null
+  if (path.startsWith('http') || path.startsWith('https')) return path
+  const idx = path.indexOf('uploads/')
+  if (idx !== -1) return '/' + path.substring(idx).replace(/\\/g, '/')
+  return path.startsWith('/') ? path : `/${path}`
+}
+
+const attachCategoryMeta = async (categorySlug) => {
+  if (!categorySlug) return { categoryName: null, categoryIcon: null }
+  const c = await HelpCategory.findOne({ slug: String(categorySlug).trim().toLowerCase(), isActive: true })
+    .select('name iconPath')
+    .lean()
+  if (!c) return { categoryName: null, categoryIcon: null }
+  return {
+    categoryName: c.name || null,
+    categoryIcon: c.iconPath ? normalizeUploadPath(c.iconPath) : null,
+  }
+}
 const { updateCommunityBalance } = require('./communityBalance.service')
 const chatService = require('./chat.service')
 const { emitToUser } = require('../config/socket')
@@ -28,10 +49,59 @@ const { HELP_REQUEST_STATUS, HELP_MATCH_STATUS, PRESENCE_STATUS, GEO, AUTO_CLOSE
 const logger = require('../utils/logger')
 const { logRequestAttempt } = require('./requestAttempt.service')
 
+const updateRequest = async (requesterId, requestId, { category, description, time, location, itemReturnRequired }) => {
+  const allowedStatuses = [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING]
+
+  const set = {}
+  if (typeof category === 'string') {
+    set.category = category
+    const meta = await attachCategoryMeta(category)
+    set.categoryName = meta.categoryName
+    set.categoryIcon = meta.categoryIcon
+  }
+  if (typeof description === 'string') set.description = description
+  if (typeof time === 'string') set.requestedDurationLabel = time || null
+  if (typeof itemReturnRequired === 'boolean') set.itemReturnRequired = itemReturnRequired
+  if (location && typeof location.lng === 'number' && typeof location.lat === 'number') {
+    set.location = {
+      type: 'Point',
+      coordinates: [location.lng, location.lat],
+      address: location.address || null,
+      whereToFindText: location.whereToFindText || null,
+    }
+  }
+
+  const updated = await HelpRequest.findOneAndUpdate(
+    { _id: requestId, requesterId, status: { $in: allowedStatuses } },
+    { $set: set },
+    { new: true }
+  )
+
+  if (!updated) {
+    const exists = await HelpRequest.findOne({ _id: requestId, requesterId }).select('_id status')
+    if (!exists) {
+      const err = new Error('Request not found')
+      err.statusCode = 404
+      throw err
+    }
+    const err = new Error('Request cannot be updated at this stage')
+    err.statusCode = 409
+    err.code = 'REQUEST_NOT_UPDATABLE'
+    err.data = { status: exists.status }
+    throw err
+  }
+
+  if (set.location) {
+    updateHelpRequestLocation(updated._id, set.location.coordinates[0], set.location.coordinates[1]).catch(() => {})
+  }
+
+  return updated
+}
+
 /**
  * Naya help request create karo + helpers notify karo
  */
-const createRequest = async (requesterId, { category, description, location, itemReturnRequired }, meta = null) => {
+const createRequest = async (requesterId, { category, description, time, location, itemReturnRequired }, meta = null) => {
   logger.info(`[HelpRequest] createRequest by=${requesterId} cat=${category} loc=(${location?.lng},${location?.lat})`)
   // Active request check — ek time pe ek hi request
   const activeRequest = await HelpRequest.findOne({
@@ -110,9 +180,9 @@ const createRequest = async (requesterId, { category, description, location, ite
     logger.error('Blacklist filter failed', e)
   }
 
+  let helperAvailabilityHint = null
+  let attemptId = null
   if (helpers.length === 0) {
-    let availableNearbyExcludingSelf = 0
-    let availableNearbyIncludingSelf = 0
     try {
       const candidatesExcludingSelf = await findNearbyAvailableUsers({
         lng: location.lng,
@@ -122,8 +192,6 @@ const createRequest = async (requesterId, { category, description, location, ite
         limit: 50,
         requireAvailability: true,
       })
-      availableNearbyExcludingSelf = candidatesExcludingSelf.length
-
       const candidatesIncludingSelf = await findNearbyAvailableUsers({
         lng: location.lng,
         lat: location.lat,
@@ -132,47 +200,45 @@ const createRequest = async (requesterId, { category, description, location, ite
         limit: 10,
         requireAvailability: true,
       })
-      availableNearbyIncludingSelf = candidatesIncludingSelf.length
+
+      if (candidatesIncludingSelf.length > 0 && candidatesExcludingSelf.length === 0) {
+        helperAvailabilityHint = 'only_self_available'
+      } else if (candidatesExcludingSelf.length > 0) {
+        helperAvailabilityHint = 'helpers_busy_or_ineligible'
+      } else {
+        helperAvailabilityHint = 'no_helpers_in_radius'
+      }
+    } catch (e) {
+      helperAvailabilityHint = 'unknown'
+    }
+
+    try {
+      const attempt = await logRequestAttempt({
+        requesterId,
+        requestKind: 'help_request',
+        outcome: 'no_helpers_found',
+        reason: 'no_helpers_in_radius',
+        category,
+        description,
+        itemReturnRequired: itemReturnRequired || false,
+        location,
+        radiusMeters: GEO.DEFAULT_RADIUS_METERS,
+        helpersFound: 0,
+        meta,
+      })
+      attemptId = attempt?._id ? String(attempt._id) : null
     } catch (e) { }
-
-    if (availableNearbyIncludingSelf > 0 && availableNearbyExcludingSelf === 0) {
-      const err = new Error('You cannot send a help request to your own account. Ask another nearby user to be available and try again.')
-      err.statusCode = 400
-      err.code = 'SELF_HELP_NOT_ALLOWED'
-      throw err
-    }
-
-    if (availableNearbyExcludingSelf > 0) {
-      const err = new Error('Nearby helpers are currently busy. Please try again in a few minutes.')
-      err.statusCode = 404
-      err.code = 'NO_HELPERS_AVAILABLE'
-      throw err
-    }
-
-    const attempt = await logRequestAttempt({
-      requesterId,
-      requestKind: 'help_request',
-      outcome: 'no_helpers_found',
-      reason: 'no_helpers_in_radius',
-      category,
-      description,
-      itemReturnRequired: itemReturnRequired || false,
-      location,
-      radiusMeters: GEO.DEFAULT_RADIUS_METERS,
-      helpersFound: 0,
-      meta,
-    })
-    const err = new Error('No available helpers nearby right now. Please try again later.')
-    err.statusCode = 404
-    err.code = 'NO_HELPERS_FOUND'
-    err.data = { attemptId: attempt?._id ? String(attempt._id) : null }
-    throw err
   }
+
+  const categoryMeta = await attachCategoryMeta(category)
 
   const request = await HelpRequest.create({
     requesterId,
     category,
     description,
+    categoryName: categoryMeta.categoryName,
+    categoryIcon: categoryMeta.categoryIcon,
+    requestedDurationLabel: typeof time === 'string' ? time || null : null,
     location: {
       type: 'Point',
       coordinates: [location.lng, location.lat],
@@ -212,7 +278,12 @@ const createRequest = async (requesterId, { category, description, location, ite
   }
 
   logger.info(`Help request created: ${request._id} by ${requesterId}`)
-  return request
+  return {
+    request,
+    noHelpersFound: helpers.length === 0,
+    helperAvailabilityHint,
+    attemptId,
+  }
 }
 
 /**
@@ -267,7 +338,7 @@ const acceptRequest = async (helperId, requestId) => {
 
   let match = await HelpMatch.findOne({ requestId, helperId })
 
-  if (match && [HELP_MATCH_STATUS.DECLINED, HELP_MATCH_STATUS.NOT_AVAILABLE, HELP_MATCH_STATUS.COMPLETED].includes(match.status)) {
+  if (match && [HELP_MATCH_STATUS.COMPLETED].includes(match.status)) {
     const err = new Error('Request not found or already responded')
     err.statusCode = 409
     throw err
@@ -450,11 +521,6 @@ const cancelRequest = async (requesterId, requestId) => {
         requestType: request?.category || 'help_request',
         closedBy: String(requesterId),
         reason: 'cancelled',
-        occurredAt,
-      })
-      emitToUser(hid, 'help:request_cancelled', {
-        requestId: String(requestId),
-        requestType: request?.category || 'help_request',
         occurredAt,
       })
     }
@@ -778,8 +844,8 @@ const getNearbyHelpRequests = async (userId, coords = null) => {
     if (acceptedSet.has(String(req._id))) continue
     const match = await HelpMatch.findOne({ requestId: req._id, helperId: userId })
 
-    // Agar helper ne pehle hi mana kar diya hai ya accept kar liya hai toh mat dikhao
-    if (match && ['declined', 'not_available', 'accepted', 'completed', 'cancelled'].includes(match.status)) {
+    // Agar helper ne pehle hi accept kar liya hai ya request closed ho chuka hai toh mat dikhao
+    if (match && ['accepted', 'completed', 'cancelled'].includes(match.status)) {
       continue
     }
 
@@ -806,6 +872,7 @@ const getNearbyHelpRequests = async (userId, coords = null) => {
 
 module.exports = {
   createRequest,
+  updateRequest,
   acceptRequest,
   declineRequest,
   cancelRequest,

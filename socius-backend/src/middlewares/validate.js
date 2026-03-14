@@ -112,15 +112,9 @@ const schemas = {
 
   // Help request
   createHelpRequest: Joi.object({
-    category: Joi.string()
-      .valid(
-        'calm_presence', 'care_support', 'medical_awareness',
-        'language_support', 'elder_assistance', 'community_upkeep',
-        'print_document', 'tool_repair', 'carry_lift', 'transport_help',
-        'household_help', 'study_office_help', 'tech_help', 'general_help'
-      )
-      .required(),
+    category: Joi.string().trim().max(60).required(),
     description: Joi.string().trim().max(500).optional().allow(''),
+    time: Joi.string().trim().max(60).optional().allow(''),
     location: Joi.object({
       lng: Joi.number().min(-180).max(180).required(),
       lat: Joi.number().min(-90).max(90).required(),
@@ -129,6 +123,38 @@ const schemas = {
     }).required(),
     itemReturnRequired: Joi.boolean().default(false),
   }),
+
+  updateHelpRequest: Joi.object({
+    category: Joi.string().trim().max(60).optional(),
+    description: Joi.string().trim().max(500).optional().allow(''),
+    time: Joi.string().trim().max(60).optional().allow(''),
+    location: Joi.object({
+      lng: Joi.number().min(-180).max(180).required(),
+      lat: Joi.number().min(-90).max(90).required(),
+      address: Joi.string().optional().allow(''),
+      whereToFindText: Joi.string().max(300).optional().allow(''),
+    }).optional(),
+    itemReturnRequired: Joi.boolean().optional(),
+  }).min(1),
+
+  // Admin: Help categories
+  adminCreateHelpCategory: Joi.object({
+    name: Joi.string().trim().min(2).max(60).required(),
+    slug: Joi.string().trim().max(60).optional().allow(''),
+    description: Joi.string().trim().max(140).optional().allow(''),
+    color: Joi.string().trim().max(16).optional().allow(''),
+    sortOrder: Joi.number().integer().min(0).max(10000).optional(),
+    isActive: Joi.boolean().truthy('true').falsy('false').optional(),
+  }),
+
+  adminUpdateHelpCategory: Joi.object({
+    name: Joi.string().trim().min(2).max(60).optional(),
+    slug: Joi.string().trim().max(60).optional().allow(''),
+    description: Joi.string().trim().max(140).optional().allow(''),
+    color: Joi.string().trim().max(16).optional().allow(''),
+    sortOrder: Joi.number().integer().min(0).max(10000).optional(),
+    isActive: Joi.boolean().truthy('true').falsy('false').optional(),
+  }).min(1),
 
   // Presence request
   createPresenceRequest: Joi.object({

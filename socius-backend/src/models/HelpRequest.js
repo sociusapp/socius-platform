@@ -11,28 +11,25 @@ const helpRequestSchema = new mongoose.Schema(
     // Request Details
     category: {
       type: String,
-      enum: [
-        'calm_presence',
-        'care_support',
-        'medical_awareness',
-        'language_support',
-        'elder_assistance',
-        'community_upkeep',
-        'print_document',
-        'tool_repair',
-        'carry_lift',
-        'transport_help',
-        'household_help',
-        'study_office_help',
-        'tech_help',
-        'general_help',
-      ],
+      trim: true,
+      lowercase: true,
       required: true,
     },
     description: {
       type: String,
       trim: true,
       maxlength: 500,
+      default: null,
+    },
+
+    categoryName: { type: String, default: null, trim: true, maxlength: 80 },
+    categoryIcon: { type: String, default: null },
+
+    // Requested duration (as selected in app UI, e.g. "10–15 minutes", "About 1 hour")
+    requestedDurationLabel: {
+      type: String,
+      trim: true,
+      maxlength: 60,
       default: null,
     },
 
