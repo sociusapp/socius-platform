@@ -30,6 +30,8 @@ console.log(`Issue Tracker API URL (${issueTrackerForceLive ? 'LIVE' : isProduct
 const api = axios.create({ baseURL, headers: { 'Content-Type': 'application/json' } });
 const issueTrackerApi = axios.create({ baseURL: issueTrackerBaseURL, headers: { 'Content-Type': 'application/json' } });
 
+const ISSUE_TRACKER_TOKEN_KEY = 'socius_issue_tracker_token';
+
 const attachAuth = (instance) => {
   instance.interceptors.request.use((config) => {
     try {
@@ -48,7 +50,26 @@ const attachAuth = (instance) => {
   });
 };
 
+const attachIssueTrackerAuth = (instance) => {
+  instance.interceptors.request.use((config) => {
+    try {
+      const token =
+        (typeof localStorage !== 'undefined' && localStorage.getItem(ISSUE_TRACKER_TOKEN_KEY)) ||
+        null;
+
+      if (token) {
+        config.headers = config.headers || {};
+        config.headers.Authorization = `Bearer ${token}`;
+        return config;
+      }
+    } catch { }
+
+    return config;
+  });
+};
+
 attachAuth(api);
 attachAuth(issueTrackerApi);
+attachIssueTrackerAuth(issueTrackerApi);
 
-export { api, baseURL, issueTrackerApi, issueTrackerBaseURL };
+export { api, baseURL, issueTrackerApi, issueTrackerBaseURL, ISSUE_TRACKER_TOKEN_KEY };

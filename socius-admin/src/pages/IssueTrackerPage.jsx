@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Table from '../components/common/Table';
-import { issueTrackerApi, issueTrackerBaseURL } from '../services/api/client';
+import { issueTrackerApi, issueTrackerBaseURL, ISSUE_TRACKER_TOKEN_KEY } from '../services/api/client';
 import { useAlert } from '../hooks/useAlert';
 import { useAuth } from '../context/AuthContext';
 
@@ -37,6 +37,10 @@ const IssueTrackerPage = () => {
   const isDeveloper = !!user?.isDeveloper;
   const [issues, setIssues] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [showIssueTrackerLogin, setShowIssueTrackerLogin] = useState(false);
+  const [issueTrackerEmail, setIssueTrackerEmail] = useState('');
+  const [issueTrackerPassword, setIssueTrackerPassword] = useState('');
+  const [issueTrackerAuthLoading, setIssueTrackerAuthLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [categoryFilter, setCategoryFilter] = useState('All');
@@ -69,9 +73,48 @@ const IssueTrackerPage = () => {
         setIssues(response.data.data);
       }
     } catch (error) {
-      toast.error('Failed to fetch issues');
+      const statusCode = error?.response?.status;
+      const message = error?.response?.data?.message || error?.message || 'Failed to fetch issues';
+      if (statusCode === 401) {
+        toast.error('Live Issue Tracker login required');
+        setShowIssueTrackerLogin(true);
+      } else {
+        toast.error(message);
+      }
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleIssueTrackerLogin = async (e) => {
+    e.preventDefault();
+    setIssueTrackerAuthLoading(true);
+    try {
+      const path = isDeveloper ? '/auth/developer-login' : '/auth/admin-login';
+      const res = await issueTrackerApi.post(path, {
+        email: issueTrackerEmail,
+        password: issueTrackerPassword,
+      });
+
+      const { success, data, message } = res?.data || {};
+      if (!success || !data?.accessToken) {
+        toast.error(message || 'Login failed');
+        return;
+      }
+
+      localStorage.setItem(ISSUE_TRACKER_TOKEN_KEY, data.accessToken);
+      setShowIssueTrackerLogin(false);
+      setIssueTrackerPassword('');
+      toast.success('Connected to Live Issue Tracker');
+      fetchIssues();
+      if (isDeveloper) fetchAIStats();
+    } catch (err) {
+      const apiMessage =
+        err?.response?.data?.message ||
+        err?.response?.data?.errors?.[0]?.message;
+      toast.error(apiMessage || 'Login failed');
+    } finally {
+      setIssueTrackerAuthLoading(false);
     }
   };
 
@@ -79,6 +122,12 @@ const IssueTrackerPage = () => {
     fetchIssues();
     if (isDeveloper) fetchAIStats();
   }, [isDeveloper]);
+
+  useEffect(() => {
+    if (!issueTrackerEmail && user?.email) {
+      setIssueTrackerEmail(user.email);
+    }
+  }, [issueTrackerEmail, user?.email]);
 
   const filteredIssues = (issues || []).filter((i) => {
     const statusOk = statusFilter === 'All' || i?.status === statusFilter;
@@ -596,6 +645,71 @@ const IssueTrackerPage = () => {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-12 animate-in fade-in slide-in-from-bottom-4 duration-300">
+      {showIssueTrackerLogin ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-xl p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Live Issue Tracker Login</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Live server se data lane ke liye login required hai.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                onClick={() => setShowIssueTrackerLogin(false)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form className="mt-4 space-y-3" onSubmit={handleIssueTrackerLogin}>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
+                <input
+                  type="email"
+                  value={issueTrackerEmail}
+                  onChange={(e) => setIssueTrackerEmail(e.target.value)}
+                  className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-socius-red/50 dark:text-white"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
+                <input
+                  type="password"
+                  value={issueTrackerPassword}
+                  onChange={(e) => setIssueTrackerPassword(e.target.value)}
+                  className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-socius-red/50 dark:text-white"
+                  required
+                />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="submit"
+                  disabled={issueTrackerAuthLoading}
+                  className="flex-1 bg-socius-red text-white py-2.5 rounded-lg font-bold hover:bg-red-700 transition-colors disabled:opacity-50"
+                >
+                  {issueTrackerAuthLoading ? 'Connecting...' : 'Connect'}
+                </button>
+                <button
+                  type="button"
+                  className="px-4 py-2.5 rounded-lg font-bold border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                  onClick={() => {
+                    try {
+                      localStorage.removeItem(ISSUE_TRACKER_TOKEN_KEY);
+                    } catch { }
+                    setShowIssueTrackerLogin(false);
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
       {/* Header with AI Performance */}
       <div className="flex flex-col gap-6">
         <div className="flex items-center justify-between">

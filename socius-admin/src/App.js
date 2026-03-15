@@ -94,6 +94,7 @@ function App() {
           >
             <Route path="/login" element={<LoginPage />} />
             <Route path="/developer-login" element={<LoginPage />} />
+            <Route path="/login-developer" element={<Navigate to="/developer-login" replace />} />
             <Route path="/admin" element={<Navigate to="/dashboard" replace />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           </Route>
