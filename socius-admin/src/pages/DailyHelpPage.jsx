@@ -29,6 +29,27 @@ const safeText = (value) => {
   return s || '-';
 };
 
+export const extractApproxLatLng = (detailType, detailData) => {
+  const location =
+    detailType === 'help'
+      ? detailData?.request?.location
+      : detailData?.location;
+
+  const coords = location?.coordinatesApprox || location?.coordinates;
+  if (!Array.isArray(coords) || coords.length < 2) return null;
+
+  const lng = Number(coords[0]);
+  const lat = Number(coords[1]);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+  return {
+    lat,
+    lng,
+    label: location?.address || location?.whereToFindText || null,
+  };
+};
+
 const DailyHelpPage = () => {
   const { toast } = useAlert();
 
@@ -543,17 +564,46 @@ const DailyHelpPage = () => {
       );
     }
 
+    const coords = extractApproxLatLng(detailType, detailData);
+    const mapsUrl = coords ? `https://www.google.com/maps?q=${coords.lat},${coords.lng}` : null;
+
     return (
       <div className="p-6 space-y-4">
         <div className="text-xs text-gray-500 dark:text-gray-400">
           ID: <span className="font-mono">{safeText(detailId)}</span>
         </div>
+        {coords ? (
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-2">
+            <div className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              Location (Approx)
+            </div>
+            {coords.label ? (
+              <div className="text-sm text-gray-800 dark:text-gray-200">
+                {safeText(coords.label)}
+              </div>
+            ) : null}
+            <div className="text-sm text-gray-700 dark:text-gray-300 font-mono">
+              Lat: {String(coords.lat)} · Lng: {String(coords.lng)}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                className="text-xs px-3 py-1.5"
+                onClick={() => {
+                  if (mapsUrl) window.open(mapsUrl, '_blank');
+                }}
+              >
+                Open in Google Maps
+              </Button>
+            </div>
+          </div>
+        ) : null}
         <pre className="text-xs bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-4 overflow-auto">
           {JSON.stringify(detailData, null, 2)}
         </pre>
       </div>
     );
-  }, [detailData, detailId, detailLoading]);
+  }, [detailData, detailId, detailLoading, detailType]);
 
   return (
     <div className="flex flex-col pb-10">

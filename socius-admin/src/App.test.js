@@ -8,6 +8,6 @@ test('renders Socius Admin title', () => {
       <App />
     </ThemeProvider>
   );
-  const titleElement = screen.getByText(/Socius Admin/i);
+  const titleElement = screen.getByText(/Admin Login/i);
   expect(titleElement).toBeInTheDocument();
 });

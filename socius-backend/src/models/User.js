@@ -178,6 +178,12 @@ const userSchema = new mongoose.Schema(
       default: false,
     },
 
+    // Developer flag (internal)
+    isDeveloper: {
+      type: Boolean,
+      default: false,
+    },
+
     // Soft delete
     isDeleted: {
       type: Boolean,

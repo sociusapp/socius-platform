@@ -33,6 +33,7 @@ app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'))
 app.use('/uploads/documents', express.static(path.join(__dirname, 'uploads/documents')))
 app.use('/uploads/selfies', express.static(path.join(__dirname, 'uploads/selfies')))
 app.use('/uploads/help-categories', express.static(path.join(__dirname, 'uploads/help-categories')))
+app.use('/uploads/issue-screenshots', express.static(path.join(__dirname, 'uploads/issue-screenshots')))
 
 app.use('/api', routes)
 

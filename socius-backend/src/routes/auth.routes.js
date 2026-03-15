@@ -4,6 +4,7 @@ const {
   verifyOtp,
   logout,
   adminPasswordLogin,
+  developerPasswordLogin,
   getDeviceTokenStatus,
   updateDeviceToken,
 } = require('../controllers/auth.controller')
@@ -19,6 +20,9 @@ router.post('/verify-otp', otpVerifyLimiter, validate(schemas.verifyOtp), verify
 
 // POST /api/auth/admin-login
 router.post('/admin-login', validate(schemas.adminLogin), adminPasswordLogin)
+
+// POST /api/auth/developer-login
+router.post('/developer-login', validate(schemas.adminLogin), developerPasswordLogin)
 
 router.post('/logout', authenticate, logout)
 

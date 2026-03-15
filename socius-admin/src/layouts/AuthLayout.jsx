@@ -1,10 +1,12 @@
 import React from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import logo from '../assets/images/icon-03.png';
 import { useTheme } from '../context/ThemeContext';
 
 const AuthLayout = () => {
   const { theme, toggleTheme } = useTheme();
+  const location = useLocation();
+  const isDeveloperLogin = location.pathname.startsWith('/developer');
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col justify-between py-12 sm:px-6 lg:px-8 transition-colors duration-200 font-sans">
@@ -28,7 +30,7 @@ const AuthLayout = () => {
                   alt="Socius"
                 />
                 <h2 className="text-2xl font-bold text-gray-800 dark:text-white">
-                  Socius <span className="font-normal text-gray-500 dark:text-gray-400">— Admin</span>
+                  Socius <span className="font-normal text-gray-500 dark:text-gray-400">— {isDeveloperLogin ? 'Developer' : 'Admin'}</span>
                 </h2>
              </div>
              <p className="text-sm text-gray-500 dark:text-gray-400">

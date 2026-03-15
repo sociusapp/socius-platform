@@ -87,14 +87,14 @@ const Table = ({
                       data.map((row, rowIdx) => (
                         <tr 
                           key={row.id || rowIdx} 
-                          className={`hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors ${onRowClick ? 'cursor-pointer' : ''} ${
+                          className={`group hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors ${onRowClick ? 'cursor-pointer' : ''} ${
                             typeof rowClassName === 'function' ? rowClassName(row) : rowClassName || ''
                           }`}
                           onClick={() => onRowClick && onRowClick(row)}
                         >
                           {columns.map((col, colIdx) => (
                             <td key={colIdx} className={`px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 ${col.className || ''}`}>
-                              {col.render ? col.render(row) : row[col.accessor]}
+                              {col.render ? col.render(row, rowIdx) : row[col.accessor]}
                             </td>
                           ))}
                         </tr>

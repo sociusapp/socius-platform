@@ -161,7 +161,7 @@ const getUsers = async ({ page = 1, limit = 20, search, accountStatus, verificat
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(Number(limit))
-      .select('fullName phone accountStatus isIdentityVerified role isAvailable createdAt')
+      .select('fullName phone accountStatus isIdentityVerified role isAvailable createdAt location updatedAt')
       .lean(),
     User.countDocuments(query),
   ])

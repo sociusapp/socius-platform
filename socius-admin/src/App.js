@@ -31,18 +31,22 @@ import SubscriptionSettingsPage from './pages/SubscriptionSettingsPage';
 import ScenarioConfigPage from './pages/ScenarioConfigPage';
 import AccountSettingsPage from './pages/AccountSettingsPage';
 import DailyHelpPage from './pages/DailyHelpPage';
+import IssueTrackerPage from './pages/IssueTrackerPage';
+import IssueDetailsPage from './pages/IssueDetailsPage';
 
 const PublicRoute = ({ children }) => {
   const { user } = useAuth();
   if (user) {
-    return <Navigate to="/dashboard" replace />;
+    const home = user?.isDeveloper ? '/issue-tracker' : '/dashboard';
+    return <Navigate to={home} replace />;
   }
   return children;
 };
 
 const LandingRoute = () => {
   const { user } = useAuth();
-  return <Navigate to={user ? "/dashboard" : "/login"} replace />;
+  if (!user) return <Navigate to="/login" replace />;
+  return <Navigate to={user?.isDeveloper ? '/issue-tracker' : '/dashboard'} replace />;
 };
 
 function App() {
@@ -56,8 +60,8 @@ function App() {
       }}
     >
       <AuthProvider>
-        <Toaster 
-          position="top-right" 
+        <Toaster
+          position="top-right"
           reverseOrder={false}
           toastOptions={{
             style: {
@@ -89,45 +93,58 @@ function App() {
             }
           >
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/developer-login" element={<LoginPage />} />
             <Route path="/admin" element={<Navigate to="/dashboard" replace />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           </Route>
 
-          {/* Protected Routes */}
+          {/* Protected Routes (Shared) */}
           <Route
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allow={['admin', 'developer']}>
                 <MainLayout />
               </ProtectedRoute>
             }
           >
             <Route path="/" element={<LandingRoute />} />
+            <Route path="/issue-tracker" element={<IssueTrackerPage />} />
+            <Route path="/issue-tracker/:id" element={<IssueDetailsPage />} />
+          </Route>
+
+          {/* Protected Routes (Admin Only) */}
+          <Route
+            element={
+              <ProtectedRoute allow={['admin']}>
+                <MainLayout />
+              </ProtectedRoute>
+            }
+          >
             <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/live-awareness" element={<LiveAwarenessPage />} />
-          <Route path="/live-awareness/:id" element={<LiveAwarenessDetailsPage />} />
-          <Route path="/daily-help" element={<DailyHelpPage />} />
-          <Route path="/incident-review" element={<IncidentReviewPage />} />
-          <Route path="/users" element={<UsersVolunteersPage />} />
-          <Route path="/users/:userId" element={<UserProfilePage />} />
-          <Route path="/verification" element={<VerificationQueuePage />} />
-          <Route path="/verification/:requestId" element={<VerificationReviewPage />} />
-          <Route path="/content" element={<ContentManagementPage />} />
-          <Route path="/static-pages" element={<ContentManagementPage initialTab="Static Pages" />} />
-          <Route path="/static-pages/new" element={<StaticPageEditor />} />
-          <Route path="/static-pages/edit/:slug" element={<StaticPageEditor />} />
-          <Route path="/reports" element={<ReportsSafetyFlagsPage />} />
-          <Route path="/notifications" element={<NotificationCenterPage />} />
-          <Route path="/settings" element={<SystemSettingsPage />} />
-          <Route path="/audit-logs" element={<AuditLogsPage />} />
-          <Route path="/appeals" element={<AppealsPage />} />
-          <Route path="/risk-tiers" element={<RiskTiersPage />} />
-          <Route path="/subscriptions" element={<SubscriptionSettingsPage />} />
-          <Route path="/content/scenario-config" element={<ScenarioConfigPage />} />
-          <Route path="/account-settings" element={<AccountSettingsPage />} />
-        </Route>
+            <Route path="/live-awareness" element={<LiveAwarenessPage />} />
+            <Route path="/live-awareness/:id" element={<LiveAwarenessDetailsPage />} />
+            <Route path="/daily-help" element={<DailyHelpPage />} />
+            <Route path="/incident-review" element={<IncidentReviewPage />} />
+            <Route path="/users" element={<UsersVolunteersPage />} />
+            <Route path="/users/:userId" element={<UserProfilePage />} />
+            <Route path="/verification" element={<VerificationQueuePage />} />
+            <Route path="/verification/:requestId" element={<VerificationReviewPage />} />
+            <Route path="/content" element={<ContentManagementPage />} />
+            <Route path="/static-pages" element={<ContentManagementPage initialTab="Static Pages" />} />
+            <Route path="/static-pages/new" element={<StaticPageEditor />} />
+            <Route path="/static-pages/edit/:slug" element={<StaticPageEditor />} />
+            <Route path="/reports" element={<ReportsSafetyFlagsPage />} />
+            <Route path="/notifications" element={<NotificationCenterPage />} />
+            <Route path="/settings" element={<SystemSettingsPage />} />
+            <Route path="/audit-logs" element={<AuditLogsPage />} />
+            <Route path="/appeals" element={<AppealsPage />} />
+            <Route path="/risk-tiers" element={<RiskTiersPage />} />
+            <Route path="/subscriptions" element={<SubscriptionSettingsPage />} />
+            <Route path="/content/scenario-config" element={<ScenarioConfigPage />} />
+            <Route path="/account-settings" element={<AccountSettingsPage />} />
+          </Route>
 
 
-      </Routes>
+        </Routes>
       </AuthProvider>
     </BrowserRouter>
   );

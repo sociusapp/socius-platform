@@ -11,4 +11,18 @@ const requireAdmin = (req, res, next) => {
   next()
 }
 
-module.exports = { requireAdmin }
+const requireDeveloper = (req, res, next) => {
+  if (!req.user || !req.user.isDeveloper) {
+    return forbidden(res, 'Developer access required')
+  }
+  next()
+}
+
+const requireAdminOrDeveloper = (req, res, next) => {
+  if (!req.user || (!req.user.isAdmin && !req.user.isDeveloper)) {
+    return forbidden(res, 'Internal access required')
+  }
+  next()
+}
+
+module.exports = { requireAdmin, requireDeveloper, requireAdminOrDeveloper }

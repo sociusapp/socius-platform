@@ -78,9 +78,9 @@ const verifyOtpAndLogin = async ({
 }
 
 const adminPasswordLogin = async ({ email, password }) => {
-  const adminEmail = process.env.ADMIN_EMAIL
-  const adminPassword = process.env.ADMIN_PASSWORD
-  const adminPhone = process.env.ADMIN_PHONE
+  const adminEmail = process.env.ADMIN_EMAIL ? process.env.ADMIN_EMAIL.replace(/^"(.*)"$/, '$1') : null
+  const adminPassword = process.env.ADMIN_PASSWORD ? process.env.ADMIN_PASSWORD.replace(/^"(.*)"$/, '$1') : null
+  const adminPhone = process.env.ADMIN_PHONE ? process.env.ADMIN_PHONE.replace(/^"(.*)"$/, '$1') : null
 
   if (!adminEmail || !adminPassword || !adminPhone) {
     const err = new Error('Admin credentials not configured')
@@ -88,7 +88,7 @@ const adminPasswordLogin = async ({ email, password }) => {
     throw err
   }
 
-  if (email !== adminEmail || password !== adminPassword) {
+  if (email.trim() !== adminEmail.trim() || password !== adminPassword) {
     const err = new Error('Invalid admin email or password')
     err.statusCode = 401
     throw err
@@ -101,6 +101,7 @@ const adminPasswordLogin = async ({ email, password }) => {
       phone: adminPhone,
       countryCode: '+91',
       email: adminEmail,
+      fullName: 'Admin',
       isPhoneVerified: true,
       isIdentityVerified: true,
       accountStatus: 'active',
@@ -115,8 +116,80 @@ const adminPasswordLogin = async ({ email, password }) => {
       user.email = adminEmail
       updated = true
     }
+    if (!user.fullName) {
+      user.fullName = 'Admin'
+      updated = true
+    }
     if (!user.isAdmin) {
       user.isAdmin = true
+      updated = true
+    }
+    if (user.accountStatus !== 'active') {
+      user.accountStatus = 'active'
+      updated = true
+    }
+    if (!user.isPhoneVerified) {
+      user.isPhoneVerified = true
+      updated = true
+    }
+    if (updated) {
+      await user.save()
+    }
+  }
+
+  const tokens = generateTokens(user)
+
+  return {
+    user: sanitizeUser(user),
+    ...tokens,
+  }
+}
+
+const developerPasswordLogin = async ({ email, password }) => {
+  const developerEmail = process.env.DEVELOPER_EMAIL ? process.env.DEVELOPER_EMAIL.replace(/^"(.*)"$/, '$1') : null
+  const developerPassword = process.env.DEVELOPER_PASSWORD ? process.env.DEVELOPER_PASSWORD.replace(/^"(.*)"$/, '$1') : null
+  const developerPhone = process.env.DEVELOPER_PHONE ? process.env.DEVELOPER_PHONE.replace(/^"(.*)"$/, '$1') : null
+
+  if (!developerEmail || !developerPassword || !developerPhone) {
+    const err = new Error('Developer credentials not configured')
+    err.statusCode = 500
+    throw err
+  }
+
+  if (email.trim() !== developerEmail.trim() || password !== developerPassword) {
+    const err = new Error('Invalid developer email or password')
+    err.statusCode = 401
+    throw err
+  }
+
+  let user = await User.findOne({ phone: developerPhone, isDeleted: false })
+
+  if (!user) {
+    user = await User.create({
+      phone: developerPhone,
+      countryCode: '+91',
+      email: developerEmail,
+      fullName: 'Developer',
+      isPhoneVerified: true,
+      isIdentityVerified: true,
+      accountStatus: 'active',
+      isDeveloper: true,
+    })
+
+    await CommunityBalance.create({ userId: user._id })
+    logger.info(`Developer user created from env phone: ${user._id}`)
+  } else {
+    let updated = false
+    if (!user.email) {
+      user.email = developerEmail
+      updated = true
+    }
+    if (!user.fullName) {
+      user.fullName = 'Developer'
+      updated = true
+    }
+    if (!user.isDeveloper) {
+      user.isDeveloper = true
       updated = true
     }
     if (user.accountStatus !== 'active') {
@@ -212,6 +285,7 @@ module.exports = {
   verifyOtpAndLogin,
   saveDeviceToken,
   adminPasswordLogin,
+  developerPasswordLogin,
   logout,
   hasActiveDeviceToken,
   updateDeviceTokenForUser,

@@ -737,6 +737,8 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser }) =>
               </View>
             
               <View style={styles.headerIcons}>
+                {/* Call icon removed as per PROJECT_ISSUES.md task #1 */}
+                {/* 
                 <TouchableOpacity
                   onPress={startCall}
                   disabled={chatBlocked}
@@ -746,6 +748,7 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser }) =>
                 >
                   <Icon name="phone" size={22} color="#fff" />
                 </TouchableOpacity>
+                */}
               </View>
             </View>
 

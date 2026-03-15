@@ -2,13 +2,12 @@ import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAlert } from '../hooks/useAlert';
 import { useAuth } from '../context/AuthContext';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
-import { api } from '../services/api/client';
 
 const schema = yup.object().shape({
   email: yup
@@ -21,7 +20,9 @@ const schema = yup.object().shape({
 const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const location = useLocation();
+  const isDeveloperLogin = location.pathname === '/developer-login';
+  const { login, loginDeveloper } = useAuth();
   const { toast } = useAlert();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const {
@@ -36,10 +37,12 @@ const LoginPage = () => {
   const onSubmit = async (data) => {
     setIsSubmitting(true);
     try {
-      const result = await login(data.email, data.password);
+      const result = isDeveloperLogin
+        ? await loginDeveloper(data.email, data.password)
+        : await login(data.email, data.password);
       if (result.ok) {
         toast.success('Successfully logged in');
-        navigate('/dashboard');
+        navigate(isDeveloperLogin ? '/issue-tracker' : '/dashboard');
       } else {
         toast.error(result.error || 'Invalid email or password');
       }
@@ -65,7 +68,7 @@ const LoginPage = () => {
           transition={{ delay: 0.2 }}
           className="text-2xl font-bold text-gray-800 dark:text-white"
         >
-          Admin Login
+          {isDeveloperLogin ? 'Developer Login' : 'Admin Login'}
         </motion.h3>
         <motion.p 
           initial={{ opacity: 0 }}
@@ -86,7 +89,7 @@ const LoginPage = () => {
           transition={{ delay: 0.4 }}
         >
           <label htmlFor="email" className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">
-            Admin Email
+            {isDeveloperLogin ? 'Developer Email' : 'Admin Email'}
           </label>
           <div className="mt-1">
             <input
@@ -162,11 +165,27 @@ const LoginPage = () => {
         
         <div className="flex items-center justify-center">
           <div className="text-sm">
-            <Link to="/forgot-password" size="sm" className="font-medium text-gray-500 hover:text-socius-red dark:text-gray-400 underline decoration-1 underline-offset-2">
-              Forgot password?
-            </Link>
+            {!isDeveloperLogin ? (
+              <Link to="/forgot-password" size="sm" className="font-medium text-gray-500 hover:text-socius-red dark:text-gray-400 underline decoration-1 underline-offset-2">
+                Forgot password?
+              </Link>
+            ) : (
+              <Link to="/login" size="sm" className="font-medium text-gray-500 hover:text-socius-red dark:text-gray-400 underline decoration-1 underline-offset-2">
+                Go to Admin Login
+              </Link>
+            )}
           </div>
         </div>
+
+        {!isDeveloperLogin && (
+          <div className="flex items-center justify-center">
+            <div className="text-sm">
+              <Link to="/developer-login" size="sm" className="font-medium text-gray-500 hover:text-socius-red dark:text-gray-400 underline decoration-1 underline-offset-2">
+                Developer Login
+              </Link>
+            </div>
+          </div>
+        )}
       </form>
       
       <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-700">

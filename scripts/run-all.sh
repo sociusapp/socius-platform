@@ -107,7 +107,11 @@ if [[ ! -d node_modules ]]; then
   echo "   📦 Installing Admin dependencies..."
   npm install >/dev/null 2>&1
 fi
-REACT_APP_SOCIUS_API_BASE="http://${API_HOST}:${API_PORT}/api" HOST="${API_HOST}" PORT="${ADMIN_PORT}" npm run start > ../admin.log 2>&1 &
+ADMIN_CONNECT_HOST="${API_HOST}"
+if [[ "${ADMIN_CONNECT_HOST}" == "0.0.0.0" ]]; then
+  ADMIN_CONNECT_HOST="127.0.0.1"
+fi
+REACT_APP_SOCIUS_API_BASE="http://${ADMIN_CONNECT_HOST}:${API_PORT}/api" HOST="${API_HOST}" PORT="${ADMIN_PORT}" npm run start > ../admin.log 2>&1 &
 ADMIN_PID=$!
 popd >/dev/null
 echo "   ✅ Admin running (PID: ${ADMIN_PID}) at http://${API_HOST}:${ADMIN_PORT}"

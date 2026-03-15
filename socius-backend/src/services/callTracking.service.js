@@ -64,14 +64,11 @@ const upsertCall = async ({
     callerId,
     calleeId,
     callType,
-    startedAt: startedAt || new Date(),
-    status: status || 'initiated',
-    meta: meta || {},
   }
+  if (startedAt) setOnInsert.startedAt = startedAt
 
   const set = {}
   if (status) set.status = status
-  if (startedAt) set.startedAt = startedAt
   if (answeredAt) set.answeredAt = answeredAt
   if (endedAt) set.endedAt = endedAt
   if (typeof failureReason === 'string') set.failureReason = failureReason
@@ -331,4 +328,3 @@ module.exports = {
   trackFromSocket,
   logSignalRelay,
 }
-

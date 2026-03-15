@@ -28,10 +28,7 @@ const errorHandler = (err, req, res, next) => {
   const logEntry = `[${new Date().toISOString()}] ${req.method} ${req.originalUrl}\nError: ${err.message}\nStack: ${err.stack}\nDetails: ${JSON.stringify(err.errors || {}, null, 2)}\n\n`;
   fs.appendFileSync(logPath, logEntry);
 
-  logger.error(`[${req.method}] ${req.originalUrl} — ${err.message}`, {
-    stack: err.stack,
-    userId: req.user?._id,
-  })
+  logger.error(`[${req.method}] ${req.originalUrl} — ${err.message}`, err, req)
 
   // Mongoose validation error
   if (err.name === 'ValidationError') {

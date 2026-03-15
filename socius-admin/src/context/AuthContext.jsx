@@ -12,6 +12,16 @@ export const AuthProvider = ({ children }) => {
     if (storedUser) {
       try {
         const parsed = JSON.parse(storedUser);
+        const hasRoleFlags =
+          typeof parsed?.isAdmin === 'boolean' || typeof parsed?.isDeveloper === 'boolean';
+
+        if (!hasRoleFlags) {
+          localStorage.removeItem('socius_user');
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+
         setUser(parsed);
         if (parsed?.accessToken) {
           api.defaults.headers.common.Authorization = `Bearer ${parsed.accessToken}`;
@@ -43,8 +53,55 @@ export const AuthProvider = ({ children }) => {
       const mappedUser = {
         id: data.user._id || data.user.id,
         phone: data.user.phone,
-        name: data.user.name || 'Admin User',
-        role: data.user.role || 'admin',
+        email: data.user.email,
+        name: data.user.fullName || data.user.name || 'Admin User',
+        role: data.user.role,
+        isAdmin: !!data.user.isAdmin,
+        isDeveloper: !!data.user.isDeveloper,
+        accessToken: data.accessToken,
+      };
+
+      setUser(mappedUser);
+      localStorage.setItem('socius_user', JSON.stringify(mappedUser));
+      if (mappedUser.accessToken) {
+        api.defaults.headers.common.Authorization = `Bearer ${mappedUser.accessToken}`;
+      }
+
+      return { ok: true };
+    } catch (error) {
+      const apiMessage =
+        error?.response?.data?.message ||
+        error?.response?.data?.errors?.[0]?.message;
+
+      return { ok: false, error: apiMessage || 'Login failed' };
+    }
+  };
+
+  const loginDeveloper = async (email, password) => {
+    try {
+      const response = await api.post('/auth/developer-login', {
+        email,
+        password,
+      });
+
+      const { success, data, message } = response?.data || {};
+
+      if (!success || !data) {
+        return { ok: false, error: message || 'Login failed' };
+      }
+
+      if (!data.user?.isDeveloper) {
+        return { ok: false, error: 'Developer access only' };
+      }
+
+      const mappedUser = {
+        id: data.user._id || data.user.id,
+        phone: data.user.phone,
+        email: data.user.email,
+        name: data.user.fullName || data.user.name || 'Developer User',
+        role: data.user.role,
+        isAdmin: !!data.user.isAdmin,
+        isDeveloper: !!data.user.isDeveloper,
         accessToken: data.accessToken,
       };
 
@@ -75,7 +132,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, loginDeveloper, logout, loading }}>
       {!loading && children}
     </AuthContext.Provider>
   );

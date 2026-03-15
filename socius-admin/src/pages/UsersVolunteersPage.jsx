@@ -47,31 +47,42 @@ const UsersVolunteersPage = () => {
   };
 
   const mapUser = (item) => {
-    const id = String(item._id || item.id || '');
-    const name = item.fullName || '-';
-    const isAvailable = !!item.isAvailable;
-    const roleLabel = isAvailable ? 'Volunteer' : 'User';
+    try {
+      const id = String(item._id || item.id || '');
+      const name = item.fullName || '-';
+      const isAvailable = !!item.isAvailable;
+      const roleLabel = isAvailable ? 'Volunteer' : 'User';
 
-    let accountStatusLabel = 'Active';
-    if (item.accountStatus === 'limited') accountStatusLabel = 'Limited';
-    else if (item.accountStatus === 'suspended') accountStatusLabel = 'Suspended';
-    else if (item.accountStatus === 'pending_review') accountStatusLabel = 'Pending Review';
+      let accountStatusLabel = 'Active';
+      if (item.accountStatus === 'limited') accountStatusLabel = 'Limited';
+      else if (item.accountStatus === 'suspended') accountStatusLabel = 'Suspended';
+      else if (item.accountStatus === 'pending_review') accountStatusLabel = 'Pending Review';
 
-    let verificationLabel = 'Pending';
-    const v = item.verificationStatus;
-    if (v === 'approved' || item.isIdentityVerified === true) verificationLabel = 'Approved';
-    else if (v === 'failed') verificationLabel = 'Rejected';
-    else if (v === 'pending' || v === 'review_requested' || v === 'not_submitted') verificationLabel = 'Pending';
+      let verificationLabel = 'Pending';
+      const v = item.verificationStatus;
+      if (v === 'approved' || item.isIdentityVerified === true) verificationLabel = 'Approved';
+      else if (v === 'failed') verificationLabel = 'Rejected';
+      else if (v === 'pending' || v === 'review_requested' || v === 'not_submitted') verificationLabel = 'Pending';
 
-    return {
-      id,
-      name,
-      role: roleLabel,
-      accountStatus: accountStatusLabel,
-      verification: verificationLabel,
-      flags: 0,
-      lastActivity: '-',
-    };
+      return {
+        id,
+        name,
+        role: roleLabel,
+        accountStatus: accountStatusLabel,
+        verification: verificationLabel,
+        flags: 0,
+        lastActivity: item.updatedAt ? new Date(item.updatedAt).toLocaleString() : '-',
+        location: (item.location?.coordinates && 
+                   typeof item.location.coordinates[0] === 'number' && 
+                   typeof item.location.coordinates[1] === 'number' && 
+                   (item.location.coordinates[0] !== 0 || item.location.coordinates[1] !== 0)) 
+          ? `${item.location.coordinates[1].toFixed(6)}, ${item.location.coordinates[0].toFixed(6)}` 
+          : 'Not Set',
+      };
+    } catch (error) {
+      console.error('Error mapping user:', error, item);
+      return null;
+    }
   };
 
   useEffect(() => {
@@ -109,7 +120,9 @@ const UsersVolunteersPage = () => {
         const response = await api.get('/admin/users', { params });
         const { success, data } = response?.data || {};
         if (success && data && !isCancelled) {
-          const mapped = Array.isArray(data.items) ? data.items.map(mapUser) : [];
+          const mapped = Array.isArray(data.items) 
+            ? data.items.map(mapUser).filter(u => u !== null) 
+            : [];
           setUsers(mapped);
           setTotalItems(data.total || mapped.length);
         }
@@ -130,7 +143,7 @@ const UsersVolunteersPage = () => {
     return () => {
       isCancelled = true;
     };
-  }, [currentPage, searchTerm]);
+  }, [currentPage, searchTerm, accountStatusFilter, verificationFilter]); // Added missing dependencies
 
   // Helper for Status Dots
   const StatusDot = ({ status, type }) => {
@@ -183,8 +196,23 @@ const UsersVolunteersPage = () => {
 
   const totalPages = Math.ceil(filteredData.length / itemsPerPage) || 1;
 
+  const handleLocationClick = async (locationStr) => {
+    if (!locationStr || locationStr === 'Not Set') return;
+    const [lat, lng] = locationStr.split(',').map(s => s.trim());
+    const url = `https://www.google.com/maps?q=${lat},${lng}`;
+    window.open(url, '_blank');
+  };
+
   const columns = [
-    { header: 'User ID', accessor: 'id', className: 'font-medium text-gray-900 dark:text-white' },
+    { 
+      header: 'SN', 
+      accessor: 'sn', 
+      className: 'font-medium text-gray-500 w-12',
+      render: (row, index) => {
+        const idx = typeof index === 'number' ? index : 0;
+        return ((currentPage - 1) * itemsPerPage) + idx + 1;
+      }
+    },
     { header: 'Name', accessor: 'name', className: 'text-gray-700 dark:text-gray-300' },
     { header: 'Role', accessor: 'role', className: 'text-gray-700 dark:text-gray-300' },
     { 
@@ -208,20 +236,41 @@ const UsersVolunteersPage = () => {
       )
     },
     { header: 'Flags', accessor: 'flags', className: 'text-center' },
-    { header: 'Last Activity', accessor: 'lastActivity' },
+    { 
+      header: 'Location', 
+      accessor: 'location', 
+      className: 'text-xs text-gray-500',
+      render: (row) => (
+        <button 
+          onClick={(e) => {
+            e.stopPropagation();
+            handleLocationClick(row.location);
+          }}
+          className={`hover:text-socius-red transition-colors ${row.location !== 'Not Set' ? 'cursor-pointer underline' : 'cursor-default'}`}
+        >
+          {row.location}
+        </button>
+      )
+    },
+    { header: 'Last Activity', accessor: 'lastActivity', className: 'text-xs text-gray-500' },
     { 
       header: 'Action', 
       accessor: 'action', 
       className: 'text-center',
-      render: (user) => (
-        <Button 
-          variant="secondary"
-          onClick={() => navigate(`/users/${user.id}`)}
-          className="text-blue-700 dark:text-blue-400 text-xs px-3 py-1.5 shadow-sm"
-        >
-          View Profile
-        </Button>
-      )
+      render: (row) => {
+        const id = String(row.id || row._id || '');
+        return (
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              if (id) navigate(`/users/${id}`);
+            }}
+            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-xs font-bold px-3 py-1.5 border border-blue-200 dark:border-blue-800 rounded shadow-sm transition-colors"
+          >
+            View Profile
+          </button>
+        );
+      }
     },
   ];
 

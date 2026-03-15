@@ -13,6 +13,8 @@ jest.mock('../src/middlewares/auth', () => ({
 
 jest.mock('../src/middlewares/admin', () => ({
   requireAdmin: (req, res, next) => next(),
+  requireDeveloper: (req, res, next) => next(),
+  requireAdminOrDeveloper: (req, res, next) => next(),
 }))
 
 const routes = require('../src/routes')
@@ -139,4 +141,3 @@ describe('Help categories API', () => {
     expect(slugs.includes('disable_me')).toBe(false)
   })
 })
-

@@ -1,50 +1,42 @@
-const { createLogger, format, transports } = require('winston')
-const path = require('path')
-const fs = require('fs')
+const Log = require('../models/Log')
 
-// logs folder create karo agar nahi hai
-const logDir = path.join(process.cwd(), 'logs')
-if (!fs.existsSync(logDir)) {
-  fs.mkdirSync(logDir, { recursive: true })
-}
+const logger = {
+  info: async (message, meta = {}) => {
+    console.log(`[INFO] ${message}`)
+    await Log.create({ level: 'info', message, ...meta }).catch(e => console.error('Log error:', e.message))
+  },
+  
+  warn: async (message, meta = {}) => {
+    console.warn(`[WARN] ${message}`)
+    await Log.create({ level: 'warn', message, ...meta }).catch(e => console.error('Log error:', e.message))
+  },
 
-const { combine, timestamp, printf, colorize, errors } = format
-
-// Custom log format
-const logFormat = printf(({ level, message, timestamp, stack }) => {
-  return `[${timestamp}] ${level}: ${stack || message}`
-})
-
-const logger = createLogger({
-  level: process.env.NODE_ENV === 'production' ? 'warn' : 'debug',
-  format: combine(
-    timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-    errors({ stack: true }),
-    logFormat
-  ),
-  transports: [
-    // Console (development)
-    new transports.Console({
-      format: combine(
-        colorize(),
-        timestamp({ format: 'HH:mm:ss' }),
-        errors({ stack: true }),
-        logFormat
-      ),
-      silent: process.env.NODE_ENV === 'test',
-    }),
-
-    // Error log file
-    new transports.File({
-      filename: path.join(logDir, 'error.log'),
+  error: async (message, error = {}, req = null) => {
+    console.error(`[ERROR] ${message}`, error.stack || error)
+    
+    const meta = {
       level: 'error',
-    }),
+      message: message || error.message,
+      stack: error.stack || null,
+    }
 
-    // Combined log file
-    new transports.File({
-      filename: path.join(logDir, 'combined.log'),
-    }),
-  ],
-})
+    if (req) {
+      meta.method = req.method
+      meta.url = req.originalUrl
+      meta.ip = req.ip
+      meta.userAgent = req.get('User-Agent')
+      meta.userId = req.user?._id || null
+      // Don't log sensitive data like passwords
+      if (req.body) {
+        const body = { ...req.body }
+        delete body.password
+        delete body.token
+        meta.body = body
+      }
+    }
+
+    await Log.create(meta).catch(e => console.error('Log error:', e.message))
+  }
+}
 
 module.exports = logger

@@ -1,11 +1,12 @@
 import axios from 'axios';
 
 const LOCAL_API = process.env.REACT_APP_SOCIUS_API_BASE || 'http://127.0.0.1:48080/api';
-const LIVE_API = 'https://socius-platform-rxjo.onrender.com/api';
+const LIVE_API = process.env.REACT_APP_SOCIUS_LIVE_API || 'https://socius-platform-rxjo.onrender.com/api';
 
-// Auto-detect production environment based on hostname
 const isProduction = typeof window !== 'undefined' && window.location.hostname.includes('onrender.com');
+const issueTrackerForceLive = String(process.env.REACT_APP_ISSUE_TRACKER_FORCE_LIVE || '').toLowerCase() === 'true';
 let baseURL = isProduction ? LIVE_API : LOCAL_API;
+let issueTrackerBaseURL = issueTrackerForceLive ? LIVE_API : baseURL;
 
 try {
   const u = new URL(baseURL);
@@ -15,17 +16,39 @@ try {
   }
 } catch { }
 
-console.log(`Admin API URL (${isProduction ? 'LIVE' : 'LOCAL'}):`, baseURL);
-
-const api = axios.create({ baseURL, headers: { 'Content-Type': 'application/json' } });
-
 try {
-  const stored = typeof localStorage !== 'undefined' ? localStorage.getItem('socius_user') : null;
-  if (stored) {
-    const parsed = JSON.parse(stored);
-    if (parsed && parsed.accessToken) {
-      api.defaults.headers.common.Authorization = `Bearer ${parsed.accessToken}`;
-    }
+  const u = new URL(issueTrackerBaseURL);
+  if (u.hostname === '0.0.0.0') {
+    u.hostname = '127.0.0.1';
+    issueTrackerBaseURL = u.toString();
   }
 } catch { }
-export { api, baseURL };
+
+console.log(`Admin API URL (${isProduction ? 'LIVE' : 'LOCAL'}):`, baseURL);
+console.log(`Issue Tracker API URL (${issueTrackerForceLive ? 'LIVE' : isProduction ? 'LIVE' : 'LOCAL'}):`, issueTrackerBaseURL);
+
+const api = axios.create({ baseURL, headers: { 'Content-Type': 'application/json' } });
+const issueTrackerApi = axios.create({ baseURL: issueTrackerBaseURL, headers: { 'Content-Type': 'application/json' } });
+
+const attachAuth = (instance) => {
+  instance.interceptors.request.use((config) => {
+    try {
+      const stored = typeof localStorage !== 'undefined' ? localStorage.getItem('socius_user') : null;
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && parsed.accessToken) {
+          config.headers = config.headers || {};
+          if (!config.headers.Authorization) {
+            config.headers.Authorization = `Bearer ${parsed.accessToken}`;
+          }
+        }
+      }
+    } catch { }
+    return config;
+  });
+};
+
+attachAuth(api);
+attachAuth(issueTrackerApi);
+
+export { api, baseURL, issueTrackerApi, issueTrackerBaseURL };

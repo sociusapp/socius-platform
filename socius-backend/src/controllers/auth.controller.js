@@ -1,5 +1,6 @@
 const authService = require('../services/auth.service')
 const { success, badRequest } = require('../utils/response')
+const logger = require('../utils/logger')
 
 const sendOtp = async (req, res, next) => {
   try {
@@ -33,7 +34,31 @@ const adminPasswordLogin = async (req, res, next) => {
   try {
     const { email, password } = req.body
     const result = await authService.adminPasswordLogin({ email, password })
+
+    await logger.info(`Admin logged in: ${email}`, {
+      method: 'POST',
+      url: '/api/auth/admin-login',
+      userId: result.user._id
+    })
+
     return success(res, result, 'Admin login successful')
+  } catch (err) {
+    next(err)
+  }
+}
+
+const developerPasswordLogin = async (req, res, next) => {
+  try {
+    const { email, password } = req.body
+    const result = await authService.developerPasswordLogin({ email, password })
+
+    await logger.info(`Developer logged in: ${email}`, {
+      method: 'POST',
+      url: '/api/auth/developer-login',
+      userId: result.user._id
+    })
+
+    return success(res, result, 'Developer login successful')
   } catch (err) {
     next(err)
   }
@@ -75,4 +100,4 @@ const updateDeviceToken = async (req, res, next) => {
   }
 }
 
-module.exports = { sendOtp, verifyOtp, logout, adminPasswordLogin, getDeviceTokenStatus, updateDeviceToken }
+module.exports = { sendOtp, verifyOtp, logout, adminPasswordLogin, developerPasswordLogin, getDeviceTokenStatus, updateDeviceToken }

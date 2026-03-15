@@ -1,106 +1,94 @@
-const multer = require('multer')
-const path = require('path')
-const fs = require('fs')
-const { badRequest } = require('../utils/response')
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 
-// Folder exist na ho toh create karo
-const ensureDir = (dir) => {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true })
-  }
-}
-
-const storage = multer.diskStorage({
+// Helper to create storage with dynamic destination
+const createStorage = (destFolder) => multer.diskStorage({
   destination: (req, file, cb) => {
-    let folder = 'uploads/others'
-
-    if (file.fieldname === 'government_id') folder = 'uploads/documents'
-    if (file.fieldname === 'selfie') folder = 'uploads/selfies'
-    if (file.fieldname === 'updated_doc') folder = 'uploads/documents'
-    if (file.fieldname === 'updated_selfie') folder = 'uploads/selfies'
-    if (file.fieldname === 'icon') folder = 'uploads/help-categories'
-
-    ensureDir(folder)
-    cb(null, folder)
+    const dir = path.join(__dirname, '../../', destFolder);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    cb(null, dir);
   },
-
   filename: (req, file, cb) => {
-    const userId = req.user?._id || 'unknown'
-    const ext = path.extname(file.originalname).toLowerCase()
-    const unique = `${userId}_${file.fieldname}_${Date.now()}${ext}`
-    cb(null, unique)
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    cb(null, (file.fieldname || 'file') + '-' + uniqueSuffix + path.extname(file.originalname));
   },
-})
+});
 
 const fileFilter = (req, file, cb) => {
-  const allowedMimes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf']
-
-  if (allowedMimes.includes(file.mimetype)) {
-    cb(null, true)
+  if (file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf') {
+    cb(null, true);
   } else {
-    cb(new Error('Only JPG, PNG, PDF files are allowed'), false)
+    cb(new Error('Only images and PDFs are allowed!'), false);
   }
-}
+};
 
+// Generic uploader for issues
 const upload = multer({
-  storage,
-  limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB max (effectively unlimited for mobile uploads)
+  storage: createStorage('uploads/issue-screenshots'),
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('audio/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only images and audio files are allowed!'), false);
+    }
   },
-  fileFilter,
-})
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB for audio
+});
 
-// ─── Upload presets ───────────────────────────────────────
+// Verification uploader (Gov ID to documents, Selfie to selfies)
+const verificationStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    let folder = 'uploads/documents';
+    if (file.fieldname === 'selfie' || file.fieldname === 'updated_selfie') {
+      folder = 'uploads/selfies';
+    }
+    const dir = path.join(__dirname, '../../', folder);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  },
+});
 
-// Government ID upload
-const uploadGovId = upload.single('government_id')
+const verificationUpload = multer({
+  storage: verificationStorage,
+  fileFilter: fileFilter,
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
 
-// Selfie upload
-const uploadSelfie = upload.single('selfie')
-
-// Dono ek saath (verification submit)
-// Closure evidence uploads (1-5 photos)
-const uploadClosureEvidence = upload.array('closure_evidence', 5)
-
-const uploadVerificationDocs = upload.fields([
+const uploadVerificationDocs = verificationUpload.fields([
   { name: 'government_id', maxCount: 1 },
-  { name: 'selfie', maxCount: 1 },
-])
+  { name: 'selfie', maxCount: 1 }
+]);
 
-
-// Review request re-upload
-const uploadReviewDocs = upload.fields([
+const uploadReviewDocs = verificationUpload.fields([
   { name: 'updated_doc', maxCount: 1 },
-  { name: 'updated_selfie', maxCount: 1 },
-])
+  { name: 'updated_selfie', maxCount: 1 }
+]);
 
-const uploadHelpCategoryIcon = upload.single('icon')
+const uploadClosureEvidence = multer({
+  storage: createStorage('uploads/closures'),
+  fileFilter: fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 },
+}).array('evidence', 5);
 
-/**
- * Multer errors handle karo gracefully
- */
-const handleUploadError = (uploadMiddleware) => {
-  return (req, res, next) => {
-    uploadMiddleware(req, res, (err) => {
-      if (!err) return next()
+const uploadHelpCategoryIcon = multer({
+  storage: createStorage('uploads/help-categories'),
+  fileFilter: fileFilter,
+  limits: { fileSize: 2 * 1024 * 1024 },
+}).single('icon');
 
-      if (err instanceof multer.MulterError) {
-        if (err.code === 'LIMIT_FILE_SIZE') {
-          return badRequest(res, 'File too large. Maximum size is 100MB.')
-        }
-        return badRequest(res, `Upload error: ${err.message}`)
-      }
-
-      return badRequest(res, err.message || 'File upload failed')
-    })
-  }
-}
-
-module.exports = {
-  uploadGovId: handleUploadError(uploadGovId),
-  uploadSelfie: handleUploadError(uploadSelfie),
-  uploadClosureEvidence: handleUploadError(uploadClosureEvidence),
-  uploadVerificationDocs: handleUploadError(uploadVerificationDocs),
-  uploadReviewDocs: handleUploadError(uploadReviewDocs),
-  uploadHelpCategoryIcon: handleUploadError(uploadHelpCategoryIcon),
-}
+module.exports = { 
+  upload, 
+  uploadVerificationDocs, 
+  uploadReviewDocs, 
+  uploadClosureEvidence,
+  uploadHelpCategoryIcon
+};

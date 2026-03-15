@@ -17,7 +17,7 @@ const SafetyComesFirstScreen = ({ navigation, route }) => {
     {
       title: 'Observe Only',
       desc: 'Stay aware, keep distance.',
-      image: require('../../../assets/images/safety-1.png'),
+      image: require('../../../assets/images/safety-3.png'),
       icon: 'eye-outline',
       bg: '#EEF3F6',
       fg: '#5A6F7D',
@@ -33,7 +33,7 @@ const SafetyComesFirstScreen = ({ navigation, route }) => {
     {
       title: 'Call Authorities',
       desc: 'If anything feels unsafe.',
-      image: require('../../../assets/images/safety-3.png'),
+      image: require('../../../assets/images/safety-1.png'),
       icon: 'phone-alert-outline',
       bg: '#F8EAEA',
       fg: '#C94D4D',
@@ -308,24 +308,9 @@ const SafetyComesFirstScreen = ({ navigation, route }) => {
                 >
                   <Image
                     source={c.image}
-                    style={{ width: scale(34), height: scale(34) }}
-                    resizeMode="contain"
+                    style={{ width: '100%', height: '100%' }}
+                    resizeMode="cover"
                   />
-                  <View
-                    style={[
-                      styles.cornerBadge,
-                      {
-                        borderRadius: scale(999),
-                        width: scale(18),
-                        height: scale(18),
-                        right: scale(-2),
-                        bottom: scale(-2),
-                      },
-                    ]}
-                    pointerEvents="none"
-                  >
-                    <Icon name={c.icon} size={scale(12)} color={c.fg} />
-                  </View>
                 </View>
                 <View style={styles.cardContent}>
                   <Text style={[styles.cardTitle, { fontSize: ms(14), marginBottom: vscale(3), letterSpacing: 0.6 }]}>{String(c.title).toUpperCase()}</Text>
