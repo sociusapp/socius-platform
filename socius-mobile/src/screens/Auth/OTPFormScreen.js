@@ -242,6 +242,7 @@ const OTPVerificationScreen = ({ navigation, route }) => {
 
       const response = await verifyOtpApi({
         phone,
+        countryCode,
         otp: otpCode,
         deviceToken,
         platform: Platform.OS,
@@ -250,13 +251,19 @@ const OTPVerificationScreen = ({ navigation, route }) => {
         appVersion,
       });
 
-      const { success, message, data } = response || {};
+      const { success, message, data, errorCode } = response || {};
 
       if (!success) {
-        const errorMessage =
-          message ||
-          'OTP verification failed. Please try again.';
-        setOtpError(errorMessage);
+        if (errorCode === 'COUNTRY_MISMATCH') {
+          showAlert(
+            'Authentication Error',
+            message || 'The country selected does not match the registered account for this number.',
+            [{ text: 'Go Back', onPress: () => { closeAlert(); navigation.goBack(); } }]
+          );
+        } else {
+          const errorMessage = message || 'OTP verification failed. Please try again.';
+          setOtpError(errorMessage);
+        }
         return;
       }
 
@@ -330,8 +337,8 @@ const OTPVerificationScreen = ({ navigation, route }) => {
   };
 
   const handleResendOTP = async () => {
-    if (!phone) {
-      showAlert('Error', 'Phone number is missing. Please go back and try again.', [{ text: 'OK', onPress: closeAlert }]);
+    if (!phone || !countryCode) {
+      showAlert('Error', 'Phone number or country code is missing. Please go back and try again.', [{ text: 'OK', onPress: closeAlert }]);
       return;
     }
 
@@ -339,7 +346,7 @@ const OTPVerificationScreen = ({ navigation, route }) => {
       setIsResending(true);
       setOtpError('');
 
-      const response = await sendOtpApi(phone, countryCode || '+91');
+      const response = await sendOtpApi(phone, countryCode);
       const { success, message } = response || {};
 
       if (!success) {

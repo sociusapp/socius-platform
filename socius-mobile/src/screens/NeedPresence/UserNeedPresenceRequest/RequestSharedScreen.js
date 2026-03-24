@@ -14,6 +14,9 @@ import { useResponsive } from '../../../utils/responsive';
 import { cancelPresenceRequest, getActivePresenceRequest } from '../../../services/api/incident.api';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
 import CustomAlert from '../../../components/common/CustomAlert';
+import PulseDot from '../../../components/common/PulseDot';
+import MotionView from '../../../components/common/MotionView';
+import MotionPressable from '../../../components/common/MotionPressable';
 
 const PulseRing = ({ delay, size }) => {
   const pulseScale = useSharedValue(0.8);
@@ -123,10 +126,25 @@ const isAcceptedFromResponse = (response) => {
     container?.activeRequest ||
     container?.data ||
     container;
-  const status = `${data?.status || ''}`.toLowerCase();
-  if (['accepted', 'matched', 'in_progress', 'active_with_helper'].includes(status)) {
+  const status = `${data?.status || ''}`.toLowerCase().trim();
+  const acceptedStatuses = [
+    'accepted',
+    'matched',
+    'assigned',
+    'in_progress',
+    'en_route',
+    'arrived',
+    'active_with_helper',
+    'active',
+  ];
+  if (acceptedStatuses.includes(status)) {
     return true;
   }
+
+  const isNonEmptyArray = (v) => Array.isArray(v) && v.length > 0;
+  const isNonEmptyObject = (v) =>
+    v && typeof v === 'object' && !Array.isArray(v) && (v._id || v.id || Object.keys(v).length > 0);
+  const isNonEmptyString = (v) => typeof v === 'string' && v.trim().length > 0;
 
   const arrays = [
     data?.acceptedBy,
@@ -135,8 +153,44 @@ const isAcceptedFromResponse = (response) => {
     data?.acceptedVolunteers,
     data?.responders,
     data?.helpers,
+    data?.accepted,
   ];
-  return arrays.some((value) => Array.isArray(value) && value.length > 0);
+  if (arrays.some(isNonEmptyArray)) {
+    return true;
+  }
+
+  const singleRefs = [
+    data?.volunteer,
+    data?.volunteerId,
+    data?.helper,
+    data?.helperId,
+    data?.responder,
+    data?.responderId,
+    data?.assignedTo,
+    data?.assignedUser,
+    data?.assignedHelper,
+    data?.assignedVolunteer,
+    data?.acceptedBy,
+  ];
+  if (singleRefs.some(isNonEmptyObject) || singleRefs.some(isNonEmptyString)) {
+    return true;
+  }
+
+  const numericSignals = [
+    data?.acceptedCount,
+    data?.acceptedUsersCount,
+    data?.acceptedHelpersCount,
+    data?.stats?.acceptedCount,
+  ];
+  if (numericSignals.some((n) => typeof n === 'number' && Number.isFinite(n) && n > 0)) {
+    return true;
+  }
+
+  if (status.includes('accept') || status.includes('match') || status.includes('assign') || status.includes('en_route') || status.includes('arriv')) {
+    return true;
+  }
+
+  return false;
 };
 
 const RequestSharedScreen = ({ navigation, route }) => {
@@ -147,6 +201,7 @@ const RequestSharedScreen = ({ navigation, route }) => {
   const [cancelSubmitting, setCancelSubmitting] = useState(false);
   const requestAcceptedRef = useRef(false);
   const modalVisibleRef = useRef(false);
+  const navigatedOnAcceptedRef = useRef(false);
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
 
   // Custom Alert State
@@ -192,6 +247,15 @@ const RequestSharedScreen = ({ navigation, route }) => {
       const accepted = isAcceptedFromResponse(response);
       requestAcceptedRef.current = accepted;
 
+      if (accepted && requestId && !navigatedOnAcceptedRef.current) {
+        navigatedOnAcceptedRef.current = true;
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'NearbyMap', params: { requestId, mode: 'requester' } }],
+        });
+        return;
+      }
+
       if (!accepted && nearbyCount === 0 && !modalVisibleRef.current) {
         setCancelReason(CANCEL_REASONS.NO_HELPERS_NEARBY);
         setModalMode('no_helpers_nearby');
@@ -203,7 +267,7 @@ const RequestSharedScreen = ({ navigation, route }) => {
         navigation.navigate('RequestClosed');
       }
     }
-  }, []);
+  }, [navigation]);
 
   useEffect(() => {
     refreshActiveRequest();
@@ -413,17 +477,19 @@ const RequestSharedScreen = ({ navigation, route }) => {
 
       <View style={[styles.content, { paddingHorizontal: spacing(24), paddingTop: vscale(30), paddingBottom: vscale(20) }]}>
         <View style={{ width: contentWidth, alignSelf: 'center', alignItems: 'center' }}>
-          <View style={[styles.pulseContainer, { width: scale(120), height: scale(120), marginBottom: vscale(20) }]}>
+          <MotionView preset="fadeUp" delay={100} style={[styles.pulseContainer, { width: scale(120), height: scale(120), marginBottom: vscale(20) }]}>
             <PulseRing delay={0} size={scale(100)} />
             <PulseRing delay={500} size={scale(100)} />
             <PulseRing delay={1000} size={scale(100)} />
             <View style={[styles.centerDot, { width: scale(32), height: scale(32), borderRadius: scale(16) }]} />
-          </View>
+          </MotionView>
 
-          <Text style={[styles.mainTitle, { fontSize: ms(22), marginBottom: vscale(8) }]}>Your request has been shared.</Text>
-          <Text style={[styles.subTitle, { fontSize: ms(15), marginBottom: vscale(30) }]}>People nearby may choose to view it.</Text>
+          <MotionView preset="fadeUp" delay={200}>
+            <Text style={[styles.mainTitle, { fontSize: ms(22), marginBottom: vscale(8) }]}>Your request has been shared.</Text>
+            <Text style={[styles.subTitle, { fontSize: ms(15), marginBottom: vscale(30) }]}>People nearby may choose to view it.</Text>
+          </MotionView>
 
-          <View style={[styles.card, { borderRadius: scale(16), marginBottom: vscale(24) }]}>
+          <MotionView preset="fadeUp" delay={300} style={[styles.card, { borderRadius: scale(16), marginBottom: vscale(24) }]}>
             <View style={[styles.cardHeader, { paddingHorizontal: spacing(16), paddingVertical: vscale(12) }]}>
               <Text style={[styles.cardHeaderTitle, { fontSize: ms(16) }]}>What this means</Text>
             </View>
@@ -447,33 +513,38 @@ const RequestSharedScreen = ({ navigation, route }) => {
                 <Text style={[styles.bulletText, { fontSize: ms(14) }]}>You can contact authorities anytime.</Text>
               </View>
             </View>
-          </View>
+          </MotionView>
 
-          <View style={[styles.viewCountContainer, { marginBottom: vscale(12) }]}>
+          <MotionView preset="fadeUp" delay={400} style={[styles.viewCountContainer, { marginBottom: vscale(12) }]}>
             <Icon name="eye" size={scale(20)} color="#78909C" />
             <Text style={[styles.viewCountText, { fontSize: ms(14), marginLeft: spacing(8) }]}>Viewed by people nearby</Text>
-          </View>
-          <View style={[styles.divider, { height: scale(1), marginBottom: vscale(24) }]} />
+          </MotionView>
+          
+          <MotionView preset="fadeUp" delay={500} style={[styles.divider, { height: scale(1), marginBottom: vscale(24) }]} />
 
-          <TouchableOpacity 
-            style={[styles.waitingButton, { height: vscale(52), borderRadius: scale(26), marginBottom: vscale(16) }]} 
-            activeOpacity={0.8}
-            onPress={() => navigation.navigate('AwarenessShared')}
-          >
-            <Text style={[styles.waitingButtonText, { fontSize: ms(16) }]}>Continue waiting</Text>
-          </TouchableOpacity>
+          <MotionView preset="fadeUp" delay={600} style={{ width: '100%' }}>
+            <MotionPressable 
+              style={[styles.waitingButton, { height: vscale(52), borderRadius: scale(26), marginBottom: vscale(16) }]} 
+              activeOpacity={0.8}
+              onPress={() => navigation.navigate('AwarenessShared')}
+            >
+              <Text style={[styles.waitingButtonText, { fontSize: ms(16) }]}>Continue waiting</Text>
+            </MotionPressable>
+          </MotionView>
 
-          <TouchableOpacity 
-            style={[styles.cancelButton, { height: vscale(52), borderRadius: scale(26) }]} 
-            activeOpacity={0.8}
-            onPress={handleCancelPress}
-          >
-            <Text style={[styles.cancelButtonText, { fontSize: ms(16) }]}>Cancel request</Text>
-          </TouchableOpacity>
+          <MotionView preset="fadeUp" delay={700} style={{ width: '100%' }}>
+            <MotionPressable 
+              style={[styles.cancelButton, { height: vscale(52), borderRadius: scale(26) }]} 
+              activeOpacity={0.8}
+              onPress={handleCancelPress}
+            >
+              <Text style={[styles.cancelButtonText, { fontSize: ms(16) }]}>Cancel request</Text>
+            </MotionPressable>
+          </MotionView>
 
           <View style={{ flex: 1 }} />
 
-          <View style={[styles.emergencyBar, {marginTop:scale(40), borderRadius: scale(24), paddingVertical: vscale(12), paddingHorizontal: spacing(8) }]}>
+          <MotionView preset="fadeUp" delay={800} style={[styles.emergencyBar, {marginTop:scale(40), borderRadius: scale(24), paddingVertical: vscale(12), paddingHorizontal: spacing(8) }]}>
             <TouchableOpacity style={styles.emergencyItem} onPress={() => navigation.navigate('EmergencyHelp')}>
               <Icon name="shield-account" size={scale(20)} color="#78909C" />
               <Text style={[styles.emergencyText, { fontSize: ms(13) }]}>Police</Text>
@@ -492,7 +563,7 @@ const RequestSharedScreen = ({ navigation, route }) => {
               <Icon name="phone" size={scale(20)} color="#78909C" />
               <Text style={[styles.emergencyText, { fontSize: ms(13) }]}>Local Helpline</Text>
             </TouchableOpacity>
-          </View>
+          </MotionView>
         </View>
       </View>
     </SafeAreaView>

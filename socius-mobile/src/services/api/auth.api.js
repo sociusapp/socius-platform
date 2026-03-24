@@ -15,10 +15,11 @@ const sendOtp = (phone, countryCode = '+91') => {
     .then((response) => response.data);
 };
 
-const verifyOtp = ({ phone, otp, deviceToken, platform, deviceId, deviceModel, appVersion }) => {
+const verifyOtp = ({ phone, countryCode, otp, deviceToken, platform, deviceId, deviceModel, appVersion }) => {
   return api
     .post('/auth/verify-otp', {
       phone,
+      countryCode,
       otp,
       deviceToken,
       platform,

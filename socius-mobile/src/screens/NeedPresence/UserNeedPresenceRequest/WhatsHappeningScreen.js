@@ -7,10 +7,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useResponsive } from '../../../utils/responsive';
 import MotionPressable from '../../../components/common/MotionPressable';
 import MotionTextInput from '../../../components/common/MotionTextInput';
+import MotionView from '../../../components/common/MotionView';
 
 const WhatsHappeningScreen = ({ navigation }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = (useState)('');
 
   const navigateToCreate = (category) => {
     navigation.navigate('CreateAwareness', { category });
@@ -38,131 +39,143 @@ const WhatsHappeningScreen = ({ navigation }) => {
         showsVerticalScrollIndicator={false}
       >
         <View style={{ width: contentWidth }}>
-          <Text style={[styles.title, { fontSize: ms(22), marginBottom: vscale(6) }]}>What’s happening right now?</Text>
-          <Text style={[styles.subtitle, { fontSize: ms(13), marginBottom: vscale(12) }]}>Choose the closest option or search directly.</Text>
+          <MotionView preset="fadeUp" delay={100}>
+            <Text style={[styles.title, { fontSize: ms(22), marginBottom: vscale(6) }]}>What’s happening right now?</Text>
+            <Text style={[styles.subtitle, { fontSize: ms(13), marginBottom: vscale(12) }]}>Choose the closest option or search directly.</Text>
+          </MotionView>
 
-          <View style={[styles.searchWrap, { 
-            borderRadius: scale(24), 
-            paddingHorizontal: spacing(12), 
-            paddingVertical: vscale(8), 
-            marginBottom: vscale(12),
-            shadowRadius: scale(4),
-            elevation: scale(1)
-          }]}>
-            <Icon name="magnify" size={scale(22)} color="#999999" />
-            <MotionTextInput
-              containerStyle={{ flex: 1, marginLeft: spacing(8), borderRadius: scale(16), paddingVertical: 0, paddingHorizontal: 0, borderWidth: 0, backgroundColor: 'transparent', shadowOpacity: 0, elevation: 0 }}
-              inputStyle={[styles.searchInput, { fontSize: ms(14) }]}
-              placeholder="Search (e.g. unsafe walk, blood, car issue)"
-              placeholderTextColor="#9AA1A9"
-              value={query}
-              onChangeText={setQuery}
-            />
-          </View>
-
-          <MotionPressable 
-            style={[styles.card, { 
-              borderRadius: scale(16), 
-              borderWidth: scale(1), 
-              paddingHorizontal: spacing(14), 
-              paddingVertical: vscale(12), 
+          <MotionView preset="fadeUp" delay={200}>
+            <View style={[styles.searchWrap, { 
+              borderRadius: scale(24), 
+              paddingHorizontal: spacing(12), 
+              paddingVertical: vscale(8), 
               marginBottom: vscale(12),
-              shadowRadius: scale(6),
-              elevation: scale(2)
-            }]}
-            onPress={() => navigateToCreate('calm_presence')}
-          >
-            <LinearGradient 
-              colors={["#F6C7C4", "#E96A5C"]} 
-              start={{ x: 0, y: 0 }} 
-              end={{ x: 1, y: 1 }} 
-              style={[styles.iconPill, { width: scale(40), height: scale(40), borderRadius: scale(20), marginRight: spacing(12) }]}
-            >
-              <Icon name="account-group" size={scale(22)} color="#FFFFFF" />
-            </LinearGradient>
-            <View style={styles.cardContent}>
-              <Text style={[styles.cardTitle, { fontSize: ms(15), marginBottom: vscale(4) }]}>I need calm presence</Text>
-              <Text style={[styles.cardDesc, { fontSize: ms(12) }]}>Something feels off and I don’t want to be alone.</Text>
+              shadowRadius: scale(4),
+              elevation: scale(1)
+            }]}>
+              <Icon name="magnify" size={scale(22)} color="#999999" />
+              <MotionTextInput
+                containerStyle={{ flex: 1, marginLeft: spacing(8), borderRadius: scale(16), paddingVertical: 0, paddingHorizontal: 0, borderWidth: 0, backgroundColor: 'transparent', shadowOpacity: 0, elevation: 0 }}
+                inputStyle={[styles.searchInput, { fontSize: ms(14) }]}
+                placeholder="Search (e.g. unsafe walk, blood, car issue)"
+                placeholderTextColor="#9AA1A9"
+                value={query}
+                onChangeText={setQuery}
+              />
             </View>
-          </MotionPressable>
+          </MotionView>
 
-          <MotionPressable 
-            style={[styles.card, { 
-              borderRadius: scale(16), 
-              borderWidth: scale(1), 
-              paddingHorizontal: spacing(14), 
-              paddingVertical: vscale(12), 
-              marginBottom: vscale(12),
-              shadowRadius: scale(6),
-              elevation: scale(2)
-            }]}
-            onPress={() => navigateToCreate('care_support')}
-          >
-            <LinearGradient 
-              colors={["#F6C7C4", "#E96A5C"]} 
-              start={{ x: 0, y: 0 }} 
-              end={{ x: 1, y: 1 }} 
-              style={[styles.iconPill, { width: scale(40), height: scale(40), borderRadius: scale(20), marginRight: spacing(12) }]}
+          <MotionView preset="fadeUp" delay={300}>
+            <MotionPressable 
+              style={[styles.card, { 
+                borderRadius: scale(16), 
+                borderWidth: scale(1), 
+                paddingHorizontal: spacing(14), 
+                paddingVertical: vscale(12), 
+                marginBottom: vscale(12),
+                shadowRadius: scale(6),
+                elevation: scale(2)
+              }]}
+              onPress={() => navigateToCreate('calm_presence')}
             >
-              <Icon name="heart" size={scale(22)} color="#FFFFFF" />
-            </LinearGradient>
-            <View style={styles.cardContent}>
-              <Text style={[styles.cardTitle, { fontSize: ms(15), marginBottom: vscale(4) }]}>Someone needs care or support</Text>
-              <Text style={[styles.cardDesc, { fontSize: ms(12) }]}>This is about care, comfort, or assistance.</Text>
-            </View>
-          </MotionPressable>
+              <LinearGradient 
+                colors={["#F6C7C4", "#E96A5C"]} 
+                start={{ x: 0, y: 0 }} 
+                end={{ x: 1, y: 1 }} 
+                style={[styles.iconPill, { width: scale(40), height: scale(40), borderRadius: scale(20), marginRight: spacing(12) }]}
+              >
+                <Icon name="account-group" size={scale(22)} color="#FFFFFF" />
+              </LinearGradient>
+              <View style={styles.cardContent}>
+                <Text style={[styles.cardTitle, { fontSize: ms(15), marginBottom: vscale(4) }]}>I need calm presence</Text>
+                <Text style={[styles.cardDesc, { fontSize: ms(12) }]}>Something feels off and I don’t want to be alone.</Text>
+              </View>
+            </MotionPressable>
+          </MotionView>
 
-          <MotionPressable 
-            style={[styles.card, { 
-              borderRadius: scale(16), 
-              borderWidth: scale(1), 
-              paddingHorizontal: spacing(14), 
-              paddingVertical: vscale(12), 
-              marginBottom: vscale(12),
-              shadowRadius: scale(6),
-              elevation: scale(2)
-            }]}
-            onPress={() => navigateToCreate('right_help')}
-          >
-            <LinearGradient 
-              colors={["#F6C7C4", "#E96A5C"]} 
-              start={{ x: 0, y: 0 }} 
-              end={{ x: 1, y: 1 }} 
-              style={[styles.iconPill, { width: scale(40), height: scale(40), borderRadius: scale(20), marginRight: spacing(12) }]}
+          <MotionView preset="fadeUp" delay={400}>
+            <MotionPressable 
+              style={[styles.card, { 
+                borderRadius: scale(16), 
+                borderWidth: scale(1), 
+                paddingHorizontal: spacing(14), 
+                paddingVertical: vscale(12), 
+                marginBottom: vscale(12),
+                shadowRadius: scale(6),
+                elevation: scale(2)
+              }]}
+              onPress={() => navigateToCreate('care_support')}
             >
-              <Icon name="link-variant" size={scale(22)} color="#FFFFFF" />
-            </LinearGradient>
-            <View style={styles.cardContent}>
-              <Text style={[styles.cardTitle, { fontSize: ms(15), marginBottom: vscale(4) }]}>We need the right help</Text>
-              <Text style={[styles.cardDesc, { fontSize: ms(12) }]}>Specific help or resources are needed.</Text>
-            </View>
-          </MotionPressable>
+              <LinearGradient 
+                colors={["#F6C7C4", "#E96A5C"]} 
+                start={{ x: 0, y: 0 }} 
+                end={{ x: 1, y: 1 }} 
+                style={[styles.iconPill, { width: scale(40), height: scale(40), borderRadius: scale(20), marginRight: spacing(12) }]}
+              >
+                <Icon name="heart" size={scale(22)} color="#FFFFFF" />
+              </LinearGradient>
+              <View style={styles.cardContent}>
+                <Text style={[styles.cardTitle, { fontSize: ms(15), marginBottom: vscale(4) }]}>Someone needs care or support</Text>
+                <Text style={[styles.cardDesc, { fontSize: ms(12) }]}>This is about care, comfort, or assistance.</Text>
+              </View>
+            </MotionPressable>
+          </MotionView>
 
-          <MotionPressable 
-            style={[styles.card, { 
-              borderRadius: scale(16), 
-              borderWidth: scale(1), 
-              paddingHorizontal: spacing(14), 
-              paddingVertical: vscale(12), 
-              marginBottom: vscale(12),
-              shadowRadius: scale(6),
-              elevation: scale(2)
-            }]}
-            onPress={() => navigateToCreate('prevent_fix')}
-          >
-            <LinearGradient 
-              colors={["#F6C7C4", "#E96A5C"]} 
-              start={{ x: 0, y: 0 }} 
-              end={{ x: 1, y: 1 }} 
-              style={[styles.iconPill, { width: scale(40), height: scale(40), borderRadius: scale(20), marginRight: spacing(12) }]}
+          <MotionView preset="fadeUp" delay={500}>
+            <MotionPressable 
+              style={[styles.card, { 
+                borderRadius: scale(16), 
+                borderWidth: scale(1), 
+                paddingHorizontal: spacing(14), 
+                paddingVertical: vscale(12), 
+                marginBottom: vscale(12),
+                shadowRadius: scale(6),
+                elevation: scale(2)
+              }]}
+              onPress={() => navigateToCreate('right_help')}
             >
-              <Icon name="wrench" size={scale(22)} color="#FFFFFF" />
-            </LinearGradient>
-            <View style={styles.cardContent}>
-              <Text style={[styles.cardTitle, { fontSize: ms(15), marginBottom: vscale(4) }]}>Let’s prevent or fix something</Text>
-              <Text style={[styles.cardDesc, { fontSize: ms(12) }]}>A local issue that could become a problem.</Text>
-            </View>
-          </MotionPressable>
+              <LinearGradient 
+                colors={["#F6C7C4", "#E96A5C"]} 
+                start={{ x: 0, y: 0 }} 
+                end={{ x: 1, y: 1 }} 
+                style={[styles.iconPill, { width: scale(40), height: scale(40), borderRadius: scale(20), marginRight: spacing(12) }]}
+              >
+                <Icon name="link-variant" size={scale(22)} color="#FFFFFF" />
+              </LinearGradient>
+              <View style={styles.cardContent}>
+                <Text style={[styles.cardTitle, { fontSize: ms(15), marginBottom: vscale(4) }]}>We need the right help</Text>
+                <Text style={[styles.cardDesc, { fontSize: ms(12) }]}>Specific help or resources are needed.</Text>
+              </View>
+            </MotionPressable>
+          </MotionView>
+
+          <MotionView preset="fadeUp" delay={600}>
+            <MotionPressable 
+              style={[styles.card, { 
+                borderRadius: scale(16), 
+                borderWidth: scale(1), 
+                paddingHorizontal: spacing(14), 
+                paddingVertical: vscale(12), 
+                marginBottom: vscale(12),
+                shadowRadius: scale(6),
+                elevation: scale(2)
+              }]}
+              onPress={() => navigateToCreate('prevent_fix')}
+            >
+              <LinearGradient 
+                colors={["#F6C7C4", "#E96A5C"]} 
+                start={{ x: 0, y: 0 }} 
+                end={{ x: 1, y: 1 }} 
+                style={[styles.iconPill, { width: scale(40), height: scale(40), borderRadius: scale(20), marginRight: spacing(12) }]}
+              >
+                <Icon name="wrench" size={scale(22)} color="#FFFFFF" />
+              </LinearGradient>
+              <View style={styles.cardContent}>
+                <Text style={[styles.cardTitle, { fontSize: ms(15), marginBottom: vscale(4) }]}>Let’s prevent or fix something</Text>
+                <Text style={[styles.cardDesc, { fontSize: ms(12) }]}>A local issue that could become a problem.</Text>
+              </View>
+            </MotionPressable>
+          </MotionView>
 
           <View style={[styles.footerNoteWrap, { marginTop: vscale(6) }]}>
             <View style={[styles.sectionDivider, { height: scale(1), marginVertical: vscale(10) }]} />

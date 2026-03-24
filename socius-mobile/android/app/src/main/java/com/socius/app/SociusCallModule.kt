@@ -604,9 +604,18 @@ class SociusCallModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun startHelpRequestRingtone() {
+        startRingtoneByName("help_request")
+    }
+
+    @ReactMethod
+    fun startPresenceAlarmRingtone() {
+        startRingtoneByName("presence_alarm")
+    }
+
+    private fun startRingtoneByName(soundName: String) {
         try {
             val context = reactContext
-            val resId = context.resources.getIdentifier("help_request", "raw", context.packageName)
+            val resId = context.resources.getIdentifier(soundName, "raw", context.packageName)
             if (resId == 0) return
             stopRingtone()
 

@@ -294,21 +294,22 @@ const RequestSuccessScreen = ({ navigation, route }) => {
         // Listen for help accepted event
         socket.on('help:accepted', (data) => {
           console.log('Socket event: help:accepted', data);
-          const reqId = data?.requestId || requestRef.current?.id || requestRef.current?._id;
+          const reqId = data?.requestId || data?.request?._id || data?.id || requestRef.current?.id || requestRef.current?._id;
           const currentId = requestRef.current?.id || requestRef.current?._id;
+          
           if (currentId && reqId && String(currentId) !== String(reqId)) {
             return;
           }
-          const t0 = Date.now();
+
           if (reqId) {
-            navigation.navigate('RequesterMatchingMap', {
-              requestId: reqId,
-              prefillRequest: requestRef.current,
-              perf: { t0, source: 'socket_help_accepted_ok' },
+            // Force reset to Meeting Details screen
+            navigation.reset({
+              index: 1,
+              routes: [
+                { name: 'MainApp', params: { screen: 'HomeTab' } },
+                { name: 'RequesterMatchingMap', params: { requestId: reqId } }
+              ]
             });
-            setTimeout(() => {
-              loadActiveRequest();
-            }, 0);
           } else {
             loadActiveRequest();
           }

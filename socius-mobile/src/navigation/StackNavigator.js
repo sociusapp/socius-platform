@@ -89,6 +89,7 @@ import ClosingRequestScreen from '../screens/DailyHelp/UserDailyHelpRequest/Clos
 import RequestAutoClosedScreen from '../screens/DailyHelp/UserDailyHelpRequest/RequestAutoClosedScreen';
 import CommunityBalanceNudgeScreen from '../screens/DailyHelp/UserDailyHelpRequest/CommunityBalanceNudgeScreen';
 import MatchingMapScreen from '../screens/DailyHelp/UserDailyHelpRecive/MatchingMapScreen';
+import DailyHelpSafetyScreen from '../screens/DailyHelp/UserDailyHelpRecive/SafetyComesFirstScreen';
 import RequesterMatchingMapScreen from '../screens/DailyHelp/UserDailyHelpRequest/MatchingMapScreen';
 import StayAwayScreen from '../screens/DailyHelp/UserDailyHelpRecive/StayAwayScreen';
 import SomeoneNeedsHelpScreen from '../screens/DailyHelp/UserDailyHelpRecive/SomeoneNeedsHelpScreen';
@@ -109,12 +110,10 @@ import BeforeShareScreen from '../screens/NeedPresence/UserNeedPresenceRequest/B
 import ShareLocationScreen from '../screens/NeedPresence/UserNeedPresenceRequest/ShareLocationScreen';
 import NearDubaiedAreaScreen from '../screens/NeedPresence/UserNeedPresenceRecive/NearDubaiedAreaScreen';
 import RequestSharedScreen from '../screens/NeedPresence/UserNeedPresenceRequest/RequestSharedScreen';
-import AwarenessSharedScreen from '../screens/NeedPresence/UserNeedPresenceRequest/AwarenessSharedScreen';
 import MultiplePeopleScreen from '../screens/NeedPresence/UserNeedPresenceRecive/MultiplePeopleScreen';
 import PeopleListScreen from '../screens/NeedPresence/UserNeedPresenceRecive/PeopleListScreen';
 import SafetyGuidanceScreen from '../screens/NeedPresence/UserNeedPresenceRequest/SafetyGuidanceScreen';
 import NotAloneScreen from '../screens/NeedPresence/UserNeedPresenceRecive/NotAloneScreen';
-import SafetyComesFirstScreen from '../screens/NeedPresence/UserNeedPresenceRecive/SafetyComesFirstScreen';
 import BeingHereOptionalScreen from '../screens/NeedPresence/UserNeedPresenceRecive/BeingHereOptionalScreen';
 import BeingHereChoiceScreen from '../screens/NeedPresence/UserNeedPresenceRecive/BeingHereChoiceScreen';
 import ObserveOnlyScreen from '../screens/NeedPresence/UserNeedPresenceRecive/ObserveOnlyScreen';
@@ -129,6 +128,7 @@ import ViewDetailsIgnoreScreen from '../screens/NeedPresence/UserNeedPresenceRec
 import ReminderScreen from '../screens/NeedPresence/UserNeedPresenceRecive/ReminderScreen';
 import EmergencyHelpScreen from '../screens/NeedPresence/UserNeedPresenceRecive/EmergencyHelpScreen';
 import CancelRequestModal from '../screens/NeedPresence/UserNeedPresenceRecive/CancelRequestModal';
+import PresenceRequestDetailScreen from '../screens/NeedPresence/UserNeedPresenceRecive/PresenceRequestDetailScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -234,6 +234,7 @@ const StackNavigator = () => {
       <Stack.Screen name="RequesterMatchingMap" component={RequesterMatchingMapScreen} />
       <Stack.Screen name="StayAway" component={StayAwayScreen} />
       <Stack.Screen name="SomeoneNeedsHelp" component={SomeoneNeedsHelpScreen} />
+      <Stack.Screen name="DailyHelpSafety" component={DailyHelpSafetyScreen} />
       <Stack.Screen name="LocalRequest" component={LocalRequestScreen} />
       <Stack.Screen name="StartConcern" component={StartConcernScreen} />
       <Stack.Screen name="SteppedAway" component={SteppedAwayScreen} />
@@ -251,12 +252,10 @@ const StackNavigator = () => {
       <Stack.Screen name="ShareLocation" component={ShareLocationScreen} />
       <Stack.Screen name="NearDubaiedArea" component={NearDubaiedAreaScreen} />
       <Stack.Screen name="RequestShared" component={RequestSharedScreen} />
-      <Stack.Screen name="AwarenessShared" component={AwarenessSharedScreen} />
       <Stack.Screen name="MultiplePeople" component={MultiplePeopleScreen} />
       <Stack.Screen name="PeopleList" component={PeopleListScreen} />
       <Stack.Screen name="SafetyGuidance" component={SafetyGuidanceScreen} />
       <Stack.Screen name="NotAlone" component={NotAloneScreen} />
-      <Stack.Screen name="SafetyComesFirst" component={SafetyComesFirstScreen} />
       <Stack.Screen name="BeingHereOptional" component={BeingHereOptionalScreen} />
       <Stack.Screen name="BeingHereChoice" component={BeingHereChoiceScreen} />
       <Stack.Screen name="ObserveOnly" component={ObserveOnlyScreen} />
@@ -270,6 +269,7 @@ const StackNavigator = () => {
       <Stack.Screen name="ViewDetailsIgnore" component={ViewDetailsIgnoreScreen} />
       <Stack.Screen name="Reminder" component={ReminderScreen} />
       <Stack.Screen name="EmergencyHelp" component={EmergencyHelpScreen} />
+      <Stack.Screen name="PresenceRequestDetail" component={PresenceRequestDetailScreen} />
 
       {/* ==================== CALLS ==================== */}
       <Stack.Screen

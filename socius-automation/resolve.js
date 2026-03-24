@@ -1,16 +1,23 @@
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
+const { spawnSync } = require('child_process');
 
 /**
  * 🛠 AI RESOLVE & TEST UTILITY
- * Usage: node resolve.js <ISSUE_ID> "<COMMENT>" [--test "<TEST_CODE>"]
+ * Usage: node resolve.js <ISSUE_ID> "<COMMENT>" [--test "<TEST_CODE>"] [--git-push]
  */
 
 const issueId = process.argv[2];
 const comment = process.argv[3] || 'Fixed by Trae AI';
 const testArgIdx = process.argv.indexOf('--test');
 const testCode = testArgIdx !== -1 ? process.argv[testArgIdx + 1] : null;
+const shouldGitPush =
+  process.argv.includes('--git-push') ||
+  String(process.env.AUTO_GIT_PUSH || '').toLowerCase() === 'true';
+const gitRemote = process.env.GIT_REMOTE || 'origin';
+
+const isObjectIdLike = (value) => /^[a-fA-F0-9]{24}$/.test(String(value || '').trim());
 
 const loadEnvFromBackend = () => {
   try {
@@ -41,9 +48,62 @@ const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL;
 const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD;
 const API_URL = `${API_BASE_URL}/api/admin-issues/${issueId}/ai-complete`;
 
+const repoRoot = path.join(__dirname, '..');
+
+const runGit = (args) => {
+  const res = spawnSync('git', args, { cwd: repoRoot, encoding: 'utf8' });
+  if (res.error) throw res.error;
+  if (res.status !== 0) {
+    const msg = String(res.stderr || res.stdout || '').trim();
+    const err = new Error(msg || `git ${args.join(' ')} failed`);
+    err.code = res.status;
+    throw err;
+  }
+  return String(res.stdout || '').trim();
+};
+
+const commitAndPushIfNeeded = async () => {
+  if (!shouldGitPush) return;
+
+  try {
+    runGit(['rev-parse', '--is-inside-work-tree']);
+  } catch {
+    console.error('❌ Git push requested, but this folder is not a git repository.');
+    process.exit(1);
+  }
+
+  const status = runGit(['status', '--porcelain']);
+  if (!status) {
+    console.log('ℹ️ No git changes detected. Skipping commit/push.');
+    return;
+  }
+
+  const commitMsg = `fix(issue): ${issueId} ${comment}`.trim();
+
+  runGit(['add', '-A']);
+
+  try {
+    runGit(['commit', '-m', commitMsg]);
+  } catch (err) {
+    console.error('❌ Git commit failed:', err.message);
+    console.error('ℹ️ Ensure git user.name and user.email are configured for this repo/machine.');
+    process.exit(1);
+  }
+
+  try {
+    runGit(['push', gitRemote, 'HEAD']);
+    console.log(`✅ Pushed to ${gitRemote}.`);
+  } catch (err) {
+    console.error('❌ Git push failed:', err.message);
+    console.error('ℹ️ Check remote access/credentials and branch protection rules.');
+    process.exit(1);
+  }
+};
+
 async function resolve() {
-  if (!issueId) {
-    console.error('❌ Error: Please provide an Issue ID. Example: node resolve.js 69b6... "Fixed UI"');
+  if (!issueId || String(issueId).startsWith('-') || !isObjectIdLike(issueId)) {
+    console.error('❌ Error: Please provide a valid Issue ID (24-char hex).');
+    console.error('   Example: node resolve.js 69b6a2726618a7bc287844fb "Fixed UI" --git-push');
     process.exit(1);
   }
 
@@ -69,7 +129,7 @@ async function resolve() {
 
     console.log(`🚀 Resolving issue ${issueId}...`);
 
-    // 2. Login
+    // 2. Login (Live API)
     const loginRes = await axios.post(`${API_BASE_URL}/api/auth/developer-login`, {
       email: DEVELOPER_EMAIL,
       password: DEVELOPER_PASSWORD
@@ -85,6 +145,11 @@ async function resolve() {
 
     console.log(`✅ Issue ${issueId} marked as Completed.`);
     console.log(`🔄 PROJECT_ISSUES.md will be automatically updated by backend.`);
+
+    if (shouldGitPush) {
+      console.log('🔁 Git push enabled: committing & pushing after marking issue as Completed...');
+      await commitAndPushIfNeeded();
+    }
 
   } catch (error) {
     console.error('❌ Resolve failed:', error.message);

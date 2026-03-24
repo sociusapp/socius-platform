@@ -74,7 +74,7 @@ const SwipeableMessage = ({ children, onReply, isMyMessage }) => {
       </View>
 
       <GestureDetector gesture={pan}>
-        <Animated.View style={rStyle}>{children}</Animated.View>
+        <Animated.View style={[rStyle, { width: '100%' }]}>{children}</Animated.View>
       </GestureDetector>
     </View>
   );

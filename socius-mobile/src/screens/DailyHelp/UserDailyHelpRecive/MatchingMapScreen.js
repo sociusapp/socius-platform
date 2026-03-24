@@ -208,7 +208,7 @@ const MatchingMapScreen = ({ navigation, route }) => {
             if (msgsRes?.success && Array.isArray(msgsRes.data)) {
               // Count unread messages from the other user
               const unread = msgsRes.data.filter(
-                m => m.senderId !== userId && !m.isRead && !m.read
+                m => String(m.senderId) !== String(userId) && !m.isRead && !m.read
               ).length;
               console.log('Unread count calculation:', {
                 total: msgsRes.data.length,
@@ -233,10 +233,21 @@ const MatchingMapScreen = ({ navigation, route }) => {
     let socket;
 
     const handleNewMessage = (data) => {
-      if (data.sessionId === sessionId) {
+      console.log('New message received via socket (Receive):', {
+        incomingSessionId: data.sessionId,
+        currentSessionId: sessionId,
+        incomingSenderId: data.message?.senderId,
+        myUserId: currentUserId,
+        isChatVisible: chatVisibleRef.current
+      });
+      
+      if (String(data.sessionId) === String(sessionId)) {
         const message = data.message || {};
+        const senderId = String(message.senderId || '');
+        const myId = String(currentUserId || '');
+        
         // Only increment if message is NOT from current user
-        if (currentUserId && message.senderId && message.senderId !== currentUserId) {
+        if (myId && senderId && senderId !== myId) {
             if (!chatVisibleRef.current) {
                setUnreadCount(prev => prev + 1);
                // Show toast with message content
@@ -397,23 +408,36 @@ const MatchingMapScreen = ({ navigation, route }) => {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-       <Header 
+      <Header 
+        title="Meeting Details" 
         onBackPress={() => navigation.goBack()}
-        title="Meeting Details"
-        style={{ borderBottomWidth: 1, borderBottomColor: '#E8EAED', backgroundColor: '#fff', zIndex: 10 }}
+        style={{ borderBottomWidth: 1, borderBottomColor: '#E8EAED' }}
         rightComponent={
-           sessionId && isChatAllowed && (
-           <TouchableOpacity style={styles.messageButton} onPress={handleMessage}>
-             <Icon name="message-text-outline" size={24} color="#DC5C69" />
-             {unreadCount > 0 && (
-               <View style={styles.badge}>
-                 <Text style={styles.badgeText}>
-                   {unreadCount > 99 ? '99+' : unreadCount}
-                 </Text>
-               </View>
-             )}
-           </TouchableOpacity>
-           )
+          <TouchableOpacity 
+            onPress={() => setChatVisible(true)} 
+            style={{ padding: scale(8), position: 'relative' }}
+          >
+            <Icon name="message-text-outline" size={scale(24)} color="#DC5C69" />
+            {unreadCount > 0 && (
+              <View style={{
+                position: 'absolute',
+                right: scale(4),
+                top: scale(4),
+                backgroundColor: '#EF4444',
+                borderRadius: scale(10),
+                minWidth: scale(18),
+                height: scale(18),
+                justifyContent: 'center',
+                alignItems: 'center',
+                borderWidth: 2,
+                borderColor: '#FFFFFF'
+              }}>
+                <Text style={{ color: '#FFFFFF', fontSize: ms(10), fontWeight: '700' }}>
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
         }
       />
       <ScrollView style={{flex: 1}} contentContainerStyle={{flexGrow: 1}}>
@@ -486,13 +510,17 @@ const MatchingMapScreen = ({ navigation, route }) => {
         <View style={styles.profilesContainer}>
           <View style={styles.profileCard}>
             <View style={[styles.profileImageContainer, { backgroundColor: '#E0E0E0' }]}>
-               {request?.volunteer?.profileImage ? (
+               {(String(request?.requesterId?._id || request?.requesterId) === String(currentUserId) 
+                 ? (request?.requesterId?.profileImage || request?.user?.profileImage)
+                 : request?.volunteer?.profileImage) ? (
                   <Image 
-                    source={getProfileImage(request?.volunteer?.profileImage)} 
+                    source={getProfileImage(
+                      String(request?.requesterId?._id || request?.requesterId) === String(currentUserId)
+                      ? (request?.requesterId?.profileImage || request?.user?.profileImage)
+                      : request?.volunteer?.profileImage
+                    )} 
                     style={styles.profileImage}
                     resizeMode="cover"
-                    onError={(e) => console.log('Image Load Error (Volunteer):', e.nativeEvent.error)}
-                    onLoad={() => console.log('Image Loaded (Volunteer)')}
                   />
                ) : (
                   <Icon name="account-circle" size={60} color="#777" />
@@ -506,13 +534,17 @@ const MatchingMapScreen = ({ navigation, route }) => {
 
           <View style={styles.profileCard}>
             <View style={styles.profileImageContainer}>
-               {request?.user?.profileImage || request?.requesterId?.profileImage ? (
+               {(String(request?.requesterId?._id || request?.requesterId) === String(currentUserId)
+                 ? request?.volunteer?.profileImage
+                 : (request?.requesterId?.profileImage || request?.user?.profileImage)) ? (
                   <Image 
-                    source={getProfileImage(request?.user?.profileImage || request?.requesterId?.profileImage)} 
+                    source={getProfileImage(
+                      String(request?.requesterId?._id || request?.requesterId) === String(currentUserId)
+                      ? request?.volunteer?.profileImage
+                      : (request?.requesterId?.profileImage || request?.user?.profileImage)
+                    )} 
                     style={styles.profileImage}
                     resizeMode="cover"
-                    onError={(e) => console.log('Image Load Error (User):', e.nativeEvent.error)}
-                    onLoad={() => console.log('Image Loaded (User)')}
                   />
                ) : (
                   <Icon name="account" size={60} color="#FFF" />
@@ -527,9 +559,15 @@ const MatchingMapScreen = ({ navigation, route }) => {
             ) : (
               <>
                 <Text style={styles.profileName}>
-                  {request?.user?.name || request?.user?.firstName || request?.requesterId?.fullName || "Requester"}
+                  {String(request?.requesterId?._id || request?.requesterId) === String(currentUserId)
+                    ? (request?.volunteer?.fullName || request?.volunteer?.name || "Helper")
+                    : (request?.requesterId?.fullName || request?.user?.name || "Requester")}
                 </Text>
-                <Text style={styles.profileRole}>Needs help</Text>
+                <Text style={styles.profileRole}>
+                  {String(request?.requesterId?._id || request?.requesterId) === String(currentUserId)
+                    ? "Helping you"
+                    : "Needs help"}
+                </Text>
               </>
             )}
           </View>

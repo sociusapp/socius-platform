@@ -51,6 +51,20 @@ export const connectSocket = async () => {
   }
 };
 
+export const emitStatusUpdate = (requestId, status, data = {}) => {
+  if (socket && socket.connected) {
+    socket.emit('status_update', {
+      requestId,
+      status,
+      ...data,
+      timestamp: new Date().toISOString(),
+    });
+    console.log(`[Socket] Status update emitted: ${status} for ${requestId}`);
+    return true;
+  }
+  return false;
+};
+
 export const getSocket = () => {
   return socket;
 };

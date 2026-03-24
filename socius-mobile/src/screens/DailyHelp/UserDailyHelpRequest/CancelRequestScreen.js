@@ -83,19 +83,11 @@ const CancelRequestScreen = ({ navigation, route }) => {
       const response = await cancelHelpRequest(token, requestId, { reason: cancelReason });
 
       if (response?.success) {
-        showAlert('Request cancelled', 'Your help request has been cancelled.', [
-          {
-            text: 'OK',
-            onPress: () => {
-              closeAlert();
-              navigation.reset({
-                index: 0,
-                routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
-              });
-            },
-            type: 'primary'
-          },
-        ], 'check-circle', '#4CAF50');
+        setSubmitting(false);
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+        });
         return;
       }
 

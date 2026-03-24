@@ -2,6 +2,8 @@ const userService = require('../services/user.service')
 const { success, created } = require('../utils/response')
 const { findNearbyAvailableUsers, calculateDistance } = require('../utils/geoQuery')
 const { GEO } = require('../utils/constants')
+const Verification = require('../models/Verification')
+const User = require('../models/User')
 
 const getProfile = async (req, res, next) => {
   try {
@@ -79,6 +81,19 @@ const getNearbyUsers = async (req, res, next) => {
       requireAvailability: false,
     })
 
+    const userIds = (users || []).map((u) => u?._id).filter(Boolean)
+    const verifications = await Verification.find({
+      userId: { $in: userIds },
+      status: 'approved',
+    })
+      .select('userId status selfie')
+      .lean()
+
+    const verificationMap = new Map()
+    verifications.forEach((v) => {
+      verificationMap.set(String(v.userId), { status: v.status, selfie: v.selfie })
+    })
+
     const points = (users || [])
       .map((u) => {
         const coords = u?.location?.coordinates
@@ -87,7 +102,17 @@ const getNearbyUsers = async (req, res, next) => {
         const userLat = Number(coords[1])
         if (!Number.isFinite(userLng) || !Number.isFinite(userLat)) return null
         const distanceMeters = calculateDistance(lng, lat, userLng, userLat)
-        return { id: u._id, latitude: userLat, longitude: userLng, isAvailable: !!u.isAvailable, distanceMeters }
+        const verification = verificationMap.get(String(u._id)) || null
+        return {
+          id: u._id,
+          fullName: u.fullName || null,
+          profileImage: u.profileImage || null,
+          verification,
+          latitude: userLat,
+          longitude: userLng,
+          isAvailable: !!u.isAvailable,
+          distanceMeters,
+        }
       })
       .filter(Boolean)
 
@@ -97,4 +122,35 @@ const getNearbyUsers = async (req, res, next) => {
   }
 }
 
-module.exports = { getProfile, updateProfile, getHomeData, markFirstTimeFlag, deleteAccount, getHistory, getNearbyUsers }
+const getPublicUser = async (req, res, next) => {
+  try {
+    const id = String(req.params.id || '')
+    if (!id) return success(res, null)
+
+    const user = await User.findById(id)
+      .select('fullName profileImage isAvailable accountStatus role isIdentityVerified isPhoneVerified')
+      .lean()
+
+    if (!user || user.accountStatus !== 'active') {
+      return success(res, null)
+    }
+
+    const verification = await Verification.findOne({ userId: user._id, status: 'approved' })
+      .select('status selfie')
+      .lean()
+
+    return success(res, {
+      id: user._id,
+      fullName: user.fullName || null,
+      profileImage: user.profileImage || null,
+      isAvailable: !!user.isAvailable,
+      role: user.role || null,
+      isIdentityVerified: !!user.isIdentityVerified,
+      verification: verification ? { status: verification.status, selfie: verification.selfie } : null,
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
+module.exports = { getProfile, updateProfile, getHomeData, markFirstTimeFlag, deleteAccount, getHistory, getNearbyUsers, getPublicUser }

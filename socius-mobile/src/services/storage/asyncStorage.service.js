@@ -9,6 +9,8 @@ const AVAILABILITY_UPDATED_AT_KEY = 'availabilityPreference.updatedAt';
 const LAST_KNOWN_LOCATION_KEY = 'location.lastKnown.v1';
 const ACTIVE_HELP_REQUEST_ID_KEY = 'request.active.help.id.v1';
 const ACTIVE_PRESENCE_REQUEST_ID_KEY = 'request.active.presence.id.v1';
+const ACTIVE_PRESENCE_ASSIGNMENT_ID_KEY = 'request.active.presence.assignment.id.v1';
+const DEFAULT_COUNTRY_CODE_KEY = 'user.default.countryCode.v1';
 
 const saveAuth = async ({ accessToken, refreshToken, role, userId }) => {
   const tasks = [];
@@ -45,6 +47,7 @@ const clearAuth = async () => {
     AsyncStorage.removeItem(AVAILABILITY_UPDATED_AT_KEY),
     AsyncStorage.removeItem(ACTIVE_HELP_REQUEST_ID_KEY),
     AsyncStorage.removeItem(ACTIVE_PRESENCE_REQUEST_ID_KEY),
+    AsyncStorage.removeItem(ACTIVE_PRESENCE_ASSIGNMENT_ID_KEY),
   ]);
 };
 
@@ -124,6 +127,28 @@ const clearActivePresenceRequestId = async () => {
   await AsyncStorage.removeItem(ACTIVE_PRESENCE_REQUEST_ID_KEY);
 };
 
+const saveActivePresenceAssignmentId = async (requestId) => {
+  if (!requestId) return;
+  await AsyncStorage.setItem(ACTIVE_PRESENCE_ASSIGNMENT_ID_KEY, String(requestId));
+};
+
+const loadActivePresenceAssignmentId = async () => {
+  return AsyncStorage.getItem(ACTIVE_PRESENCE_ASSIGNMENT_ID_KEY);
+};
+
+const clearActivePresenceAssignmentId = async () => {
+  await AsyncStorage.removeItem(ACTIVE_PRESENCE_ASSIGNMENT_ID_KEY);
+};
+
+const saveDefaultCountryCode = async (code) => {
+  if (!code) return;
+  await AsyncStorage.setItem(DEFAULT_COUNTRY_CODE_KEY, code);
+};
+
+const loadDefaultCountryCode = async () => {
+  return AsyncStorage.getItem(DEFAULT_COUNTRY_CODE_KEY);
+};
+
 export {
   saveAuth,
   loadAuth,
@@ -139,4 +164,9 @@ export {
   saveActivePresenceRequestId,
   loadActivePresenceRequestId,
   clearActivePresenceRequestId,
+  saveActivePresenceAssignmentId,
+  loadActivePresenceAssignmentId,
+  clearActivePresenceAssignmentId,
+  saveDefaultCountryCode,
+  loadDefaultCountryCode,
 };

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Keyboard, Platform, ToastAndroid, KeyboardAvoidingView, PermissionsAndroid } from 'react-native';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Keyboard, Platform, ToastAndroid, KeyboardAvoidingView, PermissionsAndroid, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useResponsive } from '../../utils/responsive';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -8,25 +8,20 @@ import Header from '../../components/common/Header';
 import CustomAlert from '../../components/common/CustomAlert';
 import BottomActionBar from '../../components/common/BottomActionBar';
 import { sendOtp } from '../../services/api/auth.api';
+import { countries } from '../../utils/countries';
+import { getCurrentPosition, reverseGeocode, requestLocationPermission } from '../../services/location/geolocation.service';
+import { saveDefaultCountryCode, loadDefaultCountryCode } from '../../services/storage/asyncStorage.service';
 
 const PhoneVerificationScreen = ({ navigation }) => {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [phoneError, setPhoneError] = useState('');
   const phoneInputRef = useRef(null);
-  const countries = [
-    { code: 'IN', name: 'India', dial: '+91', flag: '🇮🇳', maxLength: 10 },
-    { code: 'NP', name: 'Nepal', dial: '+977', flag: '🇳🇵', maxLength: 10 },
-    { code: 'BD', name: 'Bangladesh', dial: '+880', flag: '🇧🇩', maxLength: 11 },
-    { code: 'BT', name: 'Bhutan', dial: '+975', flag: '🇧🇹', maxLength: 8 },
-    { code: 'LK', name: 'Sri Lanka', dial: '+94', flag: '🇱🇰', maxLength: 10 },
-    { code: 'PK', name: 'Pakistan', dial: '+92', flag: '🇵🇰', maxLength: 10 },
-    { code: 'MM', name: 'Myanmar', dial: '+95', flag: '🇲🇲', maxLength: 9 },
-    { code: 'CN', name: 'China', dial: '+86', flag: '🇨🇳', maxLength: 11 },
-    { code: 'AF', name: 'Afghanistan', dial: '+93', flag: '🇦🇫', maxLength: 9 },
-    { code: 'MV', name: 'Maldives', dial: '+960', flag: '🇲🇻', maxLength: 7 },
-  ];
-  const [selectedCountryIndex, setSelectedCountryIndex] = useState(0);
+  const searchInputRef = useRef(null);
+  
+  const [selectedCountryIndex, setSelectedCountryIndex] = useState(0); // Default to India (first in list now)
   const [countryMenuOpen, setCountryMenuOpen] = useState(false);
+  const [isDetectingCountry, setIsDetectingCountry] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState('');
@@ -56,11 +51,25 @@ const PhoneVerificationScreen = ({ navigation }) => {
     setAlertVisible(false);
   };
 
+  const filteredCountries = useMemo(() => {
+    if (!searchQuery) return countries;
+    return countries.filter(c => 
+      c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      c.dial.includes(searchQuery) ||
+      c.code.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [searchQuery]);
+
   const selectedCountry = countries[selectedCountryIndex];
 
   const handleSendOTP = async () => {
+    if (!phoneNumber) {
+      setPhoneError('Please enter your mobile number');
+      return;
+    }
+
     if (phoneNumber.length !== selectedCountry.maxLength) {
-      setPhoneError(`Please enter a valid ${selectedCountry.maxLength}-digit mobile number`);
+      setPhoneError(`Please enter a valid ${selectedCountry.maxLength}-digit mobile number for ${selectedCountry.name}`);
       return;
     }
 
@@ -69,9 +78,21 @@ const PhoneVerificationScreen = ({ navigation }) => {
       setPhoneError('');
       setApiError('');
 
+      // Send both phone and country code for validation
       const response = await sendOtp(phoneNumber, selectedCountry.dial);
       console.log('Send OTP Response:', response);
-      const { success, message, data } = response || {};
+      const { success, message, data, errorCode } = response || {};
+      
+      // Handle specific error case where country doesn't match registered number
+      if (!success && errorCode === 'COUNTRY_MISMATCH') {
+        showAlert(
+          'Country Mismatch',
+          message || 'This phone number is registered with a different country. Please select the correct country and try again.',
+          [{ text: 'OK', onPress: closeAlert }]
+        );
+        return;
+      }
+
       const otp = data?.otp;
 
       if (otp) {
@@ -85,8 +106,7 @@ const PhoneVerificationScreen = ({ navigation }) => {
       }
 
       if (!success) {
-        const errorMessage =
-          message || 'Failed to send OTP. Please try again.';
+        const errorMessage = message || 'Failed to send OTP. Please try again.';
         setApiError(errorMessage);
         return;
       }
@@ -100,20 +120,51 @@ const PhoneVerificationScreen = ({ navigation }) => {
       const apiMessage =
         error?.response?.data?.message ||
         error?.response?.data?.errors?.[0]?.message;
-      const message =
-        apiMessage ||
-        `Something went wrong while sending OTP. Error: ${error.message}`;
-      setApiError(message);
+      
+      // Check if it's a country mismatch error from backend
+      if (error?.response?.data?.errorCode === 'COUNTRY_MISMATCH') {
+        showAlert(
+          'Country Mismatch',
+          apiMessage || 'This phone number is registered with a different country.',
+          [{ text: 'OK', onPress: closeAlert }]
+        );
+      } else {
+        const message = apiMessage || `Something went wrong while sending OTP. Error: ${error.message}`;
+        setApiError(message);
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
-  const toggleCountryMenu = () => setCountryMenuOpen(!countryMenuOpen);
-  const chooseCountry = (index) => {
+  const toggleCountryMenu = () => {
+    const nextState = !countryMenuOpen;
+    setCountryMenuOpen(nextState);
+    if (nextState) {
+      setSearchQuery('');
+      // Focus search input after a short delay to allow menu to open
+      setTimeout(() => {
+        if (searchInputRef.current) {
+          searchInputRef.current.focus();
+        }
+      }, 100);
+    }
+  };
+
+  const chooseCountry = (country) => {
+    // Find the original index in the countries array
+    const index = countries.findIndex(c => c.code === country.code);
     setSelectedCountryIndex(index);
     setCountryMenuOpen(false);
     setPhoneNumber('');
+    setSearchQuery('');
+    
+    // Focus phone input after selecting country
+    setTimeout(() => {
+      if (phoneInputRef.current) {
+        phoneInputRef.current.focus();
+      }
+    }, 100);
   };
 
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
@@ -131,6 +182,47 @@ const PhoneVerificationScreen = ({ navigation }) => {
       }
     };
     requestNotificationPermission();
+
+    const initializeCountry = async () => {
+      try {
+        const savedCode = await loadDefaultCountryCode();
+        if (savedCode) {
+          const index = countries.findIndex(c => c.code === savedCode);
+          if (index !== -1) {
+            setSelectedCountryIndex(index);
+            return; // Found in storage, no need to detect
+          }
+        }
+
+        // If not in storage, detect from location
+        setIsDetectingCountry(true);
+        const hasPermission = await requestLocationPermission();
+        if (!hasPermission) {
+          setIsDetectingCountry(false);
+          return;
+        }
+
+        const position = await getCurrentPosition({ timeoutMs: 5000, fallbackToLastKnown: true });
+        if (position && position.coords) {
+          const { latitude, longitude } = position.coords;
+          const place = await reverseGeocode({ latitude, longitude });
+          if (place && place.isoCountryCode) {
+            const detectedCode = place.isoCountryCode.toUpperCase();
+            const index = countries.findIndex(c => c.code === detectedCode);
+            if (index !== -1) {
+              setSelectedCountryIndex(index);
+              await saveDefaultCountryCode(detectedCode); // Save for next time
+            }
+          }
+        }
+      } catch (error) {
+        console.log('Error initializing country:', error);
+      } finally {
+        setIsDetectingCountry(false);
+      }
+    };
+
+    initializeCountry();
 
     const timeout = setTimeout(() => {
       if (phoneInputRef.current) {
@@ -181,8 +273,16 @@ const PhoneVerificationScreen = ({ navigation }) => {
                     ]}
                   >
                     <TouchableOpacity style={[styles.countryCodeBox, { paddingRight: spacing(12) }]} onPress={toggleCountryMenu} activeOpacity={0.8}>
-                      <Text style={[styles.flagText, { fontSize: ms(18), marginRight: spacing(8) }]}>{selectedCountry.flag}</Text>
-                      <Text style={[styles.countryCode, { fontSize: ms(16), marginRight: spacing(8) }]}>{selectedCountry.dial}</Text>
+                      {isDetectingCountry ? (
+                        <View style={{ width: spacing(40), alignItems: 'center' }}>
+                          <ActivityIndicator size="small" color="#E85555" />
+                        </View>
+                      ) : (
+                        <>
+                          <Text style={[styles.flagText, { fontSize: ms(18), marginRight: spacing(8) }]}>{selectedCountry.flag}</Text>
+                          <Text style={[styles.countryCode, { fontSize: ms(16), marginRight: spacing(8) }]}>{selectedCountry.dial}</Text>
+                        </>
+                      )}
                       <Icon name={countryMenuOpen ? 'chevron-up' : 'chevron-down'} size={scale(20)} color="#666666" />
                       <View style={[styles.divider, { height: vscale(24), width: scale(1) }]} />
                     </TouchableOpacity>
@@ -228,25 +328,47 @@ const PhoneVerificationScreen = ({ navigation }) => {
                         },
                       ]}
                     >
-                      <ScrollView style={{ maxHeight: vscale(260) }} nestedScrollEnabled>
-                        {countries.map((c, idx) => (
+                      <View style={[styles.searchContainer, { paddingHorizontal: spacing(12), paddingVertical: vscale(8), borderBottomWidth: scale(1) }]}>
+                        <Icon name="magnify" size={scale(20)} color="#666666" style={{ marginRight: spacing(8) }} />
+                        <TextInput
+                          ref={searchInputRef}
+                          style={[styles.searchInput, { fontSize: ms(14), paddingVertical: vscale(4) }]}
+                          placeholder="Search country..."
+                          placeholderTextColor="#CCCCCC"
+                          value={searchQuery}
+                          onChangeText={setSearchQuery}
+                          autoCorrect={false}
+                        />
+                        {searchQuery.length > 0 && (
+                          <TouchableOpacity onPress={() => setSearchQuery('')}>
+                            <Icon name="close-circle" size={scale(18)} color="#CCCCCC" />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                      <ScrollView style={{ maxHeight: vscale(260) }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                        {filteredCountries.map((c) => (
                           <TouchableOpacity
                             key={c.code}
                             style={[
                               styles.dropdownItem,
-                              selectedCountryIndex === idx && styles.dropdownItemSelected,
+                              selectedCountry.code === c.code && styles.dropdownItemSelected,
                               {
                                 paddingHorizontal: spacing(12),
                                 paddingVertical: vscale(12),
                                 borderBottomWidth: scale(1),
                               },
                             ]}
-                            onPress={() => chooseCountry(idx)}
+                            onPress={() => chooseCountry(c)}
                           >
                             <Text style={[styles.flagText, { fontSize: ms(18), marginRight: spacing(8) }]}>{c.flag}</Text>
                             <Text style={[styles.dropdownText, { fontSize: ms(14), marginLeft: spacing(8) }]}>{c.name} {c.dial}</Text>
                           </TouchableOpacity>
                         ))}
+                        {filteredCountries.length === 0 && (
+                          <View style={{ padding: spacing(20), alignItems: 'center' }}>
+                            <Text style={{ color: '#999999', fontSize: ms(14) }}>No countries found</Text>
+                          </View>
+                        )}
                       </ScrollView>
                     </View>
                   )}
@@ -364,6 +486,17 @@ const styles = StyleSheet.create({
   dropdownText: {
     color: '#2C3E50',
     fontWeight: '500',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E8EAED',
+  },
+  searchInput: {
+    flex: 1,
+    color: '#2C3E50',
+    fontWeight: '400',
   },
   infoText: {
     color: '#999999',

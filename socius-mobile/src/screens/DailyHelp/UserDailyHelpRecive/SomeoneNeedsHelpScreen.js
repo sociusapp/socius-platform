@@ -278,12 +278,9 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
       setIsProcessing(false);
     }
 
-    navigation.navigate('SafetyComesFirst', {
+    navigation.navigate('DailyHelpSafety', {
       requestId,
-      category: requestData.category,
-      description: requestData.description,
-      distanceMeters: requestData.distanceMeters,
-      area: requestData.area
+      prefillRequest: requestData
     });
   };
 

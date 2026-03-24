@@ -1,25 +1,26 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, FlatList, Animated, Dimensions, TextInput, RefreshControl } from 'react-native';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Animated, useWindowDimensions, RefreshControl, FlatList, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useIsFocused } from '@react-navigation/native';
+import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import moment from 'moment';
 import Header from '../../components/common/Header';
 import Button from '../../components/common/Button';
 import PulseDot from '../../components/common/PulseDot';
-import { SkeletonBox, SkeletonCircle, SkeletonSpacer } from '../../components/common/Skeleton';
 import { useResponsive } from '../../utils/responsive';
 import { getMyActiveHelpRequest, getNearbyHelpRequests } from '../../services/api/incident.api';
 import { getHistory } from '../../services/api/user.api';
 import { api } from '../../services/api/client';
 import { getHelpCategories } from '../../services/api/helpCategories.api';
-import { loadAuth, loadLastKnownLocation, saveLastKnownLocation } from '../../services/storage/asyncStorage.service';
-import { getCurrentPosition } from '../../services/location/geolocation.service';
+import { loadAuth, loadLastKnownLocation } from '../../services/storage/asyncStorage.service';
 import CustomAlert from '../../components/common/CustomAlert';
+import DailyHelpRequestCard from '../../components/DailyHelp/cards/DailyHelpRequestCard';
+import DailyHelpHistoryCard from '../../components/DailyHelp/cards/DailyHelpHistoryCard';
+import { SkeletonBox, SkeletonCircle, SkeletonSpacer } from '../../components/common/Skeleton';
+import { requestLocationPermission, getCurrentPosition } from '../../services/location/geolocation.service';
+import { connectSocket, getSocket } from '../../services/socket/socket.service';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-const CommunityScreen = ({ navigation, route }) => {
+const CommunityScreen = ({ navigation }) => {
+  const { width: SCREEN_WIDTH } = useWindowDimensions();
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
   const cardWidth = (contentWidth - spacing(24)) / 3;
   const baseRoot = useMemo(() => {
@@ -27,130 +28,50 @@ const CommunityScreen = ({ navigation, route }) => {
     return base.replace(/\/api\/?$/, '');
   }, []);
   const isFocused = useIsFocused();
+  const [activeTab, setActiveTab] = useState('overview');
   const [activeRequest, setActiveRequest] = useState(null);
   const [activeHelp, setActiveHelp] = useState(null);
-  const [activeTab, setActiveTab] = useState('community');
-  const [historyData, setHistoryData] = useState([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [categoriesBySlug, setCategoriesBySlug] = useState({});
+  const [refreshing, setRefreshing] = useState(false);
   const [nearbyRequests, setNearbyRequests] = useState([]);
   const [loadingNearby, setLoadingNearby] = useState(false);
+  const [historyData, setHistoryData] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
-  const [expandedId, setExpandedId] = useState(null);
-  const [categoriesBySlug, setCategoriesBySlug] = useState({});
 
   const scrollX = useRef(new Animated.Value(0)).current;
   const flatListRef = useRef(null);
 
-  // Custom Alert State
-  const [alertVisible, setAlertVisible] = useState(false);
-  const [alertConfig, setAlertConfig] = useState({
-    title: '',
-    message: '',
-    buttons: [],
-    icon: 'alert-circle-outline',
-    iconColor: '#DC5C69'
-  });
-
-  const showAlert = (title, message, buttons = [], icon = 'alert-circle-outline', iconColor = '#DC5C69') => {
-    setAlertConfig({
-      title,
-      message,
-      buttons,
-      icon,
-      iconColor
-    });
-    setAlertVisible(true);
-  };
-
-  const closeAlert = () => {
-    setAlertVisible(false);
-  };
+  // Community Screen Refs
+  const isNearbyLoadingRef = useRef(false);
+  const isHistoryLoadingRef = useRef(false);
+  const nearbyRequestsLengthRef = useRef(0);
+  const historyDataLengthRef = useRef(0);
 
   useEffect(() => {
-    if (activeTab === 'requests') {
-      fetchNearbyRequests();
-    }
-  }, [activeTab]);
+    nearbyRequestsLengthRef.current = nearbyRequests.length;
+  }, [nearbyRequests.length]);
 
-  const fetchNearbyRequests = async () => {
-    setLoadingNearby(true);
-    try {
-      await fetchCategoriesIndex();
-      const auth = await loadAuth();
-      if (auth?.accessToken) {
-        let coords = null;
-        let cached = null;
-        try {
-          cached = await loadLastKnownLocation();
-          if (cached?.latitude && cached?.longitude) {
-            coords = { latitude: cached.latitude, longitude: cached.longitude };
-          } else {
-            const position = await getCurrentPosition();
-            if (position?.coords) {
-              coords = {
-                latitude: position.coords.latitude,
-                longitude: position.coords.longitude
-              };
-            }
-          }
-        } catch (locErr) {
-          console.log('Error getting location:', locErr);
-        }
+  useEffect(() => {
+    historyDataLengthRef.current = historyData.length;
+  }, [historyData.length]);
 
-        const res = await getNearbyHelpRequests(auth.accessToken, coords);
-        if (res && res.success) {
-          // Filter out my own requests
-          const myUserId = auth.userId;
-          const allRequests = res.data || [];
-
-          // Filter logic: ensure request is not from current user
-          const filteredRequests = allRequests
-            .filter(req => {
-              const reqUserId = req.requesterId?._id || req.requesterId;
-              return String(reqUserId) !== String(myUserId);
-            })
-            .map(req => ({
-              ...req,
-              distance: req.distanceMeters ? (req.distanceMeters / 1000).toFixed(1) : req.distance
-            }));
-
-          setNearbyRequests(filteredRequests);
-        } else {
-          setNearbyRequests([]);
-        }
-
-        if (coords && (!cached || !cached.updatedAt || Date.now() - cached.updatedAt > 120000)) {
-          try {
-            await saveLastKnownLocation({
-              label: cached?.label || null,
-              latitude: coords.latitude,
-              longitude: coords.longitude,
-              updatedAt: Date.now(),
-            });
-          } catch (e) { }
-        }
-      }
-    } catch (err) {
-      console.log('Error fetching nearby requests:', err);
-      setNearbyRequests([]);
-    } finally {
-      setLoadingNearby(false);
-    }
-  };
-
-  const handleViewAndAcceptRequest = (req) => {
-    if (!req?._id) return;
-    const resolved = resolveCategoryMeta(req.category, req.categoryName, req.categoryIcon);
-    navigation.navigate('SomeoneNeedsHelp', {
-      requestId: req._id,
-      category: req.category,
-      categoryName: resolved.name,
-      categoryIcon: resolved.iconPath || req.categoryIcon,
-      description: req.description,
-      distanceMeters: req.distanceMeters,
-      area: req?.location?.address || req?.location?.whereToFindText || null,
+  const onTabPress = useCallback((tabName, index) => {
+    setActiveTab(tabName);
+    requestAnimationFrame(() => {
+      flatListRef.current?.scrollToOffset({ offset: (SCREEN_WIDTH || 375) * index, animated: true });
     });
+  }, [SCREEN_WIDTH]);
+
+  const onMomentumScrollEnd = (event) => {
+    const width = event.nativeEvent.layoutMeasurement.width || SCREEN_WIDTH || 375;
+    const index = Math.round(event.nativeEvent.contentOffset.x / width);
+    const tabs = ['overview', 'requests', 'history'];
+    const newTab = tabs[index];
+    if (newTab !== activeTab) {
+      setActiveTab(newTab);
+    }
   };
 
   const fetchCategoriesIndex = async () => {
@@ -183,129 +104,181 @@ const CommunityScreen = ({ navigation, route }) => {
     return { name, iconPath: iconPathWithVersion, iconUri };
   };
 
-  useEffect(() => {
-    const checkActiveRequests = async () => {
-      try {
-        const auth = await loadAuth();
-        const token = auth?.accessToken;
-        if (token) {
-          const response = await getMyActiveHelpRequest(token);
-          if (response?.success && response?.data) {
-            const data = response.data;
-            // If response has activeRequest/activeHelp keys
-            if (data.activeRequest !== undefined || data.activeHelp !== undefined) {
-              setActiveRequest(data.activeRequest || null);
-              setActiveHelp(data.activeHelp || null);
-            } else {
-              // Backward compatibility: assume data is request
-              setActiveRequest(data);
-              setActiveHelp(null);
-            }
-          } else {
-            setActiveRequest(null);
-            setActiveHelp(null);
-          }
-        }
-      } catch (error) {
-        console.log('Error checking active requests:', error);
-      }
-    };
+  const fetchNearbyRequests = useCallback(async () => {
+    if (isNearbyLoadingRef.current) return;
+    const shouldShowSkeleton = nearbyRequestsLengthRef.current === 0;
+    isNearbyLoadingRef.current = true;
+    if (shouldShowSkeleton) setLoadingNearby(true);
 
-    if (isFocused && activeTab === 'community') {
-      checkActiveRequests();
-    }
-  }, [isFocused, activeTab]);
-
-  useEffect(() => {
-    if (activeTab === 'history') {
-      fetchHistory();
-    }
-  }, [activeTab]);
-
-  const fetchHistory = async () => {
-    setLoadingHistory(true);
     try {
-      await fetchCategoriesIndex();
+      const auth = await loadAuth();
+      if (auth?.accessToken) {
+        let coords = null;
+        const cached = await loadLastKnownLocation();
+        if (cached?.latitude && cached?.longitude) {
+          coords = { latitude: cached.latitude, longitude: cached.longitude };
+        }
+
+        const helpRes = await getNearbyHelpRequests(auth.accessToken, coords).catch(() => ({ success: false, data: [] }));
+        const myUserId = auth.userId;
+        
+        let helpRequests = [];
+        if (helpRes && (helpRes.success || Array.isArray(helpRes))) {
+          const data = Array.isArray(helpRes) ? helpRes : (helpRes.data || []);
+          helpRequests = data
+            .filter(req => String(req.requesterId?._id || req.requesterId) !== String(myUserId))
+            .map(req => ({
+              ...req,
+              type: 'help_request',
+              distance: req.distanceMeters ? (req.distanceMeters / 1000).toFixed(1) : req.distance
+            }));
+        }
+
+        setNearbyRequests(helpRequests);
+      }
+    } catch (err) {
+      console.log('Error fetching nearby requests:', err);
+    } finally {
+      isNearbyLoadingRef.current = false;
+      if (shouldShowSkeleton) setLoadingNearby(false);
+    }
+  }, []);
+
+  const fetchHistory = useCallback(async () => {
+    if (isHistoryLoadingRef.current) return;
+    const shouldShowSkeleton = historyDataLengthRef.current === 0;
+    isHistoryLoadingRef.current = true;
+    if (shouldShowSkeleton) setLoadingHistory(true);
+
+    try {
       const auth = await loadAuth();
       if (auth?.accessToken) {
         const res = await getHistory(auth.accessToken);
         if (res.success) {
-          setHistoryData(res.data || []);
+          const allHistory = res.data || [];
+          const helpHistory = allHistory.filter(r => 
+            r.type === 'help_request' || r.type === 'help_provided'
+          );
+          setHistoryData(helpHistory);
         }
       }
     } catch (err) {
       console.log('Error fetching history:', err);
     } finally {
-      setLoadingHistory(false);
+      isHistoryLoadingRef.current = false;
+      if (shouldShowSkeleton) setLoadingHistory(false);
     }
-  };
+  }, []);
 
-  const handleSettings = () => {
-    navigation.navigate('Settings');
-  };
+  const fetchActiveRequests = useCallback(async () => {
+    try {
+      const auth = await loadAuth();
+      const token = auth?.accessToken;
+      if (token) {
+        const response = await getMyActiveHelpRequest(token);
+        if (response?.success && response?.data) {
+          const data = response.data;
+          setActiveRequest(data.activeRequest !== undefined ? data.activeRequest : data);
+          setActiveHelp(data.activeHelp || null);
+        } else {
+          setActiveRequest(null);
+          setActiveHelp(null);
+        }
+      }
+    } catch (error) {
+      console.log('Error checking active requests:', error);
+    }
+  }, []);
 
-  const handleRequestHelp = () => {
-    navigation.navigate('HelpType');
-  };
+  useEffect(() => {
+    if (isFocused) {
+      fetchCategoriesIndex();
+      fetchActiveRequests();
+      if (activeTab === 'requests') fetchNearbyRequests();
+      else if (activeTab === 'history') fetchHistory();
+    }
+  }, [isFocused, activeTab, fetchNearbyRequests, fetchHistory, fetchActiveRequests]);
 
-  const onTabPress = (tabName, index) => {
-    setActiveTab(tabName);
-    requestAnimationFrame(() => {
-      flatListRef.current?.scrollToOffset({ offset: SCREEN_WIDTH * index, animated: true });
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([
+      fetchActiveRequests(),
+      activeTab === 'requests' ? fetchNearbyRequests() : null,
+      activeTab === 'history' ? fetchHistory() : null
+    ]);
+    setRefreshing(false);
+  }, [activeTab, fetchActiveRequests, fetchNearbyRequests, fetchHistory]);
+
+  const handleViewAndAcceptRequest = (req) => {
+    if (!req?._id) return;
+    const resolved = resolveCategoryMeta(req.category, req.categoryName, req.categoryIcon);
+    navigation.navigate('SomeoneNeedsHelp', {
+      requestId: req._id,
+      requestType: 'help',
+      category: req.category,
+      categoryName: resolved.name,
+      categoryIcon: resolved.iconPath || req.categoryIcon,
+      description: req.description,
+      distanceMeters: req.distanceMeters,
+      area: req?.location?.address || req?.location?.whereToFindText || null,
     });
   };
 
-  useEffect(() => {
-    const initialTab = route?.params?.initialTab;
-    if (!initialTab) return;
-    const tabs = ['community', 'requests', 'history'];
-    const idx = tabs.indexOf(String(initialTab));
-    if (idx === -1) return;
-    onTabPress(tabs[idx], idx);
-  }, [route?.params?.initialTab]);
-
-  const onMomentumScrollEnd = (event) => {
-    const index = Math.round(event.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-    const tabs = ['community', 'requests', 'history'];
-    const newTab = tabs[index];
-    if (newTab !== activeTab) {
-      setActiveTab(newTab);
+  const getFilteredHistory = () => {
+    let filtered = historyData;
+    if (filterStatus !== 'All') {
+      if (filterStatus === 'Active') {
+        filtered = filtered.filter(item => ['active', 'matched', 'en_route', 'arrived', 'pending', 'open', 'matching'].includes(item.status?.toLowerCase()));
+      } else if (filterStatus === 'Completed') {
+        filtered = filtered.filter(item => ['completed', 'closed', 'accepted'].includes(item.status?.toLowerCase()));
+      } else if (filterStatus === 'Cancelled') {
+        filtered = filtered.filter(item => ['cancelled', 'declined'].includes(item.status?.toLowerCase()));
+      }
     }
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(item => 
+        (item.title && item.title.toLowerCase().includes(query)) ||
+        (item.description && item.description.toLowerCase().includes(query))
+      );
+    }
+    return filtered;
   };
 
+  const renderHistoryItem = ({ item }) => (
+    <DailyHelpHistoryCard
+      item={item}
+      resolveCategoryMeta={resolveCategoryMeta}
+      baseRoot={baseRoot}
+      onAction={(it) => {
+        if (it.isMyRequest) {
+          if (['active', 'matched', 'en_route', 'arrived', 'in_progress'].includes(it.status?.toLowerCase())) {
+            navigation.navigate('RequesterMatchingMap', { requestId: it._id });
+          } else {
+            navigation.navigate('HelpType');
+          }
+        } else {
+          navigation.navigate('MatchingMap', { requestId: it._id });
+        }
+      }}
+    />
+  );
 
+  const translateX = scrollX.interpolate({
+    inputRange: [0, Math.max(1, SCREEN_WIDTH), Math.max(2, SCREEN_WIDTH * 2)],
+    outputRange: [0, SCREEN_WIDTH / 3, (SCREEN_WIDTH / 3) * 2],
+  });
+
+  const handleSettings = () => navigation.navigate('Settings');
+  const handleRequestHelp = () => navigation.navigate('HelpType');
 
   const presenceTypes = [
-    {
-      id: 'calm',
-      name: 'Calm presence',
-      image: require('../../assets/images/community/Screenshot 2026-02-16 at 2.57.36 PM.png'),
-    },
-    {
-      id: 'care',
-      name: 'Care & support',
-      image: require('../../assets/images/community/5.png'),
-    },
-    {
-      id: 'medical',
-      name: 'Medical awareness',
-      image: require('../../assets/images/community/4.png'),
-    },
-    {
-      id: 'language',
-      name: 'Language support',
-      image: require('../../assets/images/community/3.png'),
-    },
-    {
-      id: 'elder',
-      name: 'Elder assistance',
-      image: require('../../assets/images/community/Screenshot 2026-02-16 at 2.58.04 PM.png'),
-    },
-    {
-      id: 'community',
-      name: 'Community upkeep',
-      image: require('../../assets/images/community/1.png'),
-    },
+    { id: 'calm', name: 'Calm presence', image: require('../../assets/images/community/Screenshot 2026-02-16 at 2.57.36 PM.png') },
+    { id: 'care', name: 'Care & support', image: require('../../assets/images/community/5.png') },
+    { id: 'medical', name: 'Medical awareness', image: require('../../assets/images/community/4.png') },
+    { id: 'language', name: 'Language support', image: require('../../assets/images/community/3.png') },
+    { id: 'elder', name: 'Elder assistance', image: require('../../assets/images/community/Screenshot 2026-02-16 at 2.58.04 PM.png') },
+    { id: 'community', name: 'Community upkeep', image: require('../../assets/images/community/1.png') },
   ];
 
   const communityPoints = [
@@ -315,372 +288,17 @@ const CommunityScreen = ({ navigation, route }) => {
     'Respect and restraint',
   ];
 
-  const getFilteredHistory = () => {
-    let filtered = historyData;
-
-    // Filter by Status
-    if (filterStatus !== 'All') {
-      if (filterStatus === 'Active') {
-        filtered = filtered.filter(item =>
-          ['active', 'matched', 'en_route', 'arrived', 'pending', 'open', 'matching'].includes(item.status?.toLowerCase())
-        );
-      } else if (filterStatus === 'Completed') {
-        filtered = filtered.filter(item =>
-          ['completed', 'closed', 'accepted'].includes(item.status?.toLowerCase())
-        );
-      } else if (filterStatus === 'Cancelled') {
-        filtered = filtered.filter(item =>
-          ['cancelled', 'declined'].includes(item.status?.toLowerCase())
-        );
-      }
-    }
-
-    // Filter by Search Query
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(item =>
-        (item.title && item.title.toLowerCase().includes(query)) ||
-        (item.description && item.description.toLowerCase().includes(query)) ||
-        (item._id && item._id.includes(query))
-      );
-    }
-
-    return filtered;
-  };
-
-  const renderHistoryItem = ({ item }) => {
-    const isHelp = item.type === 'help_request' || item.type === 'help_provided';
-    const isMyRequest = item.isMyRequest;
-    const raw = item?.data || {};
-    const resolvedCategory = resolveCategoryMeta(
-      raw?.category || item.category,
-      raw?.categoryName || item.title,
-      raw?.categoryIcon
-    );
-    const locationLabel =
-      raw?.location?.address ||
-      raw?.location?.whereToFindText ||
-      (Array.isArray(raw?.location?.coordinates) && raw.location.coordinates.length === 2
-        ? `${Number(raw.location.coordinates[1]).toFixed(4)}, ${Number(raw.location.coordinates[0]).toFixed(4)}`
-        : null);
-    const timeNeededLabel =
-      isHelp ? (raw?.requestedDurationLabel || raw?.time || null) : null;
-    const toTitleCase = (value) => {
-      const s = String(value || '').replace(/_/g, ' ').trim();
-      if (!s) return '';
-      return s
-        .split(/\s+/)
-        .map((w) => (w.length ? w[0].toUpperCase() + w.slice(1).toLowerCase() : ''))
-        .join(' ');
-    };
-
-    const getStatusStyle = (status) => {
-      switch (status?.toLowerCase()) {
-        case 'active':
-        case 'matched':
-        case 'en_route':
-        case 'arrived':
-        case 'in_progress':
-          return { color: '#28C76F', bg: '#E7F9F0', label: 'Active' };
-        case 'pending':
-        case 'open':
-        case 'matching':
-          return { color: '#FF9F43', bg: '#FFF0E1', label: 'Pending' };
-        case 'accepted':
-          return { color: '#00CFE8', bg: '#E0F9FC', label: 'Accepted' };
-        case 'completed':
-        case 'closed':
-          return { color: '#7367F0', bg: '#ECEBFF', label: 'Completed' };
-        case 'cancelled':
-        case 'declined':
-          return { color: '#EA5455', bg: '#FCEAEA', label: 'Cancelled' };
-        default:
-          return { color: '#A0AEC0', bg: '#EDF2F7', label: status || 'Unknown' };
-      }
-    };
-
-    const statusStyle = getStatusStyle(item.status);
-
-    const getTimeDisplay = () => {
-      const created = moment(item.createdAt);
-      if (['active', 'matched', 'en_route', 'arrived', 'accepted', 'in_progress'].includes(String(item.status || '').toLowerCase())) {
-        return `Started ${created.fromNow()}`;
-      }
-      return created.format('MMM D, h:mm A');
-    };
-
-    const renderAvatar = (user, isMe) => {
-      if (!user && !isMe) return (
-        <View style={[styles.avatarPlaceholder, { backgroundColor: '#F0F2F5', width: scale(48), height: scale(48), borderRadius: scale(24) }]}>
-          <Icon name="account-question" size={scale(24)} color="#A0AEC0" />
-        </View>
-      );
-
-      if (user?.profileImage) {
-        return <Image source={{ uri: user.profileImage }} style={[styles.avatarImage, { width: scale(48), height: scale(48), borderRadius: scale(24) }]} />;
-      }
-
-      return (
-        <View style={[styles.avatarPlaceholder, {
-          backgroundColor: isMe ? (isMyRequest ? '#FFF5F6' : '#E7F9F0') : '#F0F2F5',
-          width: scale(48), height: scale(48), borderRadius: scale(24)
-        }]}>
-          <Icon name="account" size={scale(24)} color={isMe ? (isMyRequest ? '#DC5C69' : '#28C76F') : '#A0AEC0'} />
-        </View>
-      );
-    };
-
-    const isExpanded = expandedId === item._id;
-    const isActive = ['active', 'matched', 'en_route', 'arrived', 'accepted', 'in_progress'].includes(String(item.status || '').toLowerCase());
-    const isCancelled = ['cancelled', 'declined'].includes(String(item.status || '').toLowerCase());
-    const cancellationReason = item.reason || item.cancellationReason || item.cancelReason;
-
-    const formatReason = (reason) => {
-      if (!reason) return '';
-      const reasons = {
-        'no_helpers_nearby': 'No helpers nearby',
-        'no_one_accepted': 'No one accepted',
-        'change_of_plans': 'Change of plans'
-      };
-      return reasons[reason] || reason;
-    };
-
-    const toggleExpand = () => {
-      setExpandedId(isExpanded ? null : item._id);
-    };
-
-    const showLeftIcon = () => {
-      if (isMyRequest && !item.otherUser) {
-        const categoryIcon = item?.data?.categoryIcon;
-        return (
-          <View
-            style={[
-              styles.avatarPlaceholder,
-              {
-                backgroundColor: '#FFF0F1',
-                width: scale(44),
-                height: scale(44),
-                borderRadius: scale(22),
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderWidth: 1,
-                borderColor: '#F1D7DB',
-              },
-            ]}
-          >
-            {categoryIcon ? (
-              <Image
-                source={{ uri: `${baseRoot}${categoryIcon}` }}
-                style={{ width: scale(22), height: scale(22), borderRadius: scale(6) }}
-                resizeMode="cover"
-              />
-            ) : (
-              <Image
-                source={require('../../assets/icons/icon-03.png')}
-                style={{ width: scale(22), height: scale(22), borderRadius: scale(6) }}
-                resizeMode="contain"
-              />
-            )}
-          </View>
-        );
-      }
-      return renderAvatar(item.otherUser, false);
-    };
-
-    return (
-      <TouchableOpacity
-        style={[styles.historyCard, {
-          marginBottom: vscale(12),
-          borderRadius: scale(16),
-          padding: scale(14),
-          backgroundColor: '#FFFFFF',
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.08,
-          shadowRadius: 8,
-          elevation: 3,
-          borderWidth: 1,
-          borderColor: isExpanded ? '#DC5C69' : '#F1F5F9'
-        }]}
-        onPress={toggleExpand}
-        activeOpacity={0.9}
-      >
-        <View style={{ flexDirection: 'row' }}>
-          {!isHelp ? (
-            <View style={{ marginRight: spacing(12) }}>
-              {showLeftIcon()}
-            </View>
-          ) : null}
-
-          {/* Right: Content */}
-          <View style={{ flex: 1 }}>
-            {/* Header: Title & Status */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: vscale(4) }}>
-              <View style={{ flex: 1, marginRight: spacing(8) }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  {resolvedCategory?.iconUri ? (
-                    <Image
-                      source={{ uri: resolvedCategory.iconUri }}
-                      style={{ width: scale(18), height: scale(18), borderRadius: scale(5), marginRight: spacing(8) }}
-                      resizeMode="cover"
-                    />
-                  ) : null}
-                  <Text style={{ fontSize: ms(16), fontWeight: '700', color: '#1E293B', flex: 1 }} numberOfLines={1}>
-                    {String(resolvedCategory?.name || (isMyRequest ? 'Help Request' : 'Help Provided')).replace(/_/g, ' ').toUpperCase()}
-                  </Text>
-                </View>
-                {!isHelp && (raw?.categoryName || item.category) ? (
-                  <Text style={{ fontSize: ms(12), color: '#64748B', marginTop: 2, fontWeight: '600' }}>
-                    {String(raw?.categoryName || item.category).replace(/_/g, ' ').toUpperCase()}
-                  </Text>
-                ) : null}
-              </View>
-              <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg, paddingHorizontal: spacing(8), paddingVertical: vscale(4), borderRadius: scale(6) }]}>
-                <Text style={[styles.statusText, { color: statusStyle.color, fontSize: ms(11), fontWeight: '700' }]}>
-                  {statusStyle.label.toUpperCase()}
-                </Text>
-              </View>
-            </View>
-
-            {/* Description */}
-            {item.description && (
-              <Text style={{ fontSize: ms(14), color: '#475569', lineHeight: ms(20), marginBottom: vscale(8) }} numberOfLines={isExpanded ? undefined : 2}>
-                {item.description}
-              </Text>
-            )}
-
-            {/* Location Info */}
-            {locationLabel && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: vscale(8) }}>
-                <Icon name="map-marker-outline" size={scale(14)} color="#94A3B8" style={{ marginRight: spacing(4) }} />
-                <Text style={{ fontSize: ms(12), color: '#64748B', flex: 1 }} numberOfLines={1}>
-                  {locationLabel}
-                </Text>
-              </View>
-            )}
-
-            {/* Time Needed (Help requests only) */}
-            {timeNeededLabel ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: vscale(8) }}>
-                <Icon name="timer-outline" size={scale(14)} color="#94A3B8" style={{ marginRight: spacing(4) }} />
-                <Text style={{ fontSize: ms(12), color: '#64748B', flex: 1 }} numberOfLines={1}>
-                  {timeNeededLabel}
-                </Text>
-              </View>
-            ) : null}
-
-            {/* Cancellation Reason */}
-            {isCancelled && cancellationReason && (
-              <View style={{
-                marginTop: vscale(2),
-                marginBottom: vscale(8),
-                backgroundColor: '#FEF2F2',
-                padding: spacing(8),
-                borderRadius: scale(8),
-                borderWidth: 1,
-                borderColor: '#FECACA'
-              }}>
-                <Text style={{ fontSize: ms(12), color: '#EF4444' }}>
-                  <Text style={{ fontWeight: '600' }}>Cancelled: </Text>
-                  {formatReason(cancellationReason)}
-                </Text>
-              </View>
-            )}
-
-            {/* Meta: Role & Time */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: vscale(4) }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isMyRequest ? '#FFF5F6' : '#F0FDF4', paddingHorizontal: spacing(6), paddingVertical: vscale(2), borderRadius: scale(4), marginRight: spacing(8) }}>
-                <Icon name={isMyRequest ? "account-arrow-right-outline" : "account-arrow-left-outline"} size={scale(12)} color={isMyRequest ? "#DC5C69" : "#16A34A"} style={{ marginRight: spacing(4) }} />
-                <Text style={{ color: isMyRequest ? '#DC5C69' : '#16A34A', fontSize: ms(11), fontWeight: '600' }}>
-                  {isMyRequest ? 'You Requested' : 'You Helped'}
-                </Text>
-              </View>
-              <Text style={{ color: '#94A3B8', fontSize: ms(11) }}>{getTimeDisplay()}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Expanded Details */}
-        {isExpanded && (
-          <View style={{ marginTop: vscale(16), paddingTop: vscale(16), borderTopWidth: 1, borderTopColor: '#F1F5F9' }}>
-            {/* Additional Details Grid */}
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: vscale(12) }}>
-              {item.otherUser && (
-                <View style={{ width: '50%', marginBottom: vscale(8) }}>
-                  <Text style={{ fontSize: ms(11), color: '#94A3B8', marginBottom: 2 }}>{isMyRequest ? 'HELPER' : 'REQUESTER'}</Text>
-                  <Text style={{ fontSize: ms(13), color: '#1E293B', fontWeight: '600' }}>
-                    {item.otherUser.firstName || item.otherUser.name || item.otherUser.fullName || 'Unknown User'}
-                  </Text>
-                </View>
-              )}
-              <View style={{ width: '50%', marginBottom: vscale(8) }}>
-                <Text style={{ fontSize: ms(11), color: '#94A3B8', marginBottom: 2 }}>CATEGORY</Text>
-                <Text style={{ fontSize: ms(13), color: '#1E293B', fontWeight: '600' }}>{item.category || 'General'}</Text>
-              </View>
-            </View>
-
-            {/* Action Buttons */}
-            <View style={{ flexDirection: 'row', gap: spacing(8), marginTop: vscale(8) }}>
-              {isActive ? (
-                <>
-                  <TouchableOpacity
-                    style={[styles.actionBtn, { backgroundColor: isMyRequest ? '#DC5C69' : '#28C76F', flex: 1, paddingVertical: vscale(10), borderRadius: scale(8), alignItems: 'center', justifyContent: 'center' }]}
-                    onPress={() => {
-                      const requestId = item._id;
-                      // Navigation logic...
-                      if (isMyRequest) {
-                        navigation.navigate('RequesterMatchingMap', { requestId });
-                      } else {
-                        navigation.reset({
-                          index: 1,
-                          routes: [
-                            { name: 'MainApp', params: { screen: 'HomeTab' } },
-                            { name: 'MatchingMap', params: { requestId } },
-                          ],
-                        });
-                      }
-                    }}
-                  >
-                    <Text style={[styles.actionBtnText, { fontSize: ms(13), color: '#FFF', fontWeight: '600' }]}>Track Status</Text>
-                  </TouchableOpacity>
-                </>
-              ) : (
-                isMyRequest && (
-                  <TouchableOpacity
-                    onPress={() => {
-                      navigation.navigate('ReviewRequest', {
-                        description: item.description,
-                        time: item.duration || '10–15 minutes',
-                        helpType: {
-                          label: item.category || item.title || 'General Help',
-                          icon: 'hand-heart',
-                          color: '#DC5C69'
-                        }
-                      });
-                    }}
-                    style={{
-                      flex: 1,
-                      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-                      backgroundColor: '#F8FAFC', paddingVertical: vscale(10), borderRadius: scale(8),
-                      borderWidth: 1, borderColor: '#E2E8F0'
-                    }}
-                  >
-                    <Icon name="refresh" size={scale(16)} color="#475569" style={{ marginRight: spacing(6) }} />
-                    <Text style={{ fontSize: ms(13), color: '#475569', fontWeight: '600' }}>Request Again</Text>
-                  </TouchableOpacity>
-                )
-              )}
-            </View>
-          </View>
-        )}
-      </TouchableOpacity>
-    );
-  };
-
-  const translateX = scrollX.interpolate({
-    inputRange: [0, SCREEN_WIDTH, SCREEN_WIDTH * 2],
-    outputRange: [0, SCREEN_WIDTH / 3, (SCREEN_WIDTH / 3) * 2],
+  // Custom Alert State
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({
+    title: '',
+    message: '',
+    buttons: [],
+    icon: 'alert-circle-outline',
+    iconColor: '#DC5C69'
   });
+
+  const closeAlert = () => setAlertVisible(false);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -694,875 +312,241 @@ const CommunityScreen = ({ navigation, route }) => {
         style={{ borderBottomWidth: 0, elevation: 0, shadowOpacity: 0 }}
       />
 
-      <View style={{
-        flexDirection: 'row',
-        backgroundColor: '#FFFFFF',
-        borderBottomWidth: 1,
-        borderBottomColor: '#F0F0F0',
-        position: 'relative',
-        paddingBottom: vscale(4)
-      }}>
-        <TouchableOpacity
-          onPress={() => onTabPress('community', 0)}
-          style={{
-            flex: 1,
-            paddingVertical: vscale(10),
-            alignItems: 'center',
-          }}
-        >
-          <Text style={{
-            fontSize: ms(14),
-            fontWeight: activeTab === 'community' ? '700' : '500',
-            color: activeTab === 'community' ? '#DC5C69' : '#94A3B8'
-          }}>Overview</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => onTabPress('requests', 1)}
-          style={{
-            flex: 1,
-            paddingVertical: vscale(10),
-            alignItems: 'center',
-          }}
-        >
-          <Text style={{
-            fontSize: ms(14),
-            fontWeight: activeTab === 'requests' ? '700' : '500',
-            color: activeTab === 'requests' ? '#DC5C69' : '#94A3B8'
-          }}>Nearby Help</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => onTabPress('history', 2)}
-          style={{
-            flex: 1,
-            paddingVertical: vscale(10),
-            alignItems: 'center',
-          }}
-        >
-          <Text style={{
-            fontSize: ms(14),
-            fontWeight: activeTab === 'history' ? '700' : '500',
-            color: activeTab === 'history' ? '#DC5C69' : '#94A3B8'
-          }}>My Activity</Text>
-        </TouchableOpacity>
-
-        <Animated.View
-          style={{
-            position: 'absolute',
-            bottom: 0,
-            left: 0,
-            width: '33.33%',
-            height: scale(2),
-            backgroundColor: '#DC5C69',
-            transform: [{ translateX }]
-          }}
-        />
-      </View>
-
-      <Animated.FlatList
-        ref={flatListRef}
-        data={['community', 'requests', 'history']}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        keyExtractor={(item) => item}
-        getItemLayout={(_, index) => ({
-          length: SCREEN_WIDTH,
-          offset: SCREEN_WIDTH * index,
-          index,
-        })}
-        onScrollToIndexFailed={({ index }) => {
-          requestAnimationFrame(() => {
-            flatListRef.current?.scrollToOffset({ offset: SCREEN_WIDTH * index, animated: true });
-          });
-        }}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-          { useNativeDriver: false }
-        )}
-        onMomentumScrollEnd={onMomentumScrollEnd}
-        renderItem={({ item }) => (
-          <View style={{ width: SCREEN_WIDTH, flex: 1 }}>
-            {item === 'community' ? (
-              <ScrollView
-                contentContainerStyle={[styles.scrollContent, { alignItems: 'center', paddingHorizontal: spacing(20), paddingTop: vscale(10), paddingBottom: vscale(80) }]}
-                showsVerticalScrollIndicator={false}
-              >
-                <View style={{ width: contentWidth }}>
-                  {/* Header Section - More Compact */}
-                  <View style={[styles.titleSection, { marginBottom: vscale(12), alignItems: 'flex-start' }]}>
-                    <Text style={[styles.mainTitle, { fontSize: ms(18), marginBottom: vscale(2), fontWeight: '700' }]}>
-                      Community Around You
-                    </Text>
-                    <Text style={[styles.subtitle, { fontSize: ms(12), lineHeight: ms(16), textAlign: 'left' }]}>
-                      Awareness without exposure.
-                    </Text>
-                  </View>
-
-                  {/* Active Request Card (Requester) - Compact */}
-                  {activeRequest && (
-                    <TouchableOpacity
-                      activeOpacity={0.9}
-                      onPress={() => {
-                        // Check if request is accepted/matched before navigating to map
-                        const status = String(activeRequest.status || '').toLowerCase();
-                        const isAccepted = ['accepted', 'in_progress', 'matched', 'en_route', 'arrived', 'active'].includes(status) || activeRequest.volunteer;
-
-                        if (isAccepted) {
-                          navigation.navigate('RequesterMatchingMap', { requestId: activeRequest._id, prefillRequest: activeRequest });
-                        } else {
-                          navigation.navigate('RequestActive');
-                        }
-                      }}
-                      style={[
-                        styles.activeCard,
-                        {
-                          borderRadius: scale(12),
-                          paddingVertical: vscale(14),
-                          paddingHorizontal: spacing(14),
-                          marginBottom: vscale(12),
-                          borderWidth: 1.5,
-                          borderColor: '#DC5C69',
-                          backgroundColor: '#FFF5F6',
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          shadowColor: "#DC5C69",
-                          shadowOffset: { width: 0, height: 2 },
-                          shadowOpacity: 0.1,
-                          shadowRadius: 4,
-                          elevation: 3
-                        },
-                      ]}
-                    >
-                      <View style={[styles.activeIconBadge, { backgroundColor: '#DC5C69', width: scale(40), height: scale(40), borderRadius: scale(20), marginRight: spacing(12) }]}>
-                        <Icon name="hand-heart" size={scale(20)} color="#FFFFFF" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
-                          <View style={{ marginRight: spacing(6) }}>
-                            <PulseDot color="#DC5C69" size={6} />
-                          </View>
-                          <Text style={[styles.activeCardTitle, { fontSize: ms(14), color: '#DC5C69', fontWeight: '700', marginRight: spacing(6) }]}>
-                            Active Help Request
-                          </Text>
-                          <View style={{ backgroundColor: '#DC5C69', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, flexDirection: 'row', alignItems: 'center' }}>
-                            <View style={{ marginRight: 4 }}>
-                              <PulseDot color="#FFFFFF" size={5} ringOpacity={0.35} />
-                            </View>
-                            <Text style={{ color: '#FFF', fontSize: ms(9), fontWeight: '800' }}>LIVE</Text>
-                          </View>
-                        </View>
-                        <Text numberOfLines={1} style={{ fontSize: ms(13), color: '#334155' }}>
-                          {activeRequest.description}
-                        </Text>
-                      </View>
-                      <Icon name="chevron-right" size={scale(20)} color="#DC5C69" />
-                    </TouchableOpacity>
-                  )}
-
-                  {/* Active Help Card (Volunteer) - Compact */}
-                  {activeHelp && (
-                    <TouchableOpacity
-                      activeOpacity={0.9}
-                      onPress={() =>
-                        navigation.reset({
-                          index: 1,
-                          routes: [
-                            { name: 'MainApp', params: { screen: 'HomeTab' } },
-                            {
-                              name: 'MatchingMap',
-                              params: { requestId: activeHelp.request._id, prefillRequest: activeHelp.request },
-                            },
-                          ],
-                        })
-                      }
-                      style={[
-                        styles.activeCard,
-                        {
-                          borderRadius: scale(12),
-                          paddingVertical: vscale(12),
-                          paddingHorizontal: spacing(12),
-                          marginBottom: vscale(12),
-                          borderWidth: 1,
-                          borderColor: '#28C76F',
-                          backgroundColor: '#E7F9F0',
-                          flexDirection: 'row',
-                          alignItems: 'center'
-                        },
-                      ]}
-                    >
-                      <View style={[styles.activeIconBadge, { backgroundColor: '#28C76F', width: scale(36), height: scale(36), borderRadius: scale(18), marginRight: spacing(10) }]}>
-                        <Icon name="account-heart" size={scale(18)} color="#FFFFFF" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.activeCardTitle, { fontSize: ms(14), color: '#28C76F', marginBottom: 2 }]}>
-                          Helping Someone
-                        </Text>
-                        <Text numberOfLines={1} style={{ fontSize: ms(12), color: '#2C3E50' }}>
-                          {activeHelp.request.description}
-                        </Text>
-                      </View>
-                      <Icon name="chevron-right" size={scale(20)} color="#28C76F" />
-                    </TouchableOpacity>
-                  )}
-
-                  {/* Local Awareness Network - More Compact */}
-                  <View
-                    style={[
-                      styles.primaryCard,
-                      {
-                        borderRadius: scale(12),
-                        paddingVertical: vscale(12),
-                        paddingHorizontal: spacing(14),
-                        marginBottom: vscale(12),
-                        borderWidth: 1,
-                        shadowRadius: scale(4),
-                        elevation: scale(1),
-                      },
-                    ]}
-                  >
-                    <Text style={[styles.cardTitle, { fontSize: ms(13), marginBottom: vscale(4) }]}>
-                      Local awareness network
-                    </Text>
-                    <Text style={[styles.cardText, { fontSize: ms(12), lineHeight: ms(18) }]}>
-                      Socius helps people stay aware and supportive without public feeds.
-                    </Text>
-                  </View>
-
-                  {/* Ask for Local Help - Redesigned Horizontal Compact */}
-                  <View style={[styles.askCard, {
-                    borderRadius: scale(16),
-                    borderWidth: 1,
-                    padding: spacing(14),
-                    marginBottom: vscale(20),
-                    shadowOffset: { width: 0, height: vscale(2) },
-                    shadowRadius: scale(6),
-                    elevation: scale(2),
-                    alignItems: 'flex-start' // Reset center alignment
-                  }]}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: vscale(12) }}>
-                      <View style={[styles.iconBadge, {
-                        width: scale(48),
-                        height: scale(48),
-                        borderRadius: scale(24),
-                        marginRight: spacing(12),
-                        marginBottom: 0 // Remove bottom margin
-                      }]}>
-                        <Icon name="handshake" size={scale(28)} color="#DC5C69" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.askTitle, { fontSize: ms(16), marginBottom: vscale(2) }]}>Ask for Local Help</Text>
-                        <Text style={[styles.askSubtext, { fontSize: ms(12), lineHeight: ms(16), textAlign: 'left' }]}>
-                          Request small, everyday help from people nearby.
-                        </Text>
-                      </View>
-                    </View>
-
-                    <Button
-                      title="Request Help"
-                      onPress={handleRequestHelp}
-                      variant="gradient"
-                      fullWidth
-                      icon={<Icon name="hand-heart" size={scale(18)} color="#FFFFFF" />}
-                      accessibilityLabel="Request local help"
-                      style={{ borderRadius: scale(12), height: scale(42) }}
-                      labelStyle={{ fontSize: ms(14) }}
-                    />
-                  </View>
-
-                  {/* Nearby Requests Section - Removed from here and moved to Requests tab */}
-
-                  <Text style={[styles.sectionTitle, { fontSize: ms(15), marginBottom: vscale(10) }]}>Types of presence nearby</Text>
-                  <View style={[styles.grid, { rowGap: vscale(10), marginBottom: vscale(20) }]}>
-                    {presenceTypes.map((item) => (
-                      <View
-                        key={item.id}
-                        style={[
-                          styles.gridItem,
-                          {
-                            width: cardWidth,
-                          },
-                        ]}
-                      >
-                        <View style={[styles.iconCard, { borderRadius: scale(14), marginBottom: 4 }]}>
-                          <Image
-                            source={item.image}
-                            style={styles.iconImage}
-                          />
-                        </View>
-                        <Text style={[styles.gridLabel, { fontSize: ms(9) }]} numberOfLines={2}>
-                          {item.name}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-
-                  <View style={[styles.pointsCard, { borderRadius: scale(12), padding: spacing(12), marginBottom: vscale(12), borderWidth: 1 }]}>
-                    <Text style={[styles.pointsTitle, { fontSize: ms(14), marginBottom: vscale(8) }]}>Community principles</Text>
-                    {communityPoints.map((point, idx) => (
-                      <View key={idx} style={[styles.pointRow, { marginBottom: vscale(6) }]}>
-                        <Icon name="check-circle-outline" size={scale(16)} color="#34C759" />
-                        <Text style={[styles.pointText, { fontSize: ms(13), marginLeft: spacing(8) }]}>{point}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              </ScrollView>
-            ) : item === 'requests' ? (
-              <ScrollView
-                contentContainerStyle={[styles.scrollContent, { paddingHorizontal: spacing(20), paddingTop: vscale(10), paddingBottom: vscale(80) }]}
-                showsVerticalScrollIndicator={false}
-                refreshControl={
-                  <RefreshControl refreshing={false} onRefresh={fetchNearbyRequests} colors={['#DC5C69']} tintColor="#DC5C69" />
-                }
-              >
-                <View style={{ marginBottom: vscale(20) }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: vscale(16) }}>
-                    <Text style={[styles.sectionTitle, { fontSize: ms(18), marginBottom: 0 }]}>Nearby Help Requests</Text>
-                  </View>
-
-                  {loadingNearby ? (
-                    <View style={{ minHeight: vscale(280) }}>
-                      {[0, 1, 2].map((i) => (
-                        <View
-                          key={i}
-                          style={[
-                            styles.activeCard,
-                            {
-                              backgroundColor: '#FFFFFF',
-                              marginBottom: vscale(16),
-                              padding: spacing(16),
-                              borderRadius: scale(16),
-                              borderWidth: 1,
-                              borderColor: '#E2E8F0',
-                              shadowColor: '#000',
-                              shadowOffset: { width: 0, height: 4 },
-                              shadowOpacity: 0.06,
-                              shadowRadius: 8,
-                              elevation: 3,
-                            },
-                          ]}
-                        >
-                          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: vscale(12) }}>
-                            <SkeletonCircle size={scale(48)} style={{ marginRight: spacing(12) }} />
-                            <View style={{ flex: 1 }}>
-                              <SkeletonBox height={12} radius={8} style={{ marginBottom: 8 }} />
-                              <SkeletonBox height={10} radius={8} width="55%" />
-                            </View>
-                            <SkeletonBox height={22} radius={10} width={scale(62)} />
-                          </View>
-                          <SkeletonBox height={12} radius={8} style={{ marginBottom: 8 }} />
-                          <SkeletonBox height={12} radius={8} width="80%" />
-                          <SkeletonSpacer height={vscale(16)} />
-                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <SkeletonBox height={scale(40)} radius={scale(10)} style={{ flex: 1, marginRight: spacing(8) }} />
-                            <SkeletonBox height={scale(40)} radius={scale(10)} width={scale(40)} />
-                          </View>
-                        </View>
-                      ))}
-                    </View>
-                  ) : nearbyRequests.length > 0 ? (
-                    nearbyRequests.map((req, index) => {
-                      const statusLower = String(req?.status || 'open').toLowerCase();
-                      const resolvedCategory = resolveCategoryMeta(req.category, req.categoryName, req.categoryIcon);
-                      const badgeCfg =
-                        statusLower === 'matched'
-                          ? { bg: '#E0F2FE', fg: '#0369A1', pulse: '#0EA5E9' }
-                          : statusLower === 'active'
-                            ? { bg: '#DCFCE7', fg: '#15803D', pulse: '#22C55E' }
-                            : statusLower === 'open' || statusLower === 'matching'
-                              ? { bg: '#FFF0F1', fg: '#DC5C69', pulse: '#DC5C69' }
-                              : { bg: '#F1F5F9', fg: '#475569', pulse: null };
-
-                      return (
-                      <View key={index} style={[styles.activeCard, {
-                        backgroundColor: '#FFFFFF',
-                        marginBottom: vscale(16),
-                        padding: spacing(16),
-                        borderRadius: scale(16),
-                        borderWidth: 1,
-                        borderColor: badgeCfg.pulse ? badgeCfg.pulse : '#E2E8F0',
-                        shadowColor: '#000',
-                        shadowOffset: { width: 0, height: 4 },
-                        shadowOpacity: 0.06,
-                        shadowRadius: 8,
-                        elevation: 3
-                      }]}>
-                        {/* Header: Icon, Category, Distance */}
-                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: vscale(12) }}>
-                          <View style={[styles.iconBadge, {
-                            width: scale(48),
-                            height: scale(48),
-                            borderRadius: scale(24),
-                            backgroundColor: req.category === 'Medical' ? '#FEF2F2' : '#F0F9FF',
-                            marginRight: spacing(12),
-                            marginBottom: 0
-                          }]}>
-                            {resolvedCategory?.iconUri ? (
-                              <Image
-                                source={{ uri: resolvedCategory.iconUri }}
-                                style={{ width: scale(26), height: scale(26), borderRadius: scale(7) }}
-                                resizeMode="cover"
-                              />
-                            ) : (
-                              <Icon
-                                name={req.category === 'Medical' ? 'medical-bag' : 'hand-heart'}
-                                size={scale(24)}
-                                color={req.category === 'Medical' ? '#DC5C69' : '#0EA5E9'}
-                              />
-                            )}
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            <Text style={[styles.activeCardTitle, { fontSize: ms(16), color: '#1E293B', marginBottom: 2 }]}>
-                              {String(resolvedCategory?.name || req.categoryName || req.category || 'General Help').replace(/_/g, ' ').toUpperCase()}
-                            </Text>
-                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                              <Icon name="map-marker" size={scale(12)} color="#64748B" style={{ marginRight: 2 }} />
-                              <Text style={{ fontSize: ms(12), color: '#64748B' }}>
-                                {req.distance ? `${parseFloat(req.distance).toFixed(1)} km away` : 'Distance unknown'}
-                              </Text>
-                            </View>
-                          </View>
-                          <View style={{ alignItems: 'flex-end' }}>
-                            <View style={[
-                              { paddingHorizontal: spacing(8), paddingVertical: vscale(4), borderRadius: scale(8), flexDirection: 'row', alignItems: 'center' },
-                              { backgroundColor: badgeCfg.bg }
-                            ]}>
-                              {badgeCfg.pulse ? (
-                                <View style={{ marginRight: 6 }}>
-                                  <PulseDot color={badgeCfg.pulse} size={5} />
-                                </View>
-                              ) : null}
-                              <Text style={[
-                                { fontSize: ms(10), fontWeight: '700', color: badgeCfg.fg }
-                              ]}>
-                                {(req.status || 'OPEN').toUpperCase()}
-                              </Text>
-                            </View>
-                          </View>
-                        </View>
-
-                        {/* Content: Description */}
-                        <View style={{ marginBottom: vscale(12) }}>
-                          <Text style={{ fontSize: ms(14), color: '#334155', lineHeight: ms(20) }}>
-                            {req.description}
-                          </Text>
-                        </View>
-
-                        {/* Timing */}
-                        <View style={{ marginBottom: vscale(16) }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: vscale(6) }}>
-                            <Icon name="map-marker-outline" size={scale(14)} color="#64748B" style={{ marginRight: 6 }} />
-                            <Text style={{ fontSize: ms(12), color: '#475569', fontWeight: '700' }}>LOCATION</Text>
-                            <Text style={{ fontSize: ms(12), color: '#475569', marginLeft: 6, flex: 1 }} numberOfLines={1}>
-                              {req?.location?.address ||
-                                req?.location?.whereToFindText ||
-                                (Array.isArray(req?.location?.coordinates) && req.location.coordinates.length === 2
-                                  ? `${Number(req.location.coordinates[1]).toFixed(4)}, ${Number(req.location.coordinates[0]).toFixed(4)}`
-                                  : 'Location shared')}
-                            </Text>
-                          </View>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: vscale(6) }}>
-                            <Icon name="clock-outline" size={scale(14)} color="#64748B" style={{ marginRight: 6 }} />
-                            <Text style={{ fontSize: ms(12), color: '#475569', fontWeight: '700' }}>REQUESTED AT</Text>
-                            <Text style={{ fontSize: ms(12), color: '#475569', marginLeft: 6 }}>
-                              {req.createdAt ? new Date(req.createdAt).toLocaleString('en-IN') : '—'}
-                            </Text>
-                          </View>
-                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <Icon name="timer-outline" size={scale(14)} color="#64748B" style={{ marginRight: 6 }} />
-                            <Text style={{ fontSize: ms(12), color: '#475569', fontWeight: '700' }}>TIME NEEDED</Text>
-                            <Text style={{ fontSize: ms(12), color: '#475569', marginLeft: 6 }}>
-                              {req.requestedDurationLabel || req.time || 'Not specified'}
-                            </Text>
-                          </View>
-                        </View>
-
-                        {/* Footer: Actions */}
-                        <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: vscale(12), borderTopWidth: 1, borderTopColor: '#F1F5F9' }}>
-                          <TouchableOpacity
-                            onPress={() => handleViewAndAcceptRequest(req)}
-                            style={{
-                              flex: 1,
-                              backgroundColor: '#DC5C69',
-                              paddingVertical: vscale(10),
-                              borderRadius: scale(10),
-                              alignItems: 'center',
-                              flexDirection: 'row',
-                              justifyContent: 'center'
-                            }}
-                          >
-                            <Text style={{ color: '#FFF', fontSize: ms(13), fontWeight: '600', marginRight: spacing(6) }}>View & Accept</Text>
-                            <Icon name="arrow-right" size={scale(16)} color="#FFF" />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    )})
-                  ) : (
-                    <View style={{ alignItems: 'center', justifyContent: 'center', paddingTop: vscale(60) }}>
-                      <View style={{
-                        width: scale(80), height: scale(80), borderRadius: scale(40),
-                        backgroundColor: '#F8FAFC', alignItems: 'center', justifyContent: 'center',
-                        marginBottom: vscale(16)
-                      }}>
-                        <Icon name="map-search-outline" size={scale(40)} color="#CBD5E1" />
-                      </View>
-                      <Text style={{ fontSize: ms(16), fontWeight: '600', color: '#475569', marginBottom: vscale(4) }}>
-                        No Requests Nearby
-                      </Text>
-                      <Text style={{ fontSize: ms(13), color: '#94A3B8', textAlign: 'center', maxWidth: '70%' }}>
-                        There are no active help requests in your current location. Check back later!
-                      </Text>
-                      <TouchableOpacity
-                        onPress={fetchNearbyRequests}
-                        style={{ marginTop: vscale(20) }}
-                        accessibilityRole="button"
-                        accessibilityLabel="Refresh nearby requests"
-                      >
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                          <Icon name="refresh" size={scale(16)} color="#DC5C69" style={{ marginRight: spacing(6) }} />
-                          <Text style={{ color: '#DC5C69', fontWeight: '600', fontSize: ms(14) }}>Refresh List</Text>
-                        </View>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                </View>
-              </ScrollView>
-            ) : (
-              <View style={{ flex: 1, paddingHorizontal: spacing(20), paddingTop: vscale(12) }}>
-                {/* Search and Filter Section */}
-                <View style={{ marginBottom: vscale(16) }}>
-                  <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    backgroundColor: '#F8FAFC',
-                    borderRadius: scale(8),
-                    paddingHorizontal: spacing(12),
-                    borderWidth: 1,
-                    borderColor: '#E2E8F0',
-                    marginBottom: vscale(12)
-                  }}>
-                    <Icon name="magnify" size={scale(20)} color="#94A3B8" />
-                    <TextInput
-                      style={{
-                        flex: 1,
-                        paddingVertical: vscale(10),
-                        paddingHorizontal: spacing(8),
-                        fontSize: ms(14),
-                        color: '#1E293B'
-                      }}
-                      placeholder="Search history..."
-                      placeholderTextColor="#94A3B8"
-                      value={searchQuery}
-                      onChangeText={setSearchQuery}
-                    />
-                    {searchQuery.length > 0 && (
-                      <TouchableOpacity onPress={() => setSearchQuery('')}>
-                        <Icon name="close-circle" size={scale(18)} color="#94A3B8" />
-                      </TouchableOpacity>
-                    )}
-                  </View>
-
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: spacing(20) }}>
-                    {['All', 'Active', 'Completed', 'Cancelled'].map((status) => (
-                      <TouchableOpacity
-                        key={status}
-                        onPress={() => setFilterStatus(status)}
-                        style={{
-                          paddingHorizontal: spacing(16),
-                          paddingVertical: vscale(6),
-                          borderRadius: scale(20),
-                          backgroundColor: filterStatus === status ? '#DC5C69' : '#F1F5F9',
-                          marginRight: spacing(8),
-                          borderWidth: 1,
-                          borderColor: filterStatus === status ? '#DC5C69' : '#E2E8F0'
-                        }}
-                      >
-                        <Text style={{
-                          fontSize: ms(13),
-                          fontWeight: filterStatus === status ? '600' : '500',
-                          color: filterStatus === status ? '#FFFFFF' : '#64748B'
-                        }}>
-                          {status}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-
-                {loadingHistory ? (
-                  <View style={{ marginTop: vscale(12), paddingBottom: vscale(100) }}>
-                    {[0, 1, 2, 3].map((i) => (
-                      <View
-                        key={i}
-                        style={[
-                          styles.historyCard,
-                          {
-                            marginBottom: vscale(12),
-                            borderRadius: scale(16),
-                            padding: scale(16),
-                            backgroundColor: '#FFFFFF',
-                            shadowColor: '#000',
-                            shadowOffset: { width: 0, height: 2 },
-                            shadowOpacity: 0.08,
-                            shadowRadius: 8,
-                            elevation: 3,
-                            borderWidth: 1,
-                            borderColor: '#F1F5F9',
-                          },
-                        ]}
-                      >
-                        <View style={{ flexDirection: 'row' }}>
-                          <SkeletonCircle size={scale(48)} style={{ marginRight: spacing(12) }} />
-                          <View style={{ flex: 1 }}>
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: vscale(6) }}>
-                              <SkeletonBox height={12} radius={8} width="55%" />
-                              <SkeletonBox height={18} radius={9} width={scale(70)} />
-                            </View>
-                            <SkeletonBox height={10} radius={8} width="70%" style={{ marginBottom: vscale(10) }} />
-                            <SkeletonBox height={10} radius={8} width="45%" />
-                          </View>
-                        </View>
-                      </View>
-                    ))}
-                  </View>
-                ) : (
-                  <FlatList
-                    data={getFilteredHistory()}
-                    renderItem={renderHistoryItem}
-                    keyExtractor={(item) => item._id}
-                    showsVerticalScrollIndicator={false}
-                    contentContainerStyle={{ paddingBottom: vscale(100) }}
-                    refreshControl={
-                      <RefreshControl refreshing={loadingHistory} onRefresh={fetchHistory} colors={['#DC5C69']} tintColor="#DC5C69" />
-                    }
-                    ListEmptyComponent={
-                      <View style={{ alignItems: 'center', marginTop: vscale(40) }}>
-                        <Icon name="history" size={scale(48)} color="#E0E0E0" />
-                        <Text style={{ marginTop: vscale(12), color: '#999999', fontSize: ms(14) }}>
-                          No history found
-                        </Text>
-                      </View>
-                    }
-                  />
-                )}
-              </View>
-            )}
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent, { alignItems: 'center', paddingHorizontal: spacing(20), paddingTop: vscale(10), paddingBottom: vscale(80) }]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        <View style={{ width: contentWidth }}>
+          {/* Header Section */}
+          <View style={[styles.titleSection, { marginBottom: vscale(20), alignItems: 'center' }]}>
+            <Text style={[styles.mainTitle, { fontSize: ms(24), fontWeight: '700', color: '#374151' }]}>
+              Community
+            </Text>
+            <Text style={[styles.subtitle, { fontSize: ms(14), color: '#6B7280', marginTop: vscale(4) }]}>
+              Small help, close by.
+            </Text>
           </View>
-        )}
+
+          {/* Active Request Card (Requester) */}
+          {activeRequest && (
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => {
+                const status = String(activeRequest.status || '').toLowerCase();
+                if (['accepted', 'in_progress', 'matched', 'en_route', 'arrived', 'active'].includes(status)) {
+                  navigation.navigate('RequesterMatchingMap', { requestId: activeRequest._id });
+                } else {
+                  navigation.navigate('RequestActive');
+                }
+              }}
+              style={[styles.activeCard, styles.helpActiveCard]}
+            >
+              <View style={[styles.activeIconBadge, { backgroundColor: '#0EA5E9', width: scale(40), height: scale(40), borderRadius: scale(20), marginRight: spacing(12) }]}>
+                <Icon name="hand-heart" size={scale(20)} color="#FFFFFF" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+                  <View style={{ marginRight: spacing(6) }}>
+                    <PulseDot color="#0EA5E9" size={6} />
+                  </View>
+                  <Text style={[styles.activeCardTitle, { fontSize: ms(14), color: '#0EA5E9', fontWeight: '700', marginRight: spacing(6) }]}>
+                    Active Help Request
+                  </Text>
+                  <View style={styles.liveBadge}><Text style={styles.liveText}>LIVE</Text></View>
+                </View>
+                <Text numberOfLines={1} style={styles.activeCardDesc}>{activeRequest.description}</Text>
+              </View>
+              <Icon name="chevron-right" size={scale(20)} color="#0EA5E9" />
+            </TouchableOpacity>
+          )}
+
+          {/* Ask for Local Help Card (New Design) */}
+          <View style={styles.mockupCard}>
+            <View style={styles.illustrationContainer}>
+              <Image 
+                source={require('../../assets/daily-help.png')}
+                style={styles.illustrationImage}
+                resizeMode="contain"
+              />
+            </View>
+            
+            <Text style={styles.mockupTitle}>Ask for Local Help</Text>
+            <View style={styles.mockupDivider} />
+            
+            <Text style={styles.mockupDescription}>
+              Request small, everyday help from people nearby.{"\n"}No money. No obligation.
+            </Text>
+
+            <TouchableOpacity 
+              style={styles.mockupButton}
+              onPress={handleRequestHelp}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.mockupButtonText}>Request Help</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Local Improvements (Coming Soon) */}
+          <View style={styles.improvementsCard}>
+            <Text style={styles.improvementsTitle}>Local Improvements</Text>
+            <View style={styles.improvementsDivider} />
+            <Text style={styles.improvementsDescription}>
+              Community cleanups and shared fixes. <Text style={{ fontStyle: 'italic' }}>Coming soon.</Text>
+            </Text>
+          </View>
+
+          <View style={{ marginTop: vscale(20) }}>
+            <Text style={[styles.sectionTitle, { fontSize: ms(15), marginBottom: vscale(10) }]}>Types of presence nearby</Text>
+            <View style={[styles.grid, { marginBottom: vscale(20) }]}>
+              {presenceTypes.map((it) => (
+                <View key={it.id} style={[styles.gridItem, { width: cardWidth }]}>
+                  <View style={styles.iconCard}><Image source={it.image} style={styles.iconImage} /></View>
+                  <Text style={[styles.gridLabel, { fontSize: ms(9) }]} numberOfLines={2}>{it.name}</Text>
+                </View>
+              ))}
+            </View>
+
+            <View style={styles.pointsCard}>
+              <Text style={styles.pointsTitle}>Community principles</Text>
+              {communityPoints.map((point, idx) => (
+                <View key={idx} style={styles.pointRow}>
+                  <Icon name="check-circle-outline" size={scale(16)} color="#34C759" />
+                  <Text style={styles.pointText}>{point}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        </View>
+      </ScrollView>
+
+      <CustomAlert
+        visible={alertVisible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        onClose={closeAlert}
+        buttons={alertConfig.buttons}
+        icon={alertConfig.icon}
+        iconColor={alertConfig.iconColor}
       />
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  scrollContent: {
-    flexGrow: 1,
-  },
-  titleSection: {
-    alignItems: 'center',
-  },
-  mainTitle: {
-    fontWeight: '400',
-    color: '#2C3E50',
-    textAlign: 'center',
-  },
-  subtitle: {
-    color: '#8A9BA7',
-    textAlign: 'center',
-  },
-  primaryCard: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E5E9F0',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-  },
-  askCard: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#F0F2F5',
-    shadowColor: '#000000',
-    shadowOpacity: 0.12,
-    alignItems: 'center',
-  },
-  iconBadge: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FDECEE',
-  },
-  askTitle: {
-    fontWeight: '700',
-    color: '#2C3E50',
-  },
-  askSubtext: {
-    fontWeight: '400',
-    color: '#666666',
-    textAlign: 'center',
-  },
-  cardTitle: {
-    fontWeight: '600',
-    color: '#2C3E50',
-  },
-  cardText: {
-    color: '#546E7A',
-  },
-  sectionTitle: {
-    fontWeight: '600',
-    color: '#2C3E50',
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  gridItem: {
-    alignItems: 'center',
-  },
-  iconCard: {
-    width: '100%',
-    aspectRatio: 1,
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E5E9F0',
-    borderWidth: 1,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 6,
-  },
-  iconImage: {
-    width: '72%',
-    height: '72%',
-    resizeMode: 'contain',
-  },
-  gridLabel: {
-    color: '#2C3E50',
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  pointsCard: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E5E9F0',
-  },
-  pointsTitle: {
-    fontWeight: '600',
-    color: '#2C3E50',
-  },
-  pointRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  pointText: {
-    color: '#546E7A',
-  },
+  container: { flex: 1, backgroundColor: '#FFFFFF' },
+  scrollContent: { paddingBottom: 80 },
+  titleSection: { marginBottom: 12 },
+  mainTitle: { color: '#2C3E50' },
+  subtitle: { color: '#8A9BA7' },
   activeCard: {
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderRadius: 12, paddingVertical: 14, paddingHorizontal: 14, marginBottom: 12,
+    flexDirection: 'row', alignItems: 'center', shadowColor: "#000", shadowOpacity: 0.1, elevation: 3
   },
-  activeIconBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  helpActiveCard: { borderWidth: 1.5, borderColor: '#0EA5E9', backgroundColor: '#F0F9FF' },
+  activeIconBadge: { alignItems: 'center', justifyContent: 'center' },
+  activeCardTitle: { fontWeight: '700' },
+  activeCardDesc: { fontSize: 13, color: '#334155' },
+  liveBadge: { backgroundColor: '#0EA5E9', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  liveText: { color: '#FFF', fontSize: 9, fontWeight: '800' },
+  // New Mockup Design Styles
+  mockupCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 24,
     alignItems: 'center',
-    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+    marginBottom: 16,
   },
-  activeCardTitle: {
+  illustrationContainer: {
+    marginBottom: 16,
+    width: 140,
+    height: 140,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  illustrationImage: {
+    width: '100%',
+    height: '100%',
+  },
+  mockupTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#374151',
+    marginBottom: 12,
+  },
+  mockupDivider: {
+    width: '100%',
+    height: 1,
+    backgroundColor: '#F3F4F6',
+    marginBottom: 16,
+  },
+  mockupDescription: {
+    fontSize: 15,
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  mockupButton: {
+    width: '100%',
+    backgroundColor: '#A83A30',
+    borderRadius: 30,
+    paddingVertical: 16,
+    alignItems: 'center',
+    shadowColor: '#A83A30',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  mockupButtonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
     fontWeight: '700',
   },
-  activeCardStatus: {
-    fontWeight: '500',
-    opacity: 0.8,
-  },
-  activeCardDesc: {
-    fontWeight: '400',
-  },
-  historyCard: {
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  historyIcon: {
-    width: 32,
-    height: 32,
+  // Local Improvements Styles
+  improvementsCard: {
+    backgroundColor: '#F3F4F6',
     borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
+    padding: 16,
+    marginBottom: 12,
   },
-  historyTitle: {
-    fontWeight: '600',
-    color: '#2C3E50',
-    marginBottom: 2,
+  improvementsTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#4B5563',
+    marginBottom: 8,
   },
-  historyDate: {
-    color: '#999999',
-    fontWeight: '400',
+  improvementsDivider: {
+    width: '100%',
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginBottom: 8,
   },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    justifyContent: 'center',
-  },
-  statusText: {
-    fontWeight: '600',
-  },
-  historyDesc: {
-    color: '#546E7A',
+  improvementsDescription: {
+    fontSize: 13,
+    color: '#6B7280',
     lineHeight: 18,
   },
-  roleBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-    marginTop: 4,
-  },
-  roleText: {
-    fontWeight: '500',
-  },
-  avatarPlaceholder: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  avatarImage: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
-  actionBtn: {
-    paddingVertical: 10,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionBtnText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
+  askCard: { backgroundColor: '#FFFFFF', shadowColor: '#000', shadowOpacity: 0.12, elevation: 2 },
+  iconBadge: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#F0F9FF' },
+  askTitle: { fontWeight: '700', color: '#2C3E50' },
+  askSubtext: { fontWeight: '400', color: '#666666' },
+  sectionTitle: { fontWeight: '600', color: '#2C3E50' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 10 },
+  gridItem: { alignItems: 'center' },
+  iconCard: { width: '100%', aspectRatio: 1, backgroundColor: '#FFFFFF', borderColor: '#E5E9F0', borderWidth: 1, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  iconImage: { width: '72%', height: '72%', resizeMode: 'contain' },
+  gridLabel: { color: '#2C3E50', fontWeight: '500', textAlign: 'center' },
+  pointsCard: { padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#E5E9F0', marginBottom: 12 },
+  pointsTitle: { fontWeight: '600', color: '#2C3E50', fontSize: 14, marginBottom: 8 },
+  pointRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  pointText: { color: '#546E7A', fontSize: 13, marginLeft: 8 },
 });
 
 export default CommunityScreen;

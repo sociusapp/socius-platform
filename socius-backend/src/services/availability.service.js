@@ -1,7 +1,10 @@
 const User = require('../models/User')
+const PresenceRequest = require('../models/PresenceRequest')
+const PresenceMatch = require('../models/PresenceMatch')
 const { isValidCoordinates } = require('../utils/geoQuery')
 const logger = require('../utils/logger')
 const { updateUserLocation, removeUserLocation, del } = require('../config/redis')
+const { emitToUser } = require('../config/socket')
 
 /**
  * Availability toggle karo
@@ -66,6 +69,37 @@ const toggleAvailability = async (userId, { isAvailable, location }) => {
   del(`user:profile:${userId}`).catch(() => {})
 
   logger.info(`Availability toggled: ${userId} → ${isAvailable}`)
+
+  try {
+    const matches = await PresenceMatch.find({
+      helperId: userId,
+      status: { $in: ['alerted', 'accepted', 'en_route', 'arrived'] },
+    })
+      .select('presenceRequestId')
+      .lean()
+
+    const presenceIds = matches.map((m) => m?.presenceRequestId).filter(Boolean)
+    if (presenceIds.length > 0) {
+      const requests = await PresenceRequest.find({
+        _id: { $in: presenceIds },
+        status: { $in: ['active', 'helpers_notified', 'helpers_accepted'] },
+      })
+        .select('_id requesterId')
+        .lean()
+
+      requests.forEach((r) => {
+        if (!r?.requesterId) return
+        emitToUser(String(r.requesterId), 'presence:notified_availability_changed', {
+          presenceRequestId: String(r._id),
+          helperId: String(userId),
+          isAvailable: !!isAvailable,
+        })
+      })
+    }
+  } catch (e) {
+    logger.error('Failed to emit availability updates', e)
+  }
+
   return { isAvailable, location: isAvailable ? location : null }
 }
 

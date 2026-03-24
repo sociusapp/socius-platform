@@ -5,6 +5,7 @@ import Header from '../../../components/common/Header';
 import Button from '../../../components/common/Button';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useResponsive } from '../../../utils/responsive';
+import MotionView from '../../../components/common/MotionView';
 
 const RequestClosedScreen = ({ navigation }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
@@ -20,20 +21,20 @@ const RequestClosedScreen = ({ navigation }) => {
       
       <ScrollView contentContainerStyle={[styles.scrollContent, { paddingHorizontal: spacing(20), paddingBottom: vscale(30) }]} showsVerticalScrollIndicator={false}>
         <View style={{ width: contentWidth, alignSelf: 'center' }}>
-          <View style={[styles.illustrationContainer, { height: vscale(180), marginBottom: vscale(10) }]}>
+          <MotionView preset="fadeUp" delay={100} style={[styles.illustrationContainer, { height: vscale(180), marginBottom: vscale(10) }]}>
             <Image 
               source={require('../../../assets/images/awareness/05.png')}
               style={styles.illustrationImage}
               resizeMode="contain"
             />
-          </View>
+          </MotionView>
 
-          <View style={[styles.statusCard, { padding: spacing(20), borderRadius: scale(16), marginBottom: vscale(16), borderWidth: scale(1) }]}>
+          <MotionView preset="fadeUp" delay={200} style={[styles.statusCard, { padding: spacing(20), borderRadius: scale(16), marginBottom: vscale(16), borderWidth: scale(1) }]}>
             <Text style={[styles.statusTitle, { fontSize: ms(16), marginBottom: vscale(8) }]}>This awareness request has ended.</Text>
             <Text style={[styles.statusSubtitle, { fontSize: ms(14) }]}>No further action is expected.</Text>
-          </View>
+          </MotionView>
 
-          <View style={[styles.infoCard, { padding: spacing(16), borderRadius: scale(16), marginBottom: vscale(16), borderWidth: scale(1) }]}>
+          <MotionView preset="fadeUp" delay={300} style={[styles.infoCard, { padding: spacing(16), borderRadius: scale(16), marginBottom: vscale(16), borderWidth: scale(1) }]}>
             <Text style={[styles.cardHeader, { fontSize: ms(16), marginBottom: vscale(12) }]}>How closures happen</Text>
             <View style={[styles.divider, { height: scale(1), marginBottom: vscale(12) }]} />
             
@@ -57,9 +58,9 @@ const RequestClosedScreen = ({ navigation }) => {
               </View>
               <Text style={[styles.listItemText, { fontSize: ms(14), lineHeight: vscale(20) }]}>The requester went offline.</Text>
             </View>
-          </View>
+          </MotionView>
 
-          <View style={[styles.infoCard, { padding: spacing(16), borderRadius: scale(16), marginBottom: vscale(16), borderWidth: scale(1) }]}>
+          <MotionView preset="fadeUp" delay={400} style={[styles.infoCard, { padding: spacing(16), borderRadius: scale(16), marginBottom: vscale(16), borderWidth: scale(1) }]}>
             <Text style={[styles.cardHeader, { fontSize: ms(16), marginBottom: vscale(12) }]}>What to do now</Text>
             <View style={[styles.divider, { height: scale(1), marginBottom: vscale(12) }]} />
             
@@ -83,13 +84,15 @@ const RequestClosedScreen = ({ navigation }) => {
               </View>
               <Text style={[styles.listItemText, { fontSize: ms(14), lineHeight: vscale(20) }]}>Use emergency contacts if you still have concerns.</Text>
             </View>
-          </View>
+          </MotionView>
 
-          <Text style={[styles.closureNote, { fontSize: ms(14), marginBottom: vscale(24) }]}>
-            Closure does not mean something went wrong.
-          </Text>
+          <MotionView preset="fadeUp" delay={500}>
+            <Text style={[styles.closureNote, { fontSize: ms(14), marginBottom: vscale(24) }]}>
+              Closure does not mean something went wrong.
+            </Text>
+          </MotionView>
 
-          <View style={[styles.actionContainer, { marginBottom: vscale(24) }]}>
+          <MotionView preset="fadeUp" delay={600} style={[styles.actionContainer, { marginBottom: vscale(24) }]}>
             <Button 
               title="Return Home" 
               onPress={() =>
@@ -102,11 +105,13 @@ const RequestClosedScreen = ({ navigation }) => {
               fullWidth
               style={[styles.returnButton, { borderRadius: scale(30) }]}
             />
-          </View>
+          </MotionView>
 
-          <Text style={[styles.footerNote, { fontSize: ms(12), paddingHorizontal: spacing(20) }]}>
-            Socius closes requests to prevent confusion or pressure.
-          </Text>
+          <MotionView preset="fadeUp" delay={700}>
+            <Text style={[styles.footerNote, { fontSize: ms(12), paddingHorizontal: spacing(20) }]}>
+              Socius closes requests to prevent confusion or pressure.
+            </Text>
+          </MotionView>
         </View>
       </ScrollView>
     </SafeAreaView>

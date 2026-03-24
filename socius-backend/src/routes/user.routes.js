@@ -7,6 +7,7 @@ const {
   deleteAccount,
   getHistory,
   getNearbyUsers,
+  getPublicUser,
 } = require('../controllers/user.controller')
 const { authenticate } = require('../middlewares/auth')
 const { validate, schemas } = require('../middlewares/validate')
@@ -16,6 +17,9 @@ router.get('/home', authenticate, getHomeData)
 
 // GET /api/user/nearby-users?latitude=..&longitude=..&radiusMeters=500
 router.get('/nearby-users', authenticate, getNearbyUsers)
+
+// GET /api/user/public/:id
+router.get('/public/:id', authenticate, getPublicUser)
 
 // GET /api/user/history
 router.get('/history', authenticate, getHistory)

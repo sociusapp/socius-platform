@@ -29,12 +29,19 @@ const notifyUser = async (userId, { title, body, data = {}, priority = 'normal' 
   const tokens = await getUserTokens(userId)
   if (!tokens.length) {
     logger.warn(`No active tokens for user: ${userId}`)
-    return
+    return { userId: String(userId), tokensFound: 0, successCount: 0, failureCount: 0 }
   }
 
+  let successCount = 0
+  let failureCount = 0
   for (const token of tokens) {
-    await sendToDevice({ token, title, body, data, priority })
+    // eslint-disable-next-line no-await-in-loop
+    const r = await sendToDevice({ token, title, body, data, priority })
+    if (r && r.success) successCount++
+    else failureCount++
   }
+
+  return { userId: String(userId), tokensFound: tokens.length, successCount, failureCount }
 }
 
 /**
@@ -136,16 +143,39 @@ const sendHelpRequestAlert = async (helpers, helpRequest) => {
 /**
  * Presence alarm — HIGH ALARM (urgent)
  */
-const sendPresenceAlarm = async (helperIds, presenceRequest) => {
-  await notifyMultipleUsers(helperIds, {
-    // Data-only notification for custom handling
-    data: {
-      type: NOTIFICATION_TYPE.PRESENCE_ALARM,
-      requestId: String(presenceRequest._id),
-      situationType: presenceRequest.situationType,
-    },
-    priority: NOTIFICATION_PRIORITY.HIGH,
-  })
+const sendPresenceAlarm = async (helperIds, presenceRequest, helpersNearby = []) => {
+  const deliveredHelperIds = []
+  const results = []
+
+  const requester = presenceRequest.requesterId
+  const requesterName = requester ? (requester.fullName || requester.firstName || 'Someone') : 'Someone'
+  const address = presenceRequest.location?.address || requester?.cityArea || 'Nearby'
+
+  for (const helperId of helperIds) {
+    const helper = helpersNearby.find((h) => String(h._id) === String(helperId))
+    const distanceMeters = helper ? helper.distanceMeters : 0
+
+    // eslint-disable-next-line no-await-in-loop
+    const r = await notifyUser(String(helperId), {
+      data: {
+        type: NOTIFICATION_TYPE.PRESENCE_ALARM,
+        requestId: String(presenceRequest._id),
+        situationType: presenceRequest.situationType,
+        requesterName,
+        description: presenceRequest.description || '',
+        area: address,
+        locationLabel: address,
+        distanceMeters: String(distanceMeters),
+      },
+      priority: NOTIFICATION_PRIORITY.HIGH,
+    })
+    results.push(r)
+    if (r && r.successCount > 0) {
+      deliveredHelperIds.push(String(helperId))
+    }
+  }
+
+  return { deliveredHelperIds, results }
 }
 
 /**

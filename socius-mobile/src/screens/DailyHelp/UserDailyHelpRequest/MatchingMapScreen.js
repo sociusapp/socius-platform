@@ -456,7 +456,7 @@ const MatchingMapScreen = ({ navigation, route }) => {
             if (msgsRes?.success && Array.isArray(msgsRes.data)) {
               // Count unread messages from the other user
               const unread = msgsRes.data.filter(
-                m => m.senderId !== userId && !m.isRead && !m.read
+                m => String(m.senderId) !== String(userId) && !m.isRead && !m.read
               ).length;
               console.log('Unread count calculation:', {
                 total: msgsRes.data.length,
@@ -481,10 +481,21 @@ const MatchingMapScreen = ({ navigation, route }) => {
     let socket;
 
     const handleNewMessage = (data) => {
-      if (data.sessionId === sessionId) {
+      console.log('New message received via socket:', {
+        incomingSessionId: data.sessionId,
+        currentSessionId: sessionId,
+        incomingSenderId: data.message?.senderId,
+        myUserId: currentUserId,
+        isChatVisible: chatVisibleRef.current
+      });
+      
+      if (String(data.sessionId) === String(sessionId)) {
         const message = data.message || {};
+        const senderId = String(message.senderId || '');
+        const myId = String(currentUserId || '');
+        
         // Only increment if message is NOT from current user
-        if (currentUserId && message.senderId && message.senderId !== currentUserId) {
+        if (myId && senderId && senderId !== myId) {
             if (!chatVisibleRef.current) {
                setUnreadCount(prev => prev + 1);
                // Show toast with message content

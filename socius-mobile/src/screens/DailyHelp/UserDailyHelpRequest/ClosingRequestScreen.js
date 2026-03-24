@@ -179,7 +179,7 @@ const ClosingRequestScreen = ({ navigation, route }) => {
         <View style={{ width: contentWidth }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: vscale(12) }}>
             <Icon name="check-circle-outline" size={scale(18)} color="#111827" style={{ marginRight: spacing(8) }} />
-            <Text style={[styles.pageTitle, { fontSize: ms(16) }]}>Closing This Request</Text>
+            <Text style={{ fontSize: ms(16), fontWeight: '700', color: '#2C3E50' }}>Closing This Request</Text>
           </View>
 
           <View style={[styles.statusCard, {
@@ -219,7 +219,8 @@ const ClosingRequestScreen = ({ navigation, route }) => {
                   variant={providedHelp === true ? 'primary' : 'outline'}
                   size="large"
                   fullWidth
-                  icon={<Icon name="thumb-up-outline" size={scale(18)} color={providedHelp === true ? '#FFFFFF' : '#E85555'} />}
+                  textStyle={providedHelp === true ? { color: '#FFFFFF' } : { color: '#DC5C69' }}
+                  icon={<Icon name="thumb-up-outline" size={scale(18)} color={providedHelp === true ? '#FFFFFF' : '#DC5C69'} />}
                   accessibilityLabel="Yes, help was provided"
                 />
               </View>
@@ -230,7 +231,8 @@ const ClosingRequestScreen = ({ navigation, route }) => {
                   variant={providedHelp === false ? 'primary' : 'outline'}
                   size="large"
                   fullWidth
-                  icon={<Icon name="thumb-down-outline" size={scale(18)} color={providedHelp === false ? '#FFFFFF' : '#E85555'} />}
+                  textStyle={providedHelp === false ? { color: '#FFFFFF' } : { color: '#DC5C69' }}
+                  icon={<Icon name="thumb-down-outline" size={scale(18)} color={providedHelp === false ? '#FFFFFF' : '#DC5C69'} />}
                   accessibilityLabel="No, help was not provided"
                 />
               </View>

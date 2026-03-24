@@ -5,17 +5,22 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { useResponsive } from '../../../utils/responsive';
+import MotionView from '../../../components/common/MotionView';
+import MotionPressable from '../../../components/common/MotionPressable';
 
 const SafetyGuidanceScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
-  const { category, reason, query } = route.params || {};
+  const { requestId } = route.params || {};
 
   const handleContinue = () => {
-    navigation.navigate('BeforeShare', { category, reason, query });
+    navigation.navigate('NearbyMap', { requestId, mode: 'helper' });
   };
 
   const handleStepAway = () => {
-    navigation.goBack();
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+    });
   };
 
   return (
@@ -32,59 +37,67 @@ const SafetyGuidanceScreen = ({ navigation, route }) => {
 
       <ScrollView contentContainerStyle={[styles.scrollContent, { padding: spacing(24), paddingBottom: vscale(40) }]} showsVerticalScrollIndicator={false}>
         <View style={{ width: contentWidth, alignItems: 'center' }}>
-          <Image 
-            source={require('../../../assets/images/awareness/03.png')} 
-            style={[styles.heroImage, { height: vscale(180), marginBottom: vscale(24) }]} 
-            resizeMode="contain"
-          />
+          <MotionView preset="fadeUp" delay={100}>
+            <Image 
+              source={require('../../../assets/images/awareness/03.png')} 
+              style={[styles.heroImage, { height: vscale(180), marginBottom: vscale(24) }]} 
+              resizeMode="contain"
+            />
+          </MotionView>
           
-          <View style={[styles.infoCard, { borderRadius: scale(16), padding: spacing(20), marginBottom: vscale(32), borderWidth: scale(1), shadowRadius: scale(12), elevation: scale(3) }]}>
+          <MotionView preset="fadeUp" delay={200} style={[styles.infoCard, { borderRadius: scale(16), padding: spacing(20), marginBottom: vscale(32), borderWidth: scale(1), shadowRadius: scale(12), elevation: scale(3) }]}>
             <Text style={[styles.infoCardTitle, { fontSize: ms(16), marginBottom: vscale(8) }]}>Others nearby have also seen this request.</Text>
             <Text style={[styles.infoCardText, { fontSize: ms(14), lineHeight: vscale(20) }]}>This is shared awareness, not a solo situation.</Text>
-          </View>
+          </MotionView>
 
           <View style={[styles.tipsList, { marginBottom: vscale(32) }]}>
-            <View style={[styles.tipItem, { paddingVertical: vscale(12) }]}>
+            <MotionView preset="fadeUp" delay={300} style={[styles.tipItem, { paddingVertical: vscale(12) }]}>
               <Icon name="map-marker" size={scale(22)} color="#C62828" style={[styles.tipIcon, { width: scale(32), marginRight: spacing(12) }]} />
               <Text style={[styles.tipText, { fontSize: ms(15) }]}>Stay in open, visible places</Text>
-            </View>
-            <View style={[styles.tipDivider, { height: scale(1), marginLeft: spacing(44) }]} />
+            </MotionView>
+            <MotionView preset="fadeUp" delay={350} style={[styles.tipDivider, { height: scale(1), marginLeft: spacing(44) }]} />
             
-            <View style={[styles.tipItem, { paddingVertical: vscale(12) }]}>
+            <MotionView preset="fadeUp" delay={400} style={[styles.tipItem, { paddingVertical: vscale(12) }]}>
               <Icon name="eye" size={scale(22)} color="#546E7A" style={[styles.tipIcon, { width: scale(32), marginRight: spacing(12) }]} />
               <Text style={[styles.tipText, { fontSize: ms(15) }]}>Let others remain within view</Text>
-            </View>
-            <View style={[styles.tipDivider, { height: scale(1), marginLeft: spacing(44) }]} />
+            </MotionView>
+            <MotionView preset="fadeUp" delay={450} style={[styles.tipDivider, { height: scale(1), marginLeft: spacing(44) }]} />
 
-            <View style={[styles.tipItem, { paddingVertical: vscale(12) }]}>
+            <MotionView preset="fadeUp" delay={500} style={[styles.tipItem, { paddingVertical: vscale(12) }]}>
               <Icon name="door-open" size={scale(22)} color="#78909C" style={[styles.tipIcon, { width: scale(32), marginRight: spacing(12) }]} />
               <Text style={[styles.tipText, { fontSize: ms(15) }]}>Avoid private or enclosed areas</Text>
-            </View>
+            </MotionView>
           </View>
 
-          <View style={[styles.sociusNoteWrap, { marginBottom: vscale(24) }]}>
+          <MotionView preset="fadeUp" delay={600} style={[styles.sociusNoteWrap, { marginBottom: vscale(24) }]}>
             <View style={[styles.hairline, { height: scale(1), marginBottom: vscale(12) }]} />
             <Text style={[styles.sociusNote, { fontSize: ms(13), marginBottom: vscale(12) }]}>Socius encourages visibility, not action.</Text>
             <View style={[styles.hairline, { height: scale(1), marginBottom: vscale(12) }]} />
-          </View>
+          </MotionView>
 
-          <TouchableOpacity onPress={handleContinue} activeOpacity={0.8} style={{ width: '100%' }}>
-            <LinearGradient
-              colors={['#E53935', '#C62828']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={[styles.continueButton, { paddingVertical: vscale(16), borderRadius: scale(30), minWidth: scale(300), marginBottom: vscale(16), shadowRadius: scale(8), elevation: scale(4) }]}
-            >
-              <Text style={[styles.continueButtonText, { fontSize: ms(18) }]}>Continue</Text>
-            </LinearGradient>
-          </TouchableOpacity>
+          <MotionView preset="fadeUp" delay={700} style={{ width: '100%' }}>
+            <MotionPressable onPress={handleContinue} activeOpacity={0.8} style={{ width: '100%' }}>
+              <LinearGradient
+                colors={['#E53935', '#C62828']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={[styles.continueButton, { paddingVertical: vscale(16), borderRadius: scale(30), minWidth: scale(300), marginBottom: vscale(16), shadowRadius: scale(8), elevation: scale(4) }]}
+              >
+                <Text style={[styles.continueButtonText, { fontSize: ms(18) }]}>Continue</Text>
+              </LinearGradient>
+            </MotionPressable>
+          </MotionView>
 
-          <TouchableOpacity onPress={handleStepAway} style={[styles.stepAwayButton, { paddingVertical: vscale(12), paddingHorizontal: spacing(24), marginBottom: vscale(24) }]}>
-            <Text style={[styles.stepAwayText, { fontSize: ms(16) }]}>Step Away</Text>
-          </TouchableOpacity>
+          <MotionView preset="fadeUp" delay={800}>
+            <MotionPressable onPress={handleStepAway} style={[styles.stepAwayButton, { paddingVertical: vscale(12), paddingHorizontal: spacing(24), marginBottom: vscale(24) }]}>
+              <Text style={[styles.stepAwayText, { fontSize: ms(16) }]}>Step Away</Text>
+            </MotionPressable>
+          </MotionView>
 
-          <View style={[styles.bottomDivider, { height: scale(1), marginBottom: vscale(16) }]} />
-          <Text style={[styles.bottomNote, { fontSize: ms(13) }]}>Presence does not require engagement.</Text>
+          <MotionView preset="fadeUp" delay={900} style={[styles.bottomDivider, { height: scale(1), marginBottom: vscale(16) }]} />
+          <MotionView preset="fadeUp" delay={1000}>
+            <Text style={[styles.bottomNote, { fontSize: ms(13) }]}>Presence does not require engagement.</Text>
+          </MotionView>
         </View>
       </ScrollView>
     </SafeAreaView>

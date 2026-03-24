@@ -77,7 +77,7 @@ const findNearbyAvailableUsers = async ({
     logger.info(`findNearbyAvailableUsers (MongoDB fallback) query: ${JSON.stringify(query)}`)
 
     const users = await User.find(query)
-      .select('fullName location notificationPreferences isAvailable accountStatus')
+      .select('fullName profileImage location notificationPreferences isAvailable accountStatus role')
       .limit(limit)
 
     logger.info(`findNearbyAvailableUsers: Found ${users.length} users within ${radiusMeters}m of [${lat}, ${lng}]`)

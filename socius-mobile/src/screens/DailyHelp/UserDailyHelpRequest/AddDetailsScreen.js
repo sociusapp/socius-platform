@@ -21,6 +21,7 @@ const AddDetailsScreen = ({ navigation, route }) => {
   const [customTimeVisible, setCustomTimeVisible] = useState(false);
   const [dbLocation, setDbLocation] = useState(null);
   const [locationLabel, setLocationLabel] = useState('');
+  const [showError, setShowError] = useState(false);
 
   const timeOptions = [
     { id: 1, label: '10–15 minutes' },
@@ -111,6 +112,10 @@ const AddDetailsScreen = ({ navigation, route }) => {
   }, []);
 
   const handleReviewRequest = () => {
+    if (!description.trim()) {
+      setShowError(true);
+      return;
+    }
     navigation.navigate('ReviewRequest', {
       description,
       time: selectedTime,
@@ -147,7 +152,7 @@ const AddDetailsScreen = ({ navigation, route }) => {
           </View>
 
           {/* Text Input */}
-          <View style={[styles.inputContainer, { marginBottom: vscale(20) }]}>
+          <View style={[styles.inputContainer, { marginBottom: showError ? vscale(8) : vscale(20) }]}>
             <TextInput
               style={[styles.textInput, { 
                 borderRadius: scale(20),
@@ -159,17 +164,28 @@ const AddDetailsScreen = ({ navigation, route }) => {
                 paddingRight: spacing(60),
                 shadowOffset: { width: 0, height: vscale(2) },
                 shadowRadius: scale(6),
-                elevation: scale(2)
+                elevation: scale(2),
+                borderColor: showError ? '#DC5C69' : '#E8EAED',
               }]}
               placeholder="Example: Need a quick printout near the bus stop"
               placeholderTextColor="#999999"
               value={description}
-              onChangeText={setDescription}
+              onChangeText={(text) => {
+                setDescription(text);
+                if (text.trim().length > 0) setShowError(false);
+              }}
               maxLength={120}
               multiline={true}
             />
             <Text style={[styles.charCount, { bottom: vscale(12), right: spacing(16), fontSize: ms(13) }]}>{description.length} / 120</Text>
           </View>
+
+          {showError && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginBottom: vscale(12), marginLeft: spacing(4) }}>
+              <Icon name="alert-circle-outline" size={scale(16)} color="#DC5C69" style={{ marginRight: spacing(4) }} />
+              <Text style={{ color: '#DC5C69', fontSize: ms(13), fontWeight: '500' }}>Please add a short detail first.</Text>
+            </View>
+          )}
 
           {/* How Long Section */}
           <View style={[styles.timeSection, { marginBottom: vscale(24) }]}>
@@ -287,7 +303,6 @@ const AddDetailsScreen = ({ navigation, route }) => {
             onPress={handleReviewRequest}
             variant="gradient"
             fullWidth
-            disabled={description.trim().length === 0}
             icon={<Icon name="clipboard-text-outline" size={scale(18)} color="#FFFFFF" />}
             accessibilityLabel="Review your request"
           />

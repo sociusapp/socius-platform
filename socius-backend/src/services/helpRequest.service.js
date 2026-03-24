@@ -763,9 +763,9 @@ const markAsDelivered = async (helperId, requestId) => {
 const getNearbyHelpRequests = async (userId, coords = null) => {
   let lng, lat;
 
-  if (coords && coords.latitude && coords.longitude) {
-    lng = coords.longitude;
-    lat = coords.latitude;
+  if (coords && (coords.lat !== undefined || coords.latitude !== undefined) && (coords.lng !== undefined || coords.longitude !== undefined)) {
+    lng = coords.lng !== undefined ? coords.lng : coords.longitude;
+    lat = coords.lat !== undefined ? coords.lat : coords.latitude;
   } else {
     // Current user ki location se uthao
     const User = require('../models/User')
@@ -776,6 +776,13 @@ const getNearbyHelpRequests = async (userId, coords = null) => {
     lng = user.location.coordinates[0];
     lat = user.location.coordinates[1];
   }
+
+  if (lng === undefined || lat === undefined || isNaN(parseFloat(lng)) || isNaN(parseFloat(lat))) {
+    return []
+  }
+
+  lng = parseFloat(lng);
+  lat = parseFloat(lat);
 
   const { calculateDistance } = require('../utils/geoQuery')
 

@@ -188,11 +188,11 @@ const HelpTypeScreen = ({ navigation }) => {
                   {helpType.iconUrl ? (
                     <Image
                       source={{ uri: helpType.iconUrl }}
-                      style={{ width: scale(26), height: scale(26), borderRadius: scale(7) }}
+                      style={{ width: scale(32), height: scale(32), borderRadius: scale(8) }}
                       resizeMode="cover"
                     />
                   ) : (
-                    <Icon name={helpType.icon} size={scale(26)} color={helpType.color} style={styles.cardIcon} />
+                    <Icon name={helpType.icon} size={scale(32)} color={helpType.color} style={styles.cardIcon} />
                   )}
                   <Text style={[styles.helpTypeLabel, { fontSize: ms(14), marginLeft: spacing(10), lineHeight: ms(20) }]}>
                     {String(helpType.label || '').toUpperCase()}

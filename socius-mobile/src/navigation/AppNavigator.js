@@ -2,14 +2,17 @@ import React, { useEffect, useRef, useState } from 'react';
 import { NavigationContainer, createNavigationContainerRef, CommonActions } from '@react-navigation/native';
 import notifee, { AndroidStyle, EventType } from '@notifee/react-native';
 import { AppState, NativeEventEmitter, NativeModules, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import StackNavigator from './StackNavigator';
 import { onNotificationOpened, getInitialNotification, onMessageForeground } from '../services/firebase/messaging';
 import { CHANNELS, handleIncomingCallMessage, initNotifeeChannels } from '../services/notifications/SociusNotificationService';
-import { connectSocket } from '../services/socket/socket.service';
+import { connectSocket, emitStatusUpdate } from '../services/socket/socket.service';
 import CustomAlert from '../components/common/CustomAlert';
-import IncomingHelpRequestModal from '../components/notifications/IncomingHelpRequestModal';
+import DailyHelpIncomingModal from '../components/DailyHelp/modals/DailyHelpIncomingModal';
+import NeedPresenceIncomingModal from '../components/NeedPresence/modals/NeedPresenceIncomingModal';
+import IncomingPresenceAlarmModal from '../components/notifications/IncomingPresenceAlarmModal';
 import { loadAuth } from '../services/storage/asyncStorage.service';
-import { declineHelpAsVolunteer } from '../services/api/volunteer.api';
+import { declineHelpAsVolunteer, declinePresenceAsVolunteer } from '../services/api/volunteer.api';
 import { getMyActiveHelpRequest } from '../services/api/incident.api';
 import { buildClosureInitiatedCopy, buildRequestClosedCopy } from '../utils/closureMessages';
 import NativeCallService from '../services/notifications/NativeCallService';
@@ -37,15 +40,37 @@ const handleNotifeeNavigation = async (navRef, notification, pressAction) => {
   const type = data.type;
 
   if (type === 'PRESENCE_ALARM') {
-    nav.navigate('NearbyMap', {
+    const requestId = data.requestId || data.presenceId || data.id;
+    const distanceMetersRaw = data.distanceMeters ?? data.distance_meters ?? data.distance;
+    
+    // Emit sync event for requester
+    loadAuth().then(auth => {
+      const userId = auth?.user?._id || auth?.user?.id || auth?.userId;
+      if (requestId && userId) {
+        emitStatusUpdate(requestId, 'accepted', { type: 'PRESENCE_ALARM', userId });
+      }
+    });
+
+    nav.navigate('SomeoneConcern', {
+      requestId,
       situation: data.situation,
-      distanceMeters: data.distanceMeters ? Number(data.distanceMeters) : 0,
-      area: data.area,
+      distanceMeters: distanceMetersRaw ? Number(distanceMetersRaw) : 0,
+      area: data.area || data.cityArea || data.locationLabel,
     });
     return;
   }
 
   if (type === 'HELP_REQUEST') {
+    const requestId = data.requestId;
+    
+    // Emit sync event for requester
+    loadAuth().then(auth => {
+      const userId = auth?.user?._id || auth?.user?.id || auth?.userId;
+      if (requestId && userId) {
+        emitStatusUpdate(requestId, 'accepted', { type: 'HELP_REQUEST', userId });
+      }
+    });
+
     nav.navigate('SomeoneNeedsHelp', {
       requestId: data.requestId,
       category: data.category,
@@ -125,6 +150,58 @@ const AppNavigator = () => {
 
   const [incomingHelpVisible, setIncomingHelpVisible] = useState(false);
   const [incomingHelpData, setIncomingHelpData] = useState(null);
+  const [incomingHelpStatus, setIncomingHelpStatus] = useState('notified');
+  const [incomingPresenceVisible, setIncomingPresenceVisible] = useState(false);
+  const [incomingPresenceData, setIncomingPresenceData] = useState(null);
+  const [incomingPresenceStatus, setIncomingPresenceStatus] = useState('notified');
+
+  // Persistence logic for Modals
+  useEffect(() => {
+    const persistModals = async () => {
+      try {
+        if (incomingHelpVisible && incomingHelpData) {
+          await AsyncStorage.setItem('PENDING_HELP_MODAL', JSON.stringify(incomingHelpData));
+        } else {
+          await AsyncStorage.removeItem('PENDING_HELP_MODAL');
+        }
+
+        if (incomingPresenceVisible && incomingPresenceData) {
+          await AsyncStorage.setItem('PENDING_PRESENCE_MODAL', JSON.stringify(incomingPresenceData));
+        } else {
+          await AsyncStorage.removeItem('PENDING_PRESENCE_MODAL');
+        }
+      } catch (e) {
+        console.log('[AppNavigator] Error persisting modal state', e);
+      }
+    };
+    persistModals();
+  }, [incomingHelpVisible, incomingHelpData, incomingPresenceVisible, incomingPresenceData]);
+
+  // Restore logic on app launch
+  useEffect(() => {
+    const restoreModals = async () => {
+      try {
+        const pendingHelp = await AsyncStorage.getItem('PENDING_HELP_MODAL');
+        if (pendingHelp) {
+          setIncomingHelpData(JSON.parse(pendingHelp));
+          setIncomingHelpStatus('notified');
+          setIncomingHelpVisible(true);
+        }
+
+        const pendingPresence = await AsyncStorage.getItem('PENDING_PRESENCE_MODAL');
+        if (pendingPresence) {
+          setIncomingPresenceData(JSON.parse(pendingPresence));
+          setIncomingPresenceStatus('notified');
+          setIncomingPresenceVisible(true);
+        }
+      } catch (e) {
+        console.log('[AppNavigator] Error restoring modal state', e);
+      }
+    };
+    
+    // Wait for navigation to be ready or just show them
+    restoreModals();
+  }, []);
 
   useEffect(() => {
     if (SociusCallModule) {
@@ -139,7 +216,13 @@ const AppNavigator = () => {
             const auth = await loadAuth();
             const token = auth?.accessToken;
             if (token && uuid) {
-              await declineHelpAsVolunteer(token, uuid);
+              const parsed = payload ? JSON.parse(payload) : {};
+              const t = String(parsed?.type || '').toUpperCase();
+              if (t === 'PRESENCE_ALARM' || t.includes('PRESENCE')) {
+                await declinePresenceAsVolunteer(token, uuid);
+              } else {
+                await declineHelpAsVolunteer(token, uuid);
+              }
             }
           } catch (e) {
             console.log('[AppNavigator] Decline handling failed', e);
@@ -188,6 +271,7 @@ const AppNavigator = () => {
       appStateRef.current = nextState;
       if (nextState !== 'active') {
         setIncomingHelpVisible(false);
+        setIncomingPresenceVisible(false);
         NativeCallService.stopRingtone();
       }
     });
@@ -234,6 +318,21 @@ const AppNavigator = () => {
 
         const type = String(data.type || '').toLowerCase();
 
+        if (type === 'presence_alarm' || type.includes('presence_alarm')) {
+          const requestId = data.requestId || data.presenceId || data.id;
+          const distanceMetersRaw = data.distanceMeters ?? data.distance_meters ?? data.distance;
+          NativeCallService.startPresenceAlarmRingtone();
+          setIncomingPresenceData({
+            requestId,
+            situation: data.description || data.situation || data.situationType || 'Safety concern',
+            requesterName: data.requesterName || 'Someone',
+            distanceMeters: distanceMetersRaw ? Number(distanceMetersRaw) : 0,
+            area: data.area || data.cityArea || data.locationLabel || 'Nearby',
+          });
+          setIncomingPresenceVisible(true);
+          return;
+        }
+
         if ((type.includes('help_request') || type === 'help_request_alert') && data.requestId) {
           loadAuth()
             .then((auth) => {
@@ -244,6 +343,7 @@ const AppNavigator = () => {
                 category: data.category,
                 categoryName: data.categoryName,
                 categoryIcon: data.categoryIcon,
+                requesterName: data.requesterName || 'Someone',
                 description: data.description,
                 distanceMeters: data.distanceMeters ? Number(data.distanceMeters) : 0,
                 area: data.area,
@@ -285,10 +385,29 @@ const AppNavigator = () => {
       const data = remoteMessage?.data || {};
       const upperType = String(data.type || '').toUpperCase();
 
+      const isPresenceAlarm = upperType === 'PRESENCE_ALARM' || upperType.includes('PRESENCE_ALARM');
       const isHelpRequest =
         upperType.includes('HELP_REQUEST') ||
         upperType === 'HELP_REQUEST_ALERT' ||
         upperType.includes('HELP_REQUEST_ALERT');
+
+      if (Platform.OS === 'android' && isPresenceAlarm) {
+        try {
+          NativeCallService.startPresenceAlarmRingtone();
+        } catch (e) {}
+
+        const requestId = data.requestId || data.presenceId || data.id;
+        const distanceMetersRaw = data.distanceMeters ?? data.distance_meters ?? data.distance;
+        setIncomingPresenceData({
+          requestId,
+          situation: data.description || data.situation || data.situationType || 'Safety concern',
+          requesterName: data.requesterName || 'Someone',
+          distanceMeters: distanceMetersRaw ? Number(distanceMetersRaw) : 0,
+          area: data.area || data.cityArea || data.locationLabel || 'Nearby',
+        });
+        setIncomingPresenceVisible(true);
+        return;
+      }
 
       if (Platform.OS === 'android' && isHelpRequest) {
         const auth = await loadAuth().catch(() => null);
@@ -304,6 +423,7 @@ const AppNavigator = () => {
           category: data.category,
           categoryName: data.categoryName,
           categoryIcon: data.categoryIcon,
+          requesterName: data.requesterName || 'Someone',
           description: data.description,
           distanceMeters: data.distanceMeters ? Number(data.distanceMeters) : 0,
           area: data.area,
@@ -754,45 +874,63 @@ const AppNavigator = () => {
       <NavigationContainer ref={navigationRef}>
         <StackNavigator />
       </NavigationContainer>
-      <IncomingHelpRequestModal
+      {/* Community/Daily Help Notification Modal */}
+      <DailyHelpIncomingModal
         visible={incomingHelpVisible}
         data={incomingHelpData}
-        onClose={() => {
+        status={incomingHelpStatus}
+        onDecline={() => {
           setIncomingHelpVisible(false);
           NativeCallService.stopRingtone();
-        }}
-        onDecline={async () => {
-          const requestId = incomingHelpData?.requestId;
-          const token = incomingHelpData?.token;
-          setIncomingHelpVisible(false);
-          NativeCallService.stopRingtone();
-          if (token && requestId) {
-            try {
-              await declineHelpAsVolunteer(token, requestId);
-            } catch (e) {}
-          }
         }}
         onView={() => {
+          setIncomingHelpStatus('accepted');
           const requestId = incomingHelpData?.requestId;
-          const category = incomingHelpData?.category;
-          const categoryName = incomingHelpData?.categoryName;
-          const categoryIcon = incomingHelpData?.categoryIcon;
-          const description = incomingHelpData?.description;
-          const distanceMeters = incomingHelpData?.distanceMeters;
-          const area = incomingHelpData?.area;
-          setIncomingHelpVisible(false);
-          NativeCallService.stopRingtone();
-          if (navigationRef.isReady()) {
-            navigationRef.navigate('SomeoneNeedsHelp', {
-              requestId,
-              category,
-              categoryName,
-              categoryIcon,
-              description,
-              distanceMeters,
-              area,
-            });
+          setTimeout(() => {
+            setIncomingHelpVisible(false);
+            setIncomingHelpStatus('notified');
+            NativeCallService.stopRingtone();
+            if (navigationRef.isReady() && requestId) {
+              navigationRef.navigate('SomeoneNeedsHelp', {
+                requestId,
+                requestType: 'help',
+                category: incomingHelpData.category,
+                categoryName: incomingHelpData.categoryName,
+                categoryIcon: incomingHelpData.categoryIcon,
+                description: incomingHelpData.description,
+                distanceMeters: incomingHelpData.distanceMeters,
+                area: incomingHelpData.area,
+              });
+            }
+          }, 800);
+        }}
+      />
+
+      {/* Need Presence Notification Modal */}
+      <NeedPresenceIncomingModal
+        visible={incomingPresenceVisible}
+        data={incomingPresenceData}
+        onDecline={async () => {
+          try {
+            NativeCallService.stopRingtone();
+            const auth = await loadAuth();
+            const token = auth?.accessToken;
+            if (token && incomingPresenceData?.requestId) {
+              await declinePresenceAsVolunteer(token, incomingPresenceData.requestId);
+            }
+          } catch (e) {
+            console.log('[AppNavigator] Failed to decline presence from modal', e);
           }
+          setIncomingPresenceVisible(false);
+          setIncomingPresenceData(null);
+        }}
+        onView={() => {
+          NativeCallService.stopRingtone();
+          if (navigationRef.isReady() && incomingPresenceData?.requestId) {
+            navigationRef.navigate('PresenceRequestDetail', { requestId: incomingPresenceData.requestId });
+          }
+          setIncomingPresenceVisible(false);
+          setIncomingPresenceData(null);
         }}
       />
       <CustomAlert

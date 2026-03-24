@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -16,6 +16,7 @@ const ReviewRequestScreen = ({ navigation, route }) => {
   const { description, time, helpType, location, category: explicitCategory } = route?.params || {};
   const requestId = route?.params?.requestId;
   const [submitting, setSubmitting] = useState(false);
+  const [success, setSuccess] = useState(false);
   const [locationLabel, setLocationLabel] = useState('');
   
   // Custom Alert State
@@ -112,13 +113,13 @@ const ReviewRequestScreen = ({ navigation, route }) => {
     navigation.navigate('Settings');
   };
 
-  const handleShareRequest = async () => {
+  const handleShareRequest = useCallback(async () => {
     if (submitting) {
       return;
     }
 
     setSubmitting(true);
-
+    let isSuccess = false;
     let payload = null;
 
     try {
@@ -206,79 +207,87 @@ const ReviewRequestScreen = ({ navigation, route }) => {
         : await createHelpRequest(token, payload);
 
       if (response?.success) {
-        const updatedOrCreatedRequest = response?.data?.request || response?.data;
-        const showNudge = requestId ? false : !!response?.data?.showNudge;
-        const noHelpersFound = !!response?.data?.noHelpersFound;
-        const helperAvailabilityHint = response?.data?.helperAvailabilityHint || null;
-        const attemptId = response?.data?.attemptId || null;
-        console.log('[DailyHelp] helpRequest submit: success', response?.data);
+        isSuccess = true;
+        setSuccess(true);
+        // Do NOT set submitting to false here, to keep button in success state
+        // and prevent multiple clicks during the animation delay
+        
+        // Wait for fly animation before navigating
+        setTimeout(() => {
+          const updatedOrCreatedRequest = response?.data?.request || response?.data;
+          const showNudge = requestId ? false : !!response?.data?.showNudge;
+          const noHelpersFound = !!response?.data?.noHelpersFound;
+          const helperAvailabilityHint = response?.data?.helperAvailabilityHint || null;
+          const attemptId = response?.data?.attemptId || null;
+          console.log('[DailyHelp] helpRequest submit: success', response?.data);
+          
+          if (updatedOrCreatedRequest?._id || updatedOrCreatedRequest?.id) {
+            saveActiveHelpRequestId(updatedOrCreatedRequest._id || updatedOrCreatedRequest.id).catch(() => {});
+          }
 
-        if (updatedOrCreatedRequest?._id || updatedOrCreatedRequest?.id) {
-          saveActiveHelpRequestId(updatedOrCreatedRequest._id || updatedOrCreatedRequest.id).catch(() => {});
-        }
+          if (noHelpersFound) {
+            const ref = attemptId ? `\n\nRef: ${attemptId}` : '';
+            const title =
+              helperAvailabilityHint === 'only_self_available'
+                ? 'No One Else Nearby'
+                : helperAvailabilityHint === 'helpers_busy_or_ineligible'
+                  ? 'Nearby Helpers Are Busy'
+                  : 'No Helpers Nearby';
+            const message =
+              helperAvailabilityHint === 'only_self_available'
+                ? `No one else is available within 500m of your location right now. ${ref}`
+                : helperAvailabilityHint === 'helpers_busy_or_ineligible' 
+                  ? `There are people nearby, but they’re not available right now. Please try again in a few minutes.${ref}`
+                  : `No available helpers were found within 500m right now. Please try again later.${ref}`;
 
-        if (noHelpersFound) {
-          const ref = attemptId ? `\n\nRef: ${attemptId}` : '';
-          const title =
-            helperAvailabilityHint === 'only_self_available'
-              ? 'No One Else Nearby'
-              : helperAvailabilityHint === 'helpers_busy_or_ineligible'
-                ? 'Nearby Helpers Are Busy'
-                : 'No Helpers Nearby';
-          const message =
-            helperAvailabilityHint === 'only_self_available'
-              ? `No one else is available within 500m of your location right now. ${ref}`
-              : helperAvailabilityHint === 'helpers_busy_or_ineligible' 
-                ? `There are people nearby, but they’re not available right now. Please try again in a few minutes.${ref}`
-                : `No available helpers were found within 500m right now. Please try again later.${ref}`;
+            showAlert(
+              title,
+              message,
+              [{
+                text: 'Continue',
+                onPress: () => {
+                  closeAlert();
+                  if (!requestId && showNudge) {
+                    navigation.navigate('CommunityBalanceNudge', { requestId: updatedOrCreatedRequest?._id, initialRequest: updatedOrCreatedRequest });
+                  } else if (requestId) {
+                    navigation.navigate('RequestActive', { initialRequest: updatedOrCreatedRequest, updated: true });
+                  } else {
+                    navigation.navigate('RequestActive', { initialRequest: updatedOrCreatedRequest });
+                  }
+                },
+                type: 'primary'
+              }],
+              'account-search-outline',
+              '#DC5C69'
+            );
+            return;
+          }
 
-          showAlert(
-            title,
-            message,
-            [{
-              text: 'Continue',
-              onPress: () => {
-                closeAlert();
-                if (!requestId && showNudge) {
-                  navigation.navigate('CommunityBalanceNudge', { requestId: updatedOrCreatedRequest?._id, initialRequest: updatedOrCreatedRequest });
-                } else if (requestId) {
+          if (!requestId && showNudge) {
+            navigation.navigate('CommunityBalanceNudge', { requestId: updatedOrCreatedRequest?._id, initialRequest: updatedOrCreatedRequest });
+            return;
+          }
+
+          if (requestId) {
+            showAlert(
+              'Request updated',
+              'Your active request has been updated successfully.',
+              [{
+                text: 'OK',
+                onPress: () => {
+                  closeAlert();
                   navigation.navigate('RequestActive', { initialRequest: updatedOrCreatedRequest, updated: true });
-                } else {
-                  navigation.navigate('RequestActive', { initialRequest: updatedOrCreatedRequest });
-                }
-              },
-              type: 'primary'
-            }],
-            'account-search-outline',
-            '#DC5C69'
-          );
-          return;
-        }
+                },
+                type: 'primary'
+              }],
+              'check-circle',
+              '#22C55E'
+            );
+            return;
+          }
 
-        if (!requestId && showNudge) {
-          navigation.navigate('CommunityBalanceNudge', { requestId: updatedOrCreatedRequest?._id, initialRequest: updatedOrCreatedRequest });
-          return;
-        }
-
-        if (requestId) {
-          showAlert(
-            'Request updated',
-            'Your active request has been updated successfully.',
-            [{
-              text: 'OK',
-              onPress: () => {
-                closeAlert();
-                navigation.navigate('RequestActive', { initialRequest: updatedOrCreatedRequest, updated: true });
-              },
-              type: 'primary'
-            }],
-            'check-circle',
-            '#22C55E'
-          );
-          return;
-        }
-
-        navigation.navigate('RequestActive', { initialRequest: updatedOrCreatedRequest });
+          navigation.navigate('RequestActive', { initialRequest: updatedOrCreatedRequest });
+        }, 1500);
         return;
       }
 
@@ -315,6 +324,20 @@ const ReviewRequestScreen = ({ navigation, route }) => {
       console.log('[DailyHelp] helpRequest submit: error', status, messageFromServer, error.response?.data);
 
       const code = error.response.data?.code;
+      const retryAfter = Number(error.response.headers?.['retry-after'] || 0) || 0;
+
+      if (status === 429) {
+        const suffix = retryAfter > 0 ? ` Please try again after ${retryAfter} seconds.` : '';
+        showAlert(
+          'Please wait',
+          (messageFromServer || 'Too many requests. Please try again soon.') + suffix,
+          [{ text: 'OK', onPress: closeAlert, type: 'primary' }],
+          'clock-outline',
+          '#DC5C69'
+        );
+        return;
+      }
+
       if (status === 400 && code === 'SELF_HELP_NOT_ALLOWED') {
         const ref = error.response.data?.data?.attemptId ? `\n\nRef: ${error.response.data.data.attemptId}` : '';
         showAlert(
@@ -397,9 +420,22 @@ const ReviewRequestScreen = ({ navigation, route }) => {
         '#DC5C69'
       );
     } finally {
-      setSubmitting(false);
+      if (!isSuccess) {
+        setSubmitting(false);
+      }
     }
-  };
+  }, [
+    submitting,
+    location,
+    locationLabel,
+    mapHelpTypeToCategory,
+    requestText,
+    timeText,
+    requestId,
+    navigation,
+    showAlert,
+    closeAlert
+  ]);
 
   const handleEditDetails = () => {
     navigation.goBack();
@@ -617,6 +653,8 @@ const ReviewRequestScreen = ({ navigation, route }) => {
               onPress={handleShareRequest}
               variant="gradient"
               loading={submitting}
+              success={success}
+              fly={true}
               icon={<Icon name="send" size={scale(18)} color="#FFFFFF" />}
               accessibilityLabel="Share this request with people nearby"
             />

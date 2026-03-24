@@ -3,9 +3,9 @@ import { View, Text, Image, StyleSheet, Dimensions, Animated, Platform, Touchabl
 import { useNavigation } from '@react-navigation/native';
 import { useResponsive } from '../../utils/responsive';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { loadActiveHelpRequestId, loadAuth } from '../../services/storage/asyncStorage.service';
+import { loadActiveHelpRequestId, loadActivePresenceAssignmentId, loadAuth } from '../../services/storage/asyncStorage.service';
 import { getHome } from '../../services/api/user.api';
-import { getMyActiveHelpRequest, getActivePresenceRequest } from '../../services/api/incident.api';
+import { getMyActiveHelpRequest, getActivePresenceRequest, getPresenceById } from '../../services/api/incident.api';
 import notifee from '@notifee/react-native';
 
 import * as ExpoSplashScreen from 'expo-splash-screen';
@@ -94,12 +94,83 @@ const SplashScreen = () => {
             }
           } catch (e) {}
 
+          const isPresenceAccepted = (presence) => {
+            const container = presence?.data || presence;
+            const data = container?.request || container?.presence || container?.activeRequest || container?.data || container;
+            const status = String(data?.status || '').toLowerCase().trim();
+            const acceptedStatuses = [
+              'accepted',
+              'matched',
+              'assigned',
+              'in_progress',
+              'en_route',
+              'arrived',
+              'active_with_helper',
+              'active',
+            ];
+            if (acceptedStatuses.includes(status)) {
+              return true;
+            }
+
+            const isNonEmptyArray = (v) => Array.isArray(v) && v.length > 0;
+            const isNonEmptyObject = (v) =>
+              v && typeof v === 'object' && !Array.isArray(v) && (v._id || v.id || Object.keys(v).length > 0);
+            const isNonEmptyString = (v) => typeof v === 'string' && v.trim().length > 0;
+
+            const arrays = [
+              data?.acceptedBy,
+              data?.acceptedHelpers,
+              data?.acceptedUsers,
+              data?.acceptedVolunteers,
+              data?.responders,
+              data?.helpers,
+              data?.accepted,
+            ];
+            if (arrays.some(isNonEmptyArray)) {
+              return true;
+            }
+
+            const singleRefs = [
+              data?.volunteer,
+              data?.volunteerId,
+              data?.helper,
+              data?.helperId,
+              data?.responder,
+              data?.responderId,
+              data?.assignedTo,
+              data?.assignedUser,
+              data?.assignedHelper,
+              data?.assignedVolunteer,
+              data?.acceptedBy,
+            ];
+            if (singleRefs.some(isNonEmptyObject) || singleRefs.some(isNonEmptyString)) {
+              return true;
+            }
+
+            const numericSignals = [
+              data?.acceptedCount,
+              data?.acceptedUsersCount,
+              data?.acceptedHelpersCount,
+              data?.stats?.acceptedCount,
+            ];
+            if (numericSignals.some((n) => typeof n === 'number' && Number.isFinite(n) && n > 0)) {
+              return true;
+            }
+
+            if (status.includes('accept') || status.includes('match') || status.includes('assign') || status.includes('en_route') || status.includes('arriv')) {
+              return true;
+            }
+
+            return false;
+          };
+
           // 1. Check for active help request or presence request
           try {
             addLog('checking active requests');
+            const helperPresenceId = await loadActivePresenceAssignmentId().catch(() => null);
             const [helpRes, presenceRes] = await Promise.allSettled([
               getMyActiveHelpRequest(accessToken),
-              getActivePresenceRequest(accessToken)
+              helperPresenceId ? getPresenceById(accessToken, helperPresenceId) : getActivePresenceRequest(accessToken)
             ]);
 
             // Handle Help Request
@@ -124,14 +195,28 @@ const SplashScreen = () => {
             }
 
             // Handle Presence Request
-            if (presenceRes.status === 'fulfilled') {
-              const pData = presenceRes.value?.data || presenceRes.value;
-              const activePresenceId = pData?._id || pData?.id || pData?.requestId || pData?.request?._id || pData?.presenceRequestId;
+            if (presenceRes.status === 'fulfilled' && presenceRes.value) {
+              const pContainer = presenceRes.value?.data || presenceRes.value;
+              const pData = pContainer?.request || pContainer?.presence || pContainer?.activeRequest || pContainer?.data || pContainer;
+              
+              const activePresenceId = pData?._id || pData?.id || pData?.requestId || pData?.presenceRequestId;
+              const pStatus = String(pData?.status || '').toLowerCase().trim();
+              const liveStatuses = ['active', 'helpers_notified', 'helpers_accepted'];
 
-              if (activePresenceId) {
+              if (activePresenceId && liveStatuses.includes(pStatus)) {
                 if (fallbackTimer) clearTimeout(fallbackTimer);
                 await ExpoSplashScreen.hideAsync().catch(() => { });
-                navigation.reset({ index: 0, routes: [{ name: 'AwarenessShared', params: { requestId: activePresenceId } }] });
+                if (isPresenceAccepted(presenceRes.value)) {
+                  navigation.reset({
+                    index: 0,
+                    routes: [{
+                      name: 'NearbyMap',
+                      params: { requestId: activePresenceId, mode: helperPresenceId ? 'helper' : 'requester', lockBack: true },
+                    }],
+                  });
+                } else {
+                  navigation.reset({ index: 0, routes: [{ name: 'NearbyMap', params: { requestId: activePresenceId, mode: 'requester' } }] });
+                }
                 if (failSafeTimer) clearTimeout(failSafeTimer);
                 return;
               }

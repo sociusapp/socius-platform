@@ -5,6 +5,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useResponsive } from '../../../utils/responsive';
 import MotionPressable from '../../../components/common/MotionPressable';
 import MotionTextInput from '../../../components/common/MotionTextInput';
+import MotionView from '../../../components/common/MotionView';
 
 const CATEGORY_TITLES = {
   calm_presence: 'Need Calm Presence',
@@ -30,7 +31,7 @@ const CreateAwarenessScreen = ({ navigation, route }) => {
 
   const items = [
     {
-      id: 'feel_unsafe_walk',
+      id: 'unsafe_walk',
       title: 'Feeling unsafe while walking',
       desc: 'Someone nearby is making me uncomfortable.',
     },
@@ -50,7 +51,7 @@ const CreateAwarenessScreen = ({ navigation, route }) => {
       desc: 'A situation at my shop or workplace feels tense.',
     },
     {
-      id: 'late_night_unease',
+      id: 'night_travel',
       title: 'Late-night travel unease',
       desc: 'I don’t feel safe traveling alone right now.',
     },
@@ -65,7 +66,7 @@ const CreateAwarenessScreen = ({ navigation, route }) => {
         query,
       });
     } else {
-      navigation.navigate('SafetyGuidance', { category, reason: item.id, query });
+      navigation.navigate('ShareLocation', { category, reason: item.id });
     }
   };
 
@@ -81,81 +82,90 @@ const CreateAwarenessScreen = ({ navigation, route }) => {
 
       <ScrollView contentContainerStyle={[styles.scroll, { paddingHorizontal: spacing(20), paddingTop: vscale(10), paddingBottom: vscale(60) }]} showsVerticalScrollIndicator={false}>
         <View style={{ width: contentWidth, alignSelf: 'center' }}>
-          <Text style={[styles.title, { fontSize: ms(20), marginBottom: vscale(10) }]}>{CATEGORY_TITLES[category] || 'Need Calm Presence'}</Text>
+          <MotionView preset="fadeUp" delay={100}>
+            <Text style={[styles.title, { fontSize: ms(20), marginBottom: vscale(10) }]}>{CATEGORY_TITLES[category] || 'Need Calm Presence'}</Text>
+          </MotionView>
 
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={[styles.chipsScroll, { marginBottom: vscale(1) }]}
-            contentContainerStyle={[styles.chipsRow, { gap: spacing(12), paddingVertical: vscale(2), paddingHorizontal: spacing(4) }]}
-            bounces={false}
-            alwaysBounceHorizontal={false}
-            overScrollMode="never"
-          >
-            {chips.map((chip) => (
+          <MotionView preset="fadeUp" delay={200}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={[styles.chipsScroll, { marginBottom: vscale(1) }]}
+              contentContainerStyle={[styles.chipsRow, { gap: spacing(12), paddingVertical: vscale(2), paddingHorizontal: spacing(4) }]}
+              bounces={false}
+              alwaysBounceHorizontal={false}
+              overScrollMode="never"
+            >
+              {chips.map((chip) => (
+                <MotionPressable
+                  key={chip.id}
+                  style={[
+                    styles.chip,
+                    selectedChip === chip.id && styles.chipActive,
+                    {
+                      borderRadius: scale(999),
+                      paddingHorizontal: spacing(12),
+                      paddingVertical: vscale(6),
+                      minHeight: vscale(36),
+                      shadowRadius: scale(3),
+                      elevation: scale(2),
+                    },
+                  ]}
+                  onPress={() => setSelectedChip(chip.id)}
+                  pressScale={0.98}
+                >
+                  <Icon name={chip.icon} size={scale(18)} color="#C94444" style={{ marginRight: spacing(6) }} />
+                  <Text style={[styles.chipText, selectedChip === chip.id && styles.chipTextActive, { fontSize: ms(13) }]}>{chip.label}</Text>
+                </MotionPressable>
+              ))}
+            </ScrollView>
+          </MotionView>
+
+          <MotionView preset="fadeUp" delay={300}>
+            <View style={[styles.searchWrap, { borderRadius: scale(12), paddingHorizontal: spacing(16), paddingVertical: vscale(2), marginTop: vscale(10), marginBottom: vscale(16), shadowRadius: scale(6), elevation: scale(2) }]}>
+              <Icon name="magnify" size={scale(22)} color="#999999" />
+              <MotionTextInput
+                containerStyle={{ flex: 1, marginLeft: spacing(8), borderRadius: scale(12), paddingVertical: 0, paddingHorizontal: 0, borderWidth: 0, backgroundColor: 'transparent', shadowOpacity: 0, elevation: 0 }}
+                inputStyle={[styles.searchInput, { fontSize: ms(15) }]}
+                placeholder="Search within this category"
+                placeholderTextColor="#9AA1A9"
+                value={query}
+                onChangeText={setQuery}
+              />
+            </View>
+          </MotionView>
+
+          {items.map((item, index) => (
+            <MotionView key={item.id} preset="fadeUp" delay={400 + index * 50}>
               <MotionPressable
-                key={chip.id}
                 style={[
-                  styles.chip,
-                  selectedChip === chip.id && styles.chipActive,
+                  styles.listCard,
                   {
-                    borderRadius: scale(999),
-                    paddingHorizontal: spacing(12),
-                    paddingVertical: vscale(6),
-                    minHeight: vscale(36),
-                    shadowRadius: scale(3),
-                    elevation: scale(2),
+                    borderRadius: scale(16),
+                    paddingHorizontal: spacing(16),
+                    paddingVertical: vscale(16),
+                    marginBottom: vscale(12),
+                    shadowRadius: scale(8),
+                    elevation: scale(3),
                   },
                 ]}
-                onPress={() => setSelectedChip(chip.id)}
-                pressScale={0.98}
+                onPress={() => handleSelect(item)}
               >
-                <Icon name={chip.icon} size={scale(18)} color="#C94444" style={{ marginRight: spacing(6) }} />
-                <Text style={[styles.chipText, selectedChip === chip.id && styles.chipTextActive, { fontSize: ms(13) }]}>{chip.label}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.listTitle, { fontSize: ms(15), marginBottom: vscale(4) }]}>{item.title}</Text>
+                  <Text style={[styles.listDesc, { fontSize: ms(12) }]}>{item.desc}</Text>
+                </View>
+                <Icon name="chevron-right" size={scale(22)} color="#9AA1A9" />
               </MotionPressable>
-            ))}
-          </ScrollView>
-
-          <View style={[styles.searchWrap, { borderRadius: scale(12), paddingHorizontal: spacing(16), paddingVertical: vscale(2), marginTop: vscale(10), marginBottom: vscale(16), shadowRadius: scale(6), elevation: scale(2) }]}>
-            <Icon name="magnify" size={scale(22)} color="#999999" />
-            <MotionTextInput
-              containerStyle={{ flex: 1, marginLeft: spacing(8), borderRadius: scale(12), paddingVertical: 0, paddingHorizontal: 0, borderWidth: 0, backgroundColor: 'transparent', shadowOpacity: 0, elevation: 0 }}
-              inputStyle={[styles.searchInput, { fontSize: ms(15) }]}
-              placeholder="Search within this category"
-              placeholderTextColor="#9AA1A9"
-              value={query}
-              onChangeText={setQuery}
-            />
-          </View>
-
-          {items.map((item) => (
-            <MotionPressable
-              key={item.id}
-              style={[
-                styles.listCard,
-                {
-                  borderRadius: scale(16),
-                  paddingHorizontal: spacing(16),
-                  paddingVertical: vscale(16),
-                  marginBottom: vscale(12),
-                  shadowRadius: scale(8),
-                  elevation: scale(3),
-                },
-              ]}
-              onPress={() => handleSelect(item)}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.listTitle, { fontSize: ms(15), marginBottom: vscale(4) }]}>{item.title}</Text>
-                <Text style={[styles.listDesc, { fontSize: ms(12) }]}>{item.desc}</Text>
-              </View>
-              <Icon name="chevron-right" size={scale(22)} color="#9AA1A9" />
-            </MotionPressable>
+            </MotionView>
           ))}
 
-          <View style={[styles.footerNoteWrap, { marginTop: vscale(6) }]}>
-            <View style={[styles.sectionDivider, { height: scale(1), marginVertical: vscale(10) }]} />
-            <Text style={[styles.footerNote, { fontSize: ms(12) }]}>You can cancel anytime before sharing.</Text>
-          </View>
+          <MotionView preset="fadeUp" delay={700}>
+            <View style={[styles.footerNoteWrap, { marginTop: vscale(6) }]}>
+              <View style={[styles.sectionDivider, { height: scale(1), marginVertical: vscale(10) }]} />
+              <Text style={[styles.footerNote, { fontSize: ms(12) }]}>You can cancel anytime before sharing.</Text>
+            </View>
+          </MotionView>
         </View>
       </ScrollView>
     </SafeAreaView>

@@ -100,15 +100,34 @@ const getNearbyHelpRequests = (token, coords) => {
     .then((response) => response.data);
 };
 
+const getNearbyPresenceRequests = (token, coords) => {
+  const params = coords ? { lat: coords.latitude, lng: coords.longitude } : {};
+  return api
+    .get('/presence/nearby', { ...authConfig(token), params, cacheTtlMs: 5000 })
+    .then((response) => response.data);
+};
+
 const getActivePresenceRequest = (token) => {
   return api
-    .get('/presence/active', { ...authConfig(token), cacheTtlMs: 5000 })
+    .get('/presence/active', { ...authConfig(token) })
+    .then((response) => response.data);
+};
+
+const getPresenceById = (token, id) => {
+  return api
+    .get(`/presence/${encodeURIComponent(id)}`, { ...authConfig(token), cacheTtlMs: 5000 })
     .then((response) => response.data);
 };
 
 const createPresenceRequest = (token, payload) => {
   return api
     .post('/presence', payload, authConfig(token))
+    .then((response) => response.data);
+};
+
+const updatePresenceRequest = (token, id, payload) => {
+  return api
+    .patch(`/presence/${encodeURIComponent(id)}`, payload, authConfig(token))
     .then((response) => response.data);
 };
 
@@ -127,6 +146,12 @@ const toggleAvailability = (token, payload) => {
 const acceptPresence = (token, id) => {
   return api
     .patch(`/presence/${encodeURIComponent(id)}/accept`, undefined, authConfig(token))
+    .then((response) => response.data);
+};
+
+const updatePresenceStatus = (token, id, status) => {
+  return api
+    .patch(`/presence/${encodeURIComponent(id)}/status`, { status }, authConfig(token))
     .then((response) => response.data);
 };
 
@@ -163,11 +188,15 @@ export {
   finalizeClosure,
   uploadClosureEvidence,
   getNearbyHelpRequests,
+  getNearbyPresenceRequests,
   getActivePresenceRequest,
+  getPresenceById,
   createPresenceRequest,
+  updatePresenceRequest,
   updateAvailabilityLocation,
   toggleAvailability,
   acceptPresence,
+  updatePresenceStatus,
   declinePresence,
   cancelPresenceRequest,
   closePresenceRequest,

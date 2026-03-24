@@ -43,7 +43,15 @@ const getMyActiveRequest = async (req, res, next) => {
 
 const getRequestById = async (req, res, next) => {
   try {
-    const data = await helpRequestService.getRequestById(req.params.id, req.user._id)
+    const { id } = req.params
+    if (!id || id.length !== 24) {
+      const err = new Error('Invalid ID')
+      err.name = 'CastError'
+      err.path = '_id'
+      err.value = id
+      throw err
+    }
+    const data = await helpRequestService.getRequestById(id, req.user._id)
     return success(res, data)
   } catch (err) {
     next(err)
@@ -113,8 +121,10 @@ const markAsDelivered = async (req, res, next) => {
 
 const getNearbyRequests = async (req, res, next) => {
   try {
-    const { latitude, longitude } = req.query
-    const coords = latitude && longitude ? { latitude: parseFloat(latitude), longitude: parseFloat(longitude) } : null
+    const { lat, lng, latitude, longitude } = req.query
+    const targetLat = lat || latitude
+    const targetLng = lng || longitude
+    const coords = targetLat && targetLng ? { lat: parseFloat(targetLat), lng: parseFloat(targetLng) } : null
     const requests = await helpRequestService.getNearbyHelpRequests(req.user._id, coords)
     return success(res, requests)
   } catch (err) {

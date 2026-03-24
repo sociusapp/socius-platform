@@ -29,4 +29,27 @@ module.exports = (io, socket) => {
       socket.emit('help:error', { message: 'Unable to decline request' })
     }
   })
+
+  // ─── Generic Status Update (for sync) ──────────────────
+  socket.on('status_update', async (payload) => {
+    try {
+      const { requestId, status, type, userId } = payload || {}
+      if (!requestId || !status) return
+
+      if (type === 'HELP_REQUEST') {
+        const eventName = status === 'accepted' ? 'help:accepted' : 'help:declined'
+        const res = await helpRequestService.getRequestById(requestId)
+        const req = res?.request || res
+        if (req && req.requesterId) {
+          emitToUser(String(req.requesterId), eventName, {
+            requestId: String(requestId),
+            userId: String(userId || socket.userId),
+            status,
+          })
+        }
+      }
+    } catch (err) {
+      logger.error('status_update handler error:', err)
+    }
+  })
 }

@@ -646,11 +646,10 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser }) =>
     ) : null;
 
     return (
-      <View>
-        <SwipeableMessage
-          onReply={() => handleReply(item)}
-          isMyMessage={isMyMessage}
-        >
+      <SwipeableMessage
+        onReply={() => handleReply(item)}
+        isMyMessage={isMyMessage}
+      >
           <View
             style={[
               styles.messageContainer,
@@ -658,7 +657,10 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser }) =>
               hasReactions && { marginBottom: 28 }
             ]}
           >
-            <Pressable onLongPress={(e) => openReactionPicker(item, isMyMessage, e)} delayLongPress={250}>
+            <Pressable 
+              onLongPress={(e) => openReactionPicker(item, isMyMessage, e)} 
+              delayLongPress={250}
+            >
               <View
                 style={[
                   styles.messageBubble,
@@ -680,7 +682,6 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser }) =>
             </Pressable>
           </View>
         </SwipeableMessage>
-      </View>
     );
   };
 
@@ -940,7 +941,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   messagesList: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 0,
     paddingVertical: 10,
     paddingBottom: 20,
   },
@@ -969,15 +970,19 @@ const styles = StyleSheet.create({
   },
   myMessageContainer: {
     justifyContent: 'flex-end',
+    paddingRight: 4,
+    paddingLeft: 40,
   },
   theirMessageContainer: {
     justifyContent: 'flex-start',
+    paddingLeft: 4,
+    paddingRight: 40,
   },
   messageBubble: {
-    maxWidth: '75%',
-    minWidth: 120,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    maxWidth: '88%',
+    minWidth: 80,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     paddingBottom: 22,
     borderRadius: 12,
     elevation: 1,

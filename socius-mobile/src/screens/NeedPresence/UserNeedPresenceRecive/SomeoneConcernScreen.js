@@ -1,12 +1,61 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../../components/common/Header';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useResponsive } from '../../../utils/responsive';
+import { acceptPresence } from '../../../services/api/incident.api';
+import { loadAuth, saveActivePresenceAssignmentId } from '../../../services/storage/asyncStorage.service';
+import CustomAlert from '../../../components/common/CustomAlert';
 
-const SomeoneConcernScreen = ({ navigation }) => {
+const SomeoneConcernScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
+  const { requestId, situation, distanceMeters, area } = route?.params || {};
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({
+    title: '',
+    message: '',
+    buttons: [],
+    icon: 'alert-circle-outline',
+    iconColor: '#DC5C69'
+  });
+
+  const showAlert = (title, message, buttons = [], icon = 'alert-circle-outline', iconColor = '#DC5C69') => {
+    setAlertConfig({ title, message, buttons, icon, iconColor });
+    setAlertVisible(true);
+  };
+
+  const closeAlert = () => setAlertVisible(false);
+
+  const handleAccept = async () => {
+    if (isLoading) return;
+    try {
+      setIsLoading(true);
+      const auth = await loadAuth();
+      const token = auth?.accessToken;
+      if (!token) return;
+
+      const response = await acceptPresence(token, requestId);
+      if (!response?.success) {
+        showAlert('Unable to continue', response?.message || 'This request may no longer be active.', [{ text: 'OK', onPress: closeAlert }]);
+        return;
+      }
+      
+      await saveActivePresenceAssignmentId(requestId).catch(() => {});
+      
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'NearbyMap', params: { requestId, mode: 'helper', lockBack: true } }],
+      });
+    } catch (error) {
+      console.log('Error accepting presence:', error);
+      showAlert('Error', 'Something went wrong. Please try again.', [{ text: 'OK', onPress: closeAlert }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
@@ -34,37 +83,39 @@ const SomeoneConcernScreen = ({ navigation }) => {
             
             <View style={[styles.detailRow, { marginBottom: vscale(8) }]}>
               <Text style={[styles.detailLabel, { fontSize: ms(14), width: spacing(130) }]}>Situation:</Text>
-              <Text style={[styles.detailValue, { fontSize: ms(14), lineHeight: vscale(20) }]}>Being followed</Text>
-            </View>
-            
-            <View style={[styles.detailRow, { marginBottom: vscale(8) }]}>
-              <Text style={[styles.detailLabel, { fontSize: ms(14), width: spacing(130) }]}>Note:</Text>
-              <Text style={[styles.detailValue, { fontSize: ms(14), lineHeight: vscale(20) }]}>Walking alone, feels uncomfortable</Text>
+              <Text style={[styles.detailValue, { fontSize: ms(14), lineHeight: vscale(20) }]}>{situation || 'Safety concern'}</Text>
             </View>
             
             <View style={[styles.detailRow, { marginBottom: vscale(8) }]}>
               <Text style={[styles.detailLabel, { fontSize: ms(14), width: spacing(130) }]}>Approximate area:</Text>
-              <Text style={[styles.detailValue, { fontSize: ms(14), lineHeight: vscale(20) }]}>Within ~500 m of your location</Text>
+              <Text style={[styles.detailValue, { fontSize: ms(14), lineHeight: vscale(20) }]}>{area || (distanceMeters ? `Within ~${distanceMeters} m` : 'Nearby')}</Text>
             </View>
           </View>
 
           {/* Action Prompt */}
           <Text style={[styles.promptText, { fontSize: ms(15), marginBottom: vscale(16), lineHeight: vscale(22) }]}>
-            If you are nearby and feel safe, you may choose to view more details.
+            If you are nearby and feel safe, you may choose to be aware.
           </Text>
 
           {/* Action Buttons */}
           <View style={[styles.buttonRow, { marginBottom: vscale(32), gap: spacing(16) }]}>
             <TouchableOpacity 
               style={[styles.viewDetailsButton, { paddingVertical: vscale(12), borderRadius: scale(25), borderWidth: scale(1), shadowRadius: scale(2), elevation: scale(1) }]}
-              onPress={() => navigation.navigate('SafetyComesFirst')}
+              onPress={handleAccept}
+              disabled={isLoading}
             >
-              <Text style={[styles.viewDetailsText, { fontSize: ms(15) }]}>View details</Text>
+              {isLoading ? <ActivityIndicator color="#2C3E50" /> : <Text style={[styles.viewDetailsText, { fontSize: ms(15) }]}>I'm Aware</Text>}
             </TouchableOpacity>
             
             <TouchableOpacity 
               style={[styles.ignoreButton, { paddingVertical: vscale(12), borderRadius: scale(25), borderWidth: scale(1), shadowRadius: scale(2), elevation: scale(1) }]}
-              onPress={() => navigation.navigate('HomeScreen')}
+              onPress={() =>
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+                })
+              }
+              disabled={isLoading}
             >
               <Text style={[styles.ignoreText, { fontSize: ms(15) }]}>Ignore</Text>
             </TouchableOpacity>
@@ -106,6 +157,15 @@ const SomeoneConcernScreen = ({ navigation }) => {
           </Text>
         </View>
       </ScrollView>
+      <CustomAlert
+        visible={alertVisible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        buttons={alertConfig.buttons}
+        icon={alertConfig.icon}
+        iconColor={alertConfig.iconColor}
+        onClose={closeAlert}
+      />
     </SafeAreaView>
   );
 };

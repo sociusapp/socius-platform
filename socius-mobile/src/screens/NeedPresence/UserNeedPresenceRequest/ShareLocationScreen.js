@@ -1,24 +1,27 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { LinearGradient } from 'expo-linear-gradient';
 
 import { useResponsive } from '../../../utils/responsive';
 import { createPresenceRequest } from '../../../services/api/incident.api';
-import { requestLocationPermission, getCurrentPosition } from '../../../services/location/geolocation.service';
-import { loadAuth } from '../../../services/storage/asyncStorage.service';
-import CancelRequestModal from '../UserNeedPresenceRecive/CancelRequestModal';
+import { requestLocationPermission, getCurrentPosition, reverseGeocode, getNearbyPlaceName, formatLocationLabel } from '../../../services/location/geolocation.service';
+import { loadAuth, loadLastKnownLocation, saveLastKnownLocation } from '../../../services/storage/asyncStorage.service';
+import Button from '../../../components/common/Button';
 import CustomAlert from '../../../components/common/CustomAlert';
 import MotionPressable from '../../../components/common/MotionPressable';
 import MotionTextInput from '../../../components/common/MotionTextInput';
+import MotionView from '../../../components/common/MotionView';
 
 const ShareLocationScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
   const { reason, category } = route.params || {};
-  const [note, setNote] = useState('');
+  const confirmed = route?.params?.confirmed;
+  const [note, setNote] = useState(route?.params?.note || '');
   const [submitting, setSubmitting] = useState(false);
-  const [cancelModalVisible, setCancelModalVisible] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const autoShareTriggeredRef = useRef(false);
+  const [locationLabel, setLocationLabel] = useState('Location on');
 
   // Custom Alert State
   const [alertVisible, setAlertVisible] = useState(false);
@@ -30,7 +33,7 @@ const ShareLocationScreen = ({ navigation, route }) => {
     iconColor: '#DC5C69'
   });
 
-  const showAlert = (title, message, buttons = [], icon = 'alert-circle-outline', iconColor = '#DC5C69') => {
+  const showAlert = useCallback((title, message, buttons = [], icon = 'alert-circle-outline', iconColor = '#DC5C69') => {
     setAlertConfig({
       title,
       message,
@@ -39,11 +42,53 @@ const ShareLocationScreen = ({ navigation, route }) => {
       iconColor
     });
     setAlertVisible(true);
-  };
+  }, []);
 
-  const closeAlert = () => {
+  const closeAlert = useCallback(() => {
     setAlertVisible(false);
-  };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const cached = await loadLastKnownLocation();
+        if (!cancelled && cached?.label) {
+          setLocationLabel(cached.label);
+        }
+      } catch (e) {
+      }
+
+      try {
+        const ok = await requestLocationPermission();
+        if (!ok) return;
+
+        const position = await getCurrentPosition({ timeoutMs: 7000, fallbackToLastKnown: true });
+        const latitude = position?.coords?.latitude;
+        const longitude = position?.coords?.longitude;
+        if (typeof latitude !== 'number' || typeof longitude !== 'number') return;
+
+        let label = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+        try {
+          let place = await reverseGeocode({ latitude, longitude });
+          const nearbyName = await getNearbyPlaceName({ latitude, longitude });
+          if (nearbyName) {
+            place = place ? { ...place, name: nearbyName } : { name: nearbyName };
+          }
+          label = formatLocationLabel(place, { fallback: label });
+        } catch (e) {
+        }
+
+        if (cancelled) return;
+        setLocationLabel(label);
+        saveLastKnownLocation({ label, latitude, longitude, updatedAt: Date.now() }).catch(() => {});
+      } catch (e) {
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const getTitle = () => {
     switch (reason) {
@@ -51,52 +96,19 @@ const ShareLocationScreen = ({ navigation, route }) => {
       case 'unsafe_walk': return 'Unsafe Walk';
       case 'night_travel': return 'Night Travel';
       case 'public_intimidation': return 'Public Intimidation';
+      case 'blood_needed': return 'Blood Needed';
+      case 'car_issue': return 'Car Issue';
       default: return 'Share Location';
     }
   };
 
-  const getSituationType = () => {
-    if (reason === 'being_followed') {
-      return 'being_followed';
-    }
-    if (
-      reason === 'unsafe_walk' ||
-      reason === 'night_travel' ||
-      reason === 'public_intimidation'
-    ) {
-      return 'feeling_unsafe';
-    }
-    if (category === 'calm_presence' || category === 'care_support') {
-      return 'need_calm_presence';
-    }
-    return 'other';
-  };
-
-  const buildDescription = () => {
-    if (note && note.trim().length > 0) {
-      return note.trim();
-    }
-    if (reason === 'being_followed') {
-      return 'User reports being followed and wants nearby awareness.';
-    }
-    if (reason === 'unsafe_walk') {
-      return 'User feels unsafe on their walk and is sharing presence.';
-    }
-    if (reason === 'night_travel') {
-      return 'User is travelling at night and is sharing presence.';
-    }
-    if (reason === 'public_intimidation') {
-      return 'User feels intimidated in a public space and is sharing presence.';
-    }
-    return 'User is sharing their presence with nearby people.';
-  };
-
-  const handleSharePresenceRequest = async () => {
+  const handleSharePresenceRequest = useCallback(async () => {
     if (submitting) {
       return;
     }
 
     setSubmitting(true);
+    let isSuccess = false;
 
     try {
       const hasPermission = await requestLocationPermission();
@@ -135,25 +147,76 @@ const ShareLocationScreen = ({ navigation, route }) => {
         return;
       }
 
+      let addressLabel = locationLabel || '';
+      if (!addressLabel || addressLabel === 'Location on') {
+        try {
+          let place = await reverseGeocode({ latitude, longitude });
+          const nearbyName = await getNearbyPlaceName({ latitude, longitude });
+          if (nearbyName) {
+            place = place ? { ...place, name: nearbyName } : { name: nearbyName };
+          }
+          addressLabel = formatLocationLabel(place, { fallback: '' });
+        } catch (e) {
+        }
+      }
+
+      const situationType =
+        reason === 'being_followed'
+          ? 'being_followed'
+          : reason === 'unsafe_walk' || reason === 'night_travel' || reason === 'public_intimidation'
+            ? 'feeling_unsafe'
+            : category === 'calm_presence' || category === 'care_support'
+              ? 'need_calm_presence'
+              : 'other';
+
+      const description =
+        note && note.trim().length > 0
+          ? note.trim()
+          : reason === 'being_followed'
+            ? 'User reports being followed and wants nearby awareness.'
+            : reason === 'unsafe_walk'
+              ? 'User feels unsafe on their walk and is sharing presence.'
+              : reason === 'night_travel'
+                ? 'User is travelling at night and is sharing presence.'
+                : reason === 'public_intimidation'
+                  ? 'User feels intimidated in a public space and is sharing presence.'
+                  : reason === 'blood_needed'
+                    ? 'Blood needed nearby. User is sharing awareness.'
+                    : reason === 'car_issue'
+                      ? 'Car issue nearby. User is sharing awareness.'
+                  : 'User is sharing their presence with nearby people.';
+
       const payload = {
-        situationType: getSituationType(),
-        description: buildDescription(),
+        situationType,
+        description,
         location: {
           lng: longitude,
           lat: latitude,
+          address: addressLabel || '',
         },
       };
 
       const response = await createPresenceRequest(token, payload);
 
       if (response?.success) {
-        const requestId =
-          response?.data?._id ||
-          response?.data?.id ||
-          response?.data?.requestId ||
-          response?.data?.request?._id ||
-          response?.data?.request?.id;
-        navigation.navigate('RequestShared', requestId ? { requestId } : undefined);
+        isSuccess = true;
+        setSuccess(true);
+        // Do NOT set submitting to false here, to keep button in success state
+        // and prevent multiple clicks during the animation delay
+        
+        // Wait for fly animation before navigating
+        setTimeout(() => {
+          const requestId =
+            response?.data?._id ||
+            response?.data?.id ||
+            response?.data?.requestId ||
+            response?.data?.request?._id ||
+            response?.data?.request?.id;
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'NearbyMap', params: { requestId, mode: 'requester' } }],
+          });
+        }, 1500);
         return;
       }
 
@@ -224,7 +287,16 @@ const ShareLocationScreen = ({ navigation, route }) => {
         showAlert(
           'Request already active',
           messageFromServer || 'You already have an active presence request.',
-          [{ text: 'Open request', onPress: () => { closeAlert(); navigation.navigate('RequestShared'); } }]
+          [{
+            text: 'Open request',
+            onPress: () => {
+              closeAlert();
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'NearbyMap', params: { mode: 'requester' } }],
+              });
+            }
+          }]
         );
         return;
       }
@@ -235,9 +307,23 @@ const ShareLocationScreen = ({ navigation, route }) => {
         [{ text: 'OK', onPress: closeAlert }]
       );
     } finally {
-      setSubmitting(false);
+      if (!isSuccess) {
+        setSubmitting(false);
+      }
     }
-  };
+  }, [category, closeAlert, navigation, reason, showAlert, submitting, note, locationLabel]);
+
+  useEffect(() => {
+    if (!confirmed) {
+      autoShareTriggeredRef.current = false;
+      return;
+    }
+    if (autoShareTriggeredRef.current) {
+      return;
+    }
+    autoShareTriggeredRef.current = true;
+    handleSharePresenceRequest();
+  }, [confirmed, handleSharePresenceRequest]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -251,78 +337,93 @@ const ShareLocationScreen = ({ navigation, route }) => {
 
       <ScrollView contentContainerStyle={[styles.scroll, { padding: spacing(16), paddingBottom: vscale(40), alignItems: 'center' }]} showsVerticalScrollIndicator={false}>
         <View style={{ width: contentWidth }}>
-          <View style={[styles.card, { borderRadius: scale(12), padding: spacing(16), marginBottom: vscale(16), shadowRadius: scale(6), elevation: scale(3), borderWidth: scale(1) }]}>
-            <Text style={[styles.label, { fontSize: ms(14), marginBottom: vscale(8) }]}>Add one line <Text style={[styles.optional, { fontSize: ms(14) }]}>(optional)</Text></Text>
-            <MotionTextInput
-              containerStyle={{
-                backgroundColor: '#F9FAFB',
-                borderWidth: scale(1),
-                borderColor: '#E8EAED',
-                borderRadius: scale(8),
-                paddingHorizontal: spacing(12),
-                paddingVertical: vscale(10),
-                minHeight: vscale(48),
-                marginBottom: vscale(8),
+          <MotionView preset="fadeUp" delay={100}>
+            <View style={[styles.card, { borderRadius: scale(12), padding: spacing(16), marginBottom: vscale(16), shadowRadius: scale(6), elevation: scale(3), borderWidth: scale(1) }]}>
+              <Text style={[styles.label, { fontSize: ms(14), marginBottom: vscale(8) }]}>Add one line <Text style={[styles.optional, { fontSize: ms(14) }]}>(optional)</Text></Text>
+              <MotionTextInput
+                containerStyle={{
+                  backgroundColor: '#F9FAFB',
+                  borderWidth: scale(1),
+                  borderColor: '#E8EAED',
+                  borderRadius: scale(8),
+                  paddingHorizontal: spacing(12),
+                  paddingVertical: vscale(10),
+                  minHeight: vscale(48),
+                  marginBottom: vscale(8),
+                }}
+                inputStyle={{ fontSize: ms(14), color: '#2C3E50', textAlignVertical: 'top' }}
+                placeholder="Anything helpful others should know (optional)"
+                placeholderTextColor="#999999"
+                value={note}
+                onChangeText={setNote}
+                multiline
+              />
+              <Text style={[styles.helperText, { fontSize: ms(11) }]}>Keep it short. Do not include names or accusations.</Text>
+            </View>
+          </MotionView>
+
+          <MotionView preset="fadeUp" delay={200}>
+            <View style={[styles.card, { borderRadius: scale(12), padding: spacing(16), marginBottom: vscale(16), shadowRadius: scale(6), elevation: scale(3), borderWidth: scale(1) }]}>
+              <View style={[styles.cardHeader, { marginBottom: vscale(12) }]}>
+                <Icon name="map-marker" size={scale(24)} color="#C94444" style={[styles.cardIcon, { marginRight: spacing(12) }]} />
+                <View>
+                  <Text style={[styles.cardTitle, { fontSize: ms(15), marginBottom: vscale(2) }]}>Share your current location</Text>
+                  <Text style={[styles.cardSubtitle, { fontSize: ms(12), lineHeight: vscale(18) }]}>Only with people who choose to view this request.</Text>
+                </View>
+              </View>
+              <View style={[styles.locationBox, { borderRadius: scale(8), padding: spacing(12), height: vscale(48), borderWidth: scale(1) }]}>
+                <View style={[styles.mapLine, { height: scale(2) }]} />
+                <Text style={[styles.locationText, { fontSize: ms(14), paddingHorizontal: spacing(8) }]} numberOfLines={1}>
+                  {locationLabel}
+                </Text>
+              </View>
+            </View>
+          </MotionView>
+
+          <MotionView preset="fadeUp" delay={300}>
+            <View style={[styles.card, { borderRadius: scale(12), padding: spacing(16), marginBottom: vscale(16), shadowRadius: scale(6), elevation: scale(3), borderWidth: scale(1) }]}>
+              <View style={[styles.cardHeader, { marginBottom: vscale(12) }]}>
+                <Icon name="file-document-outline" size={scale(24)} color="#7F8C8D" style={[styles.cardIcon, { marginRight: spacing(12) }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.cardTitle, { fontSize: ms(15), marginBottom: vscale(2) }]}>You're sharing information voluntarily.</Text>
+                  <Text style={[styles.cardSubtitle, { fontSize: ms(12), lineHeight: vscale(18) }]}>Nothing is sent until you confirm. You can cancel at any time.</Text>
+                </View>
+              </View>
+            </View>
+          </MotionView>
+
+          <MotionView preset="fadeUp" delay={400}>
+            <Button
+              title="Share Presence Request"
+              onPress={() => {
+                if (submitting) return;
+                navigation.navigate('BeforeShare', { reason, category, note });
               }}
-              inputStyle={{ fontSize: ms(14), color: '#2C3E50', textAlignVertical: 'top' }}
-              placeholder="Anything helpful others should know (optional)"
-              placeholderTextColor="#999999"
-              value={note}
-              onChangeText={setNote}
-              multiline
+              variant="gradient"
+              loading={submitting}
+              success={success}
+              fly={true}
+              icon={<Icon name="send" size={scale(18)} color="#FFFFFF" />}
+              disabled={submitting}
+              style={[styles.actionButton, { marginTop: vscale(8), marginBottom: vscale(16), borderRadius: scale(30), shadowRadius: scale(8), elevation: scale(5) }]}
             />
-            <Text style={[styles.helperText, { fontSize: ms(11) }]}>Keep it short. Do not include names or accusations.</Text>
-          </View>
+          </MotionView>
 
-          <View style={[styles.card, { borderRadius: scale(12), padding: spacing(16), marginBottom: vscale(16), shadowRadius: scale(6), elevation: scale(3), borderWidth: scale(1) }]}>
-            <View style={[styles.cardHeader, { marginBottom: vscale(12) }]}>
-              <Icon name="map-marker" size={scale(24)} color="#C94444" style={[styles.cardIcon, { marginRight: spacing(12) }]} />
-              <View>
-                <Text style={[styles.cardTitle, { fontSize: ms(15), marginBottom: vscale(2) }]}>Share your current location</Text>
-                <Text style={[styles.cardSubtitle, { fontSize: ms(12), lineHeight: vscale(18) }]}>Only with people who choose to view this request.</Text>
-              </View>
-            </View>
-            <View style={[styles.locationBox, { borderRadius: scale(8), padding: spacing(12), height: vscale(48), borderWidth: scale(1) }]}>
-              <View style={[styles.mapLine, { height: scale(2) }]} />
-              <Text style={[styles.locationText, { fontSize: ms(14), paddingHorizontal: spacing(8) }]}>Near Oakwood Ave</Text>
-            </View>
-          </View>
-
-          <View style={[styles.card, { borderRadius: scale(12), padding: spacing(16), marginBottom: vscale(16), shadowRadius: scale(6), elevation: scale(3), borderWidth: scale(1) }]}>
-            <View style={[styles.cardHeader, { marginBottom: vscale(12) }]}>
-              <Icon name="file-document-outline" size={scale(24)} color="#7F8C8D" style={[styles.cardIcon, { marginRight: spacing(12) }]} />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.cardTitle, { fontSize: ms(15), marginBottom: vscale(2) }]}>You're sharing information voluntarily.</Text>
-                <Text style={[styles.cardSubtitle, { fontSize: ms(12), lineHeight: vscale(18) }]}>Nothing is sent until you confirm. You can cancel at any time.</Text>
-              </View>
-            </View>
-          </View>
-
-          <Button
-            title="Share Presence Request"
-            onPress={handleSharePresenceRequest}
-            variant="gradient"
-            loading={submitting}
-            disabled={submitting}
-            style={[styles.actionButton, { marginTop: vscale(8), marginBottom: vscale(16), borderRadius: scale(30), shadowRadius: scale(8), elevation: scale(5) }]}
-          />
-
-          <MotionPressable onPress={() => setCancelModalVisible(true)} style={[styles.footerLink, { padding: scale(8) }]}>
-            <Text style={[styles.footerText, { fontSize: ms(14) }]}>Cancel and go back</Text>
-          </MotionPressable>
+          <MotionView preset="fadeUp" delay={500}>
+            <MotionPressable
+              onPress={() =>
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+                })
+              }
+              style={[styles.footerLink, { padding: scale(8) }]}
+            >
+              <Text style={[styles.footerText, { fontSize: ms(14) }]}>Cancel and go back</Text>
+            </MotionPressable>
+          </MotionView>
         </View>
       </ScrollView>
-
-      <CancelRequestModal
-        visible={cancelModalVisible}
-        onClose={() => setCancelModalVisible(false)}
-        onConfirm={(reason) => {
-          setCancelModalVisible(false);
-          // Reason captured but not sent to server as request is not created yet
-          console.log('Cancelled share location with reason:', reason);
-          navigation.goBack();
-        }}
-      />
       <CustomAlert
         visible={alertVisible}
         title={alertConfig.title}

@@ -1,19 +1,32 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import React, { useCallback, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, BackHandler } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../../components/common/Header';
 import Button from '../../../components/common/Button';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useResponsive } from '../../../utils/responsive';
+import { useFocusEffect } from '@react-navigation/native';
 
 const SituationSharedScreen = ({ navigation }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
+
+  useEffect(() => {
+    navigation.setOptions({ gestureEnabled: false });
+  }, [navigation]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => true;
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => sub.remove();
+    }, [])
+  );
 
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
       <Header 
         title="Situation Shared" 
-        onBackPress={() => navigation.goBack()}
+        onBackPress={() => {}}
         style={[styles.header, { paddingHorizontal: spacing(16) }]}
         titleStyle={[styles.headerTitle, { fontSize: ms(18) }]}
       />
@@ -47,7 +60,12 @@ const SituationSharedScreen = ({ navigation }) => {
 
           <Button 
             title="Go to Home" 
-            onPress={() => navigation.navigate('HomeScreen')}
+            onPress={() =>
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+              })
+            }
             style={{ borderRadius: scale(30) }}
           />
         </View>

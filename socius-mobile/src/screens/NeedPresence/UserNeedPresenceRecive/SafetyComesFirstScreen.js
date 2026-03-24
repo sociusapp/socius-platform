@@ -7,12 +7,13 @@ import Button from '../../../components/common/Button';
 import CustomAlert from '../../../components/common/CustomAlert';
 import { getSocket } from '../../../services/socket/socket.service';
 import { useResponsive } from '../../../utils/responsive';
-import { getHelpRequestById } from '../../../services/api/incident.api';
+import { acceptPresence } from '../../../services/api/incident.api';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
+import { saveActivePresenceAssignmentId } from '../../../services/storage/asyncStorage.service';
 
 const SafetyComesFirstScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
-  const { requestId } = route.params || {};
+  const { requestId, isHighRiskArea } = route.params || {};
   const cards = [
     {
       title: 'Observe Only',
@@ -134,6 +135,9 @@ const SafetyComesFirstScreen = ({ navigation, route }) => {
       socket.on('help:request_taken', handleRequestTaken);
       socket.on('help:request_cancelled', handleRequestCancelled);
       socket.on('help:request_expired', handleRequestExpired);
+      socket.on('presence:request_taken', handleRequestTaken);
+      socket.on('presence:request_cancelled', handleRequestCancelled);
+      socket.on('presence:request_expired', handleRequestExpired);
     }
 
     return () => {
@@ -141,6 +145,9 @@ const SafetyComesFirstScreen = ({ navigation, route }) => {
         socket.off('help:request_taken', handleRequestTaken);
         socket.off('help:request_cancelled', handleRequestCancelled);
         socket.off('help:request_expired', handleRequestExpired);
+        socket.off('presence:request_taken', handleRequestTaken);
+        socket.off('presence:request_cancelled', handleRequestCancelled);
+        socket.off('presence:request_expired', handleRequestExpired);
       }
     };
   }, [requestId, navigation]);
@@ -148,59 +155,22 @@ const SafetyComesFirstScreen = ({ navigation, route }) => {
   const [isLoading, setIsLoading] = useState(false);
   const handleContinue = async () => {
     if (isLoading) return;
+    if (isHighRiskArea) {
+      navigation.navigate('HighRiskArea', { requestId });
+      return;
+    }
     try {
       setIsLoading(true);
       const auth = await loadAuth();
       const token = auth?.accessToken;
       if (!token) return;
 
-      const response = await getHelpRequestById(token, requestId);
-      if (response?.success && response?.data?.request) {
-        const req = response.data.request;
-        const status = String(req.status || '').toLowerCase();
-
-        const closedStatuses = ['accepted', 'matched', 'assigned', 'in_progress', 'cancelled', 'expired', 'completed', 'closed'];
-
-        if (closedStatuses.includes(status)) {
-          let title = 'Request Closed';
-          let message = 'This request is no longer active.';
-
-          if (status === 'cancelled') {
-            title = 'Request Cancelled';
-            message = 'The user has cancelled this request.';
-          } else if (status === 'expired') {
-            title = 'Request Expired';
-            message = 'This request has expired.';
-          } else if (['accepted', 'matched', 'assigned', 'in_progress'].includes(status)) {
-            message = 'Someone else has accepted this request.';
-          }
-
-          showAlert(title, message, [
-            {
-              text: 'Go Back',
-              onPress: () => {
-                closeAlert();
-                setTimeout(() => {
-                  navigation.reset({
-                    index: 0,
-                    routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
-                  });
-                }, 100);
-              }
-            },
-            {
-              text: 'Retry',
-              onPress: () => {
-                closeAlert();
-                setTimeout(() => {
-                  handleContinue();
-                }, 100);
-              }
-            }
-          ]);
-          return;
-        }
+      const response = await acceptPresence(token, requestId);
+      if (!response?.success) {
+        showAlert('Unable to continue', response?.message || 'This request may no longer be active.', [{ text: 'OK', onPress: closeAlert }]);
+        return;
       }
+      saveActivePresenceAssignmentId(requestId).catch(() => {});
     } catch (error) {
       console.log('Error checking request status:', error);
       const status = error?.response?.status;
@@ -225,11 +195,15 @@ const SafetyComesFirstScreen = ({ navigation, route }) => {
         );
         return;
       }
+      showAlert('Error', error?.message || 'Something went wrong. Please try again.', [{ text: 'OK', onPress: closeAlert }]);
     } finally {
       setIsLoading(false);
     }
 
-    navigation.navigate('LocalRequest', { requestId });
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'NearbyMap', params: { requestId, mode: 'helper', lockBack: true } }],
+    });
   };
 
   return (

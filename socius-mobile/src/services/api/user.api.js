@@ -69,4 +69,23 @@ const getNearbyUsers = (token, { latitude, longitude, radiusMeters = 500 } = {})
     .then((response) => response.data);
 };
 
- export { getHome, getProfile, updateProfile, markFirstTimeFlag, deleteAccount, getHistory, getEmergencyContacts, upsertEmergencyContacts, deleteEmergencyContact, getNearbyUsers };
+const getPublicUser = (token, id) => {
+  if (!id) return Promise.resolve(null);
+  return api
+    .get(`/user/public/${encodeURIComponent(id)}`, { ...authConfig(token), cacheTtlMs: 15000 })
+    .then((response) => response.data);
+};
+
+export {
+  getHome,
+  getProfile,
+  updateProfile,
+  markFirstTimeFlag,
+  deleteAccount,
+  getHistory,
+  getEmergencyContacts,
+  upsertEmergencyContacts,
+  deleteEmergencyContact,
+  getNearbyUsers,
+  getPublicUser,
+};

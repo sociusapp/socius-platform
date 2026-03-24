@@ -29,9 +29,23 @@ export default {
     }
   },
 
+  startPresenceAlarmRingtone: () => {
+    if (SociusCallModule?.startPresenceAlarmRingtone) {
+      SociusCallModule.startPresenceAlarmRingtone();
+    }
+  },
+
   stopRingtone: () => {
     if (SociusCallModule?.stopRingtone) {
       SociusCallModule.stopRingtone();
+    }
+  },
+
+  playMessageSound: () => {
+    if (SociusCallModule?.playMessageSound) {
+      SociusCallModule.playMessageSound();
+    } else {
+      console.warn('playMessageSound not available on SociusCallModule');
     }
   },
 };

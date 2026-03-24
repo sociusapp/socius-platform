@@ -26,6 +26,23 @@ const createPresenceRequest = async (req, res, next) => {
   }
 }
 
+const getPresenceById = async (req, res, next) => {
+  try {
+    const { id } = req.params
+    if (!id || id.length !== 24) {
+      const err = new Error('Invalid ID')
+      err.name = 'CastError'
+      err.path = '_id'
+      err.value = id
+      throw err
+    }
+    const data = await presenceService.getPresenceById(req.user._id, id)
+    return success(res, data)
+  } catch (err) {
+    next(err)
+  }
+}
+
 const getActivePresenceRequest = async (req, res, next) => {
   try {
     const data = await presenceService.getActivePresenceRequest(req.user._id)
@@ -39,6 +56,16 @@ const acceptPresence = async (req, res, next) => {
   try {
     const result = await presenceService.acceptPresence(req.user._id, req.params.id)
     return success(res, result, 'Presence accepted')
+  } catch (err) {
+    next(err)
+  }
+}
+
+const updatePresenceMatchStatus = async (req, res, next) => {
+  try {
+    const { status } = req.body
+    const result = await presenceService.updatePresenceMatchStatus(req.user._id, req.params.id, status)
+    return success(res, result, `Status updated to ${status}`)
   } catch (err) {
     next(err)
   }
@@ -74,11 +101,37 @@ const closePresenceRequest = async (req, res, next) => {
   }
 }
 
+const getNearbyPresenceRequests = async (req, res, next) => {
+  try {
+    const { lat, lng, latitude, longitude } = req.query
+    const targetLat = lat || latitude
+    const targetLng = lng || longitude
+    const coords = targetLat && targetLng ? { lat: parseFloat(targetLat), lng: parseFloat(targetLng) } : null
+    const requests = await presenceService.getNearbyPresenceRequests(req.user._id, coords)
+    return success(res, requests)
+  } catch (err) {
+    next(err)
+  }
+}
+
+const updatePresenceRequest = async (req, res, next) => {
+  try {
+    const result = await presenceService.updatePresenceRequest(req.user._id, req.params.id, req.body)
+    return success(res, result, 'Presence request updated.')
+  } catch (err) {
+    next(err)
+  }
+}
+
 module.exports = {
   createPresenceRequest,
+  getPresenceById,
   getActivePresenceRequest,
   acceptPresence,
+  updatePresenceMatchStatus,
   declinePresence,
   cancelPresenceRequest,
   closePresenceRequest,
+  getNearbyPresenceRequests,
+  updatePresenceRequest,
 }
