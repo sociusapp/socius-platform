@@ -18,6 +18,7 @@ router.use('/admin',              require('./admin.routes'))
 router.use('/admin-issues',       require('./adminIssue.routes'))
 router.use('/pages',              require('./staticPage.routes'))
 router.use('/request',            require('./requestClosure.routes'))
+router.use('/public',             require('./public.routes'))
 router.use('/',                   require('./closureUpload.routes'))
 
 module.exports = router

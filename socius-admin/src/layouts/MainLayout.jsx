@@ -15,7 +15,8 @@ import {
   Settings,
   Maximize,
   Minimize,
-  Bug
+  Bug,
+  MapPin
 } from 'lucide-react';
 import logo from '../assets/images/icon-03.png';
 
@@ -165,6 +166,7 @@ const MainLayout = () => {
         )}
 
         <NavLink to="/issue-tracker" icon={<Bug className="w-5 h-5" />} badge={pendingIssuesCount > 0 ? pendingIssuesCount : null}>Issue Tracker</NavLink>
+        <NavLink to="/public-locations" icon={<MapPin className="w-5 h-5" />}>Public Locations</NavLink>
 
         {!isDeveloper && (
           <>
