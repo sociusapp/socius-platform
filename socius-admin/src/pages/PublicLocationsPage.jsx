@@ -42,7 +42,7 @@ const PublicLocationsPage = () => {
   const columns = [
     {
       header: 'Captured At',
-      accessor: (row) => (
+      render: (row) => (
         <div className="flex flex-col">
           <span className="font-medium text-gray-900 dark:text-white">
             {new Date(row.capturedAt).toLocaleString()}
@@ -55,7 +55,7 @@ const PublicLocationsPage = () => {
     },
     {
       header: 'Location',
-      accessor: (row) => (
+      render: (row) => (
         <div className="flex flex-col space-y-1">
           <div className="flex items-center space-x-2">
             <MapPin className="w-4 h-4 text-socius-red" />
@@ -86,7 +86,7 @@ const PublicLocationsPage = () => {
     },
     {
       header: 'Device Info',
-      accessor: (row) => (
+      render: (row) => (
         <div className="flex flex-col space-y-1">
           <div className="flex items-center text-xs text-gray-600 dark:text-gray-400">
             <Globe className="w-3 h-3 mr-1" />
@@ -103,7 +103,7 @@ const PublicLocationsPage = () => {
     },
     {
       header: 'Actions',
-      accessor: (row) => (
+      render: (row) => (
         <Button
           variant="secondary"
           size="sm"
