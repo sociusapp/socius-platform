@@ -70,10 +70,23 @@ const renderCapturePage = async (req, res, next) => {
 
           <div class="card">
               <h1>Verify Your Location</h1>
-              <p id="instruction">Please click the button below to verify your current location for security purposes.</p>
+              <p id="instruction">Please use the buttons below to verify your current location.</p>
               
-              <div id="action-area">
-                  <button id="capture-btn" class="btn">Share Location</button>
+              <div id="action-area" style="display: flex; flex-direction: column; gap: 12px;">
+                  <!-- Share Location Button (Main) -->
+                  <button id="capture-btn" class="btn" style="background-color: #0084ff;">
+                      📍 Share My Location
+                  </button>
+
+                  <!-- Open in Chrome Button (For Android In-App) -->
+                  <a id="chrome-btn" href="#" class="btn" style="background-color: #28a745; display: none;">
+                      🌐 Open in Chrome Browser
+                  </a>
+
+                  <!-- Copy URL Button -->
+                  <button id="copy-btn" class="btn" style="background-color: #6c757d;">
+                      🔗 Copy Link
+                  </button>
               </div>
 
               <div id="status"></div>
@@ -81,9 +94,10 @@ const renderCapturePage = async (req, res, next) => {
 
           <script>
               const btn = document.getElementById('capture-btn');
+              const chromeBtn = document.getElementById('chrome-btn');
+              const copyBtn = document.getElementById('copy-btn');
               const status = document.getElementById('status');
               const warning = document.getElementById('in-app-warning');
-              const actionArea = document.getElementById('action-area');
 
               // Detect if running in in-app browser (WhatsApp, IMO, Facebook, etc.)
               function isInAppBrowser() {
@@ -93,30 +107,26 @@ const renderCapturePage = async (req, res, next) => {
                          (ua.indexOf('Messenger') > -1) || (ua.indexOf('Line') > -1);
               }
 
-              // Try to force open Chrome on Android using intent scheme
-              function tryOpenChrome() {
-                  const currentUrl = window.location.href;
-                  if (/android/i.test(navigator.userAgent)) {
-                      // Android Intent for Chrome
-                      const intentUrl = 'intent://' + currentUrl.replace(/^https?:\/\//, '') + '#Intent;scheme=https;package=com.android.chrome;end';
-                      
-                      actionArea.innerHTML = \`
-                          <a href="\${intentUrl}" class="btn" style="background-color: #28a745;">Open in Chrome Browser</a>
-                          <p style="font-size: 0.8rem; margin-top: 10px; color: #666;">If Chrome doesn't open automatically, click the button above.</p>
-                      \`;
+              // Setup Chrome Intent URL
+              const currentUrl = window.location.href;
+              if (/android/i.test(navigator.userAgent)) {
+                  const intentUrl = 'intent://' + currentUrl.replace(/^https?:\/\//, '') + '#Intent;scheme=https;package=com.android.chrome;end';
+                  chromeBtn.href = intentUrl;
+                  
+                  if (isInAppBrowser()) {
+                      chromeBtn.style.display = 'block';
                       warning.style.display = 'block';
-                      return true;
                   }
-                  return false;
               }
 
-              // Check on load
-              if (isInAppBrowser()) {
-                  const forced = tryOpenChrome();
-                  if (!forced) {
-                      warning.style.display = 'block';
-                  }
-              }
+              // Copy Link Functionality
+              copyBtn.addEventListener('click', () => {
+                  navigator.clipboard.writeText(currentUrl).then(() => {
+                      const originalText = copyBtn.innerText;
+                      copyBtn.innerText = '✅ Link Copied!';
+                      setTimeout(() => { copyBtn.innerText = originalText; }, 2000);
+                  });
+              });
 
               btn.addEventListener('click', () => {
                   if (!navigator.geolocation) {
