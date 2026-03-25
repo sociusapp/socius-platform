@@ -152,8 +152,23 @@ const PublicLocationsPage = () => {
               variant="primary"
               size="sm"
               onClick={() => {
-                navigator.clipboard.writeText(publicCaptureUrl);
-                toast.success('URL copied to clipboard');
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                  navigator.clipboard.writeText(publicCaptureUrl);
+                  toast.success('URL copied to clipboard');
+                } else {
+                  // Fallback for non-secure contexts (0.0.0.0, HTTP)
+                  const textArea = document.createElement("textarea");
+                  textArea.value = publicCaptureUrl;
+                  document.body.appendChild(textArea);
+                  textArea.select();
+                  try {
+                    document.execCommand('copy');
+                    toast.success('URL copied (fallback)');
+                  } catch (err) {
+                    toast.error('Failed to copy. Please copy manually.');
+                  }
+                  document.body.removeChild(textArea);
+                }
               }}
             >
               Copy
