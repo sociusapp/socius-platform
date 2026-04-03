@@ -47,6 +47,23 @@ const adminPasswordLogin = async (req, res, next) => {
   }
 }
 
+const developerPasswordLogin = async (req, res, next) => {
+  try {
+    const { email, password } = req.body
+    const result = await authService.developerPasswordLogin({ email, password })
+
+    await logger.info(`Developer logged in: ${email}`, {
+      method: 'POST',
+      url: '/api/auth/developer-login',
+      userId: result.user._id
+    })
+
+    return success(res, result, 'Developer login successful')
+  } catch (err) {
+    next(err)
+  }
+}
+
 const logout = async (req, res, next) => {
   try {
     const { deviceToken } = req.body
