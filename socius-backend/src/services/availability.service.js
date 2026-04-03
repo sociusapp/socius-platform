@@ -18,8 +18,13 @@ const toggleAvailability = async (userId, { isAvailable, location }) => {
     throw err
   }
 
-  if (user.accountStatus !== 'active') {
-    const err = new Error('Account must be active to toggle availability')
+  const status = user.accountStatus || 'active'
+  const isAllowedStatus = ['active', 'pending_review', 'limited'].includes(status)
+
+  const isActive = isAllowedStatus || user.isAdmin
+  
+  if (!isActive) {
+    const err = new Error('Your account is not active. Please contact support.')
     err.statusCode = 403
     throw err
   }

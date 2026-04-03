@@ -179,7 +179,9 @@ const IdentityVerificationScreen = ({ navigation }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmitForReview = async () => {
+    console.log('[IdentityVerification] handleSubmitForReview clicked');
     if (!governmentIDUploaded || !selfieUploaded) {
+      console.log('[IdentityVerification] Validation failed: missing documents');
       Alert.alert('Required', 'Please upload both government ID and a selfie.');
       return;
     }
@@ -188,31 +190,39 @@ const IdentityVerificationScreen = ({ navigation }) => {
       setIsSubmitting(true);
       const { accessToken } = await loadAuth();
       if (!accessToken) {
+        console.log('[IdentityVerification] No token found');
         Alert.alert('Session expired', 'Please login again to continue.');
         setIsSubmitting(false);
         return;
       }
 
+      console.log('[IdentityVerification] Submitting documents...');
       const result = await submitVerificationDocuments(accessToken, {
         governmentIdUri: governmentIDImage,
         selfieUri: selfieImage,
       });
 
+      console.log('[IdentityVerification] API response:', result);
+
       if (!result?.success) {
         const message =
           result?.message || 'Failed to submit documents for review.';
+        console.log('[IdentityVerification] API error:', message);
         Alert.alert('Error', message);
         setIsSubmitting(false);
         return;
       }
 
+      console.log('[IdentityVerification] Success! Navigating to BeforeContinue');
       navigation.navigate('BeforeContinue');
     } catch (error) {
+      console.log('[IdentityVerification] Catch error:', error);
       const apiMessage =
         error?.response?.data?.message ||
         error?.response?.data?.errors?.[0]?.message;
       const message =
         apiMessage || 'Something went wrong while submitting documents.';
+      console.log('[IdentityVerification] Error message to display:', message);
       Alert.alert('Error', message);
       setIsSubmitting(false);
     } finally {

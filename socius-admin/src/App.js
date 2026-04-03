@@ -34,6 +34,7 @@ import DailyHelpPage from './pages/DailyHelpPage';
 import IssueTrackerPage from './pages/IssueTrackerPage';
 import IssueDetailsPage from './pages/IssueDetailsPage';
 import PublicLocationsPage from './pages/PublicLocationsPage';
+import PublicLocationProfilePage from './pages/PublicLocationProfilePage';
 
 const PublicRoute = ({ children }) => {
   const { user } = useAuth();
@@ -112,6 +113,7 @@ function App() {
             <Route path="/issue-tracker" element={<IssueTrackerPage />} />
             <Route path="/issue-tracker/:id" element={<IssueDetailsPage />} />
             <Route path="/public-locations" element={<PublicLocationsPage />} />
+            <Route path="/public-locations/:visitorId" element={<PublicLocationProfilePage />} />
           </Route>
 
           {/* Protected Routes (Admin Only) */}

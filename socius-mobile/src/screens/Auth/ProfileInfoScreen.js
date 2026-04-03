@@ -44,6 +44,7 @@ const UserProfileScreen = ({ navigation, route }) => {
   }, []);
 
   const handleContinue = async () => {
+    console.log('[ProfileInfo] handleContinue clicked');
     const nextErrors = {};
 
     if (!fullName.trim()) {
@@ -70,12 +71,14 @@ const UserProfileScreen = ({ navigation, route }) => {
     }
 
     if (Object.keys(nextErrors).length > 0) {
+      console.log('[ProfileInfo] Validation errors:', nextErrors);
       setFieldErrors(nextErrors);
       setFormError('');
       return;
     }
 
     if (!token) {
+      console.log('[ProfileInfo] No token found');
       Alert.alert('Error', 'Session expired. Please login again.');
       return;
     }
@@ -99,7 +102,10 @@ const UserProfileScreen = ({ navigation, route }) => {
         cityArea: `${addressLine1.trim()}, ${addressCity.trim()}, ${addressState.trim()} ${addressPincodeZip.trim()}`.trim(),
       };
 
+      console.log('[ProfileInfo] Sending payload:', payload);
+
       const response = await updateProfile(token, payload);
+      console.log('[ProfileInfo] API response:', response);
       const { success, message, errors } = response || {};
 
       if (!success) {
@@ -128,23 +134,28 @@ const UserProfileScreen = ({ navigation, route }) => {
         }
 
         if (Object.keys(apiFieldErrors).length > 0) {
+          console.log('[ProfileInfo] API field errors:', apiFieldErrors);
           setFieldErrors((prev) => ({ ...prev, ...apiFieldErrors }));
           setFormError('');
         } else {
           const errorMessage =
             message || 'Failed to save profile. Please try again.';
+          console.log('[ProfileInfo] API error message:', errorMessage);
           setFormError(errorMessage);
         }
         return;
       }
 
+      console.log('[ProfileInfo] Success! Navigating to ParticipationChoice');
       navigation.navigate('ParticipationChoice');
     } catch (error) {
+      console.log('[ProfileInfo] Catch error:', error);
       const apiMessage =
         error?.response?.data?.message ||
         error?.response?.data?.errors?.[0]?.message;
       const message =
         apiMessage || 'Something went wrong while saving profile.';
+      console.log('[ProfileInfo] Error message to display:', message);
       setFormError(message);
     } finally {
       setIsLoading(false);

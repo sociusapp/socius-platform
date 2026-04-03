@@ -30,7 +30,7 @@ const findNearbyAvailableUsers = async ({
 
       const query = {
         _id: { $in: redisUserIds, $nin: excludeIds || [] },
-        accountStatus: ACCOUNT_STATUS.ACTIVE,
+        accountStatus: { $in: ['active', 'pending_review', 'limited'] },
         isDeleted: false,
       }
 
@@ -50,7 +50,7 @@ const findNearbyAvailableUsers = async ({
 
     // 2. Fallback to MongoDB (Reliable)
     const query = {
-      accountStatus: ACCOUNT_STATUS.ACTIVE,
+      accountStatus: { $in: ['active', 'pending_review', 'limited'] },
       isDeleted: false,
       _id: { $nin: excludeIds || [] },
       location: {

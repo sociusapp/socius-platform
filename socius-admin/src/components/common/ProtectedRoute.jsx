@@ -23,7 +23,22 @@ const ProtectedRoute = ({ children, allow }) => {
   if (Array.isArray(allow) && allow.length > 0) {
     const userType = getUserType(user);
     if (!allow.includes(userType)) {
+      // If user doesn't have required permissions, redirect to appropriate page
+      // but don't create infinite redirects
+      const currentPath = location.pathname;
+      
+      // Special handling for verification queue - require admin access
+      if (currentPath.includes('/verification') && !user?.isAdmin) {
+        return <Navigate to="/dashboard" replace />;
+      }
+      
       const fallback = userType === 'developer' ? '/issue-tracker' : '/dashboard';
+      
+      // Avoid redirecting to the same page
+      if (currentPath === fallback) {
+        return <Navigate to="/login" replace />;
+      }
+      
       return <Navigate to={fallback} replace />;
     }
   }

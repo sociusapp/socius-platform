@@ -9,20 +9,20 @@ const {
   aiCompleteIssue,
 } = require('../controllers/adminIssue.controller')
 const { authenticate } = require('../middlewares/auth')
-const { requireAdminOrDeveloper, requireDeveloper } = require('../middlewares/admin')
+const { requireAdmin } = require('../middlewares/admin')
 const { upload } = require('../middlewares/upload')
 
 // Require internal authentication for all routes
-router.use(authenticate, requireAdminOrDeveloper)
+router.use(authenticate, requireAdmin)
 
 // GET /api/admin-issues
 router.get('/', getIssues)
 
 // GET /api/admin-issues/ai-stats
-router.get('/stats/performance', requireDeveloper, getAIStats)
+router.get('/stats/performance', getAIStats)
 
 // POST /api/admin-issues/force-sync
-router.post('/force-sync', requireDeveloper, async (req, res) => {
+router.post('/force-sync', async (req, res) => {
   const { syncIssuesToFile } = require('../utils/issueSync');
   await syncIssuesToFile();
   res.json({ success: true, message: 'Sync triggered' });
@@ -38,7 +38,7 @@ router.post('/', upload.fields([
 router.get('/:id', getIssueById)
 
 // POST /api/admin/issues/:id/ai-complete
-router.post('/:id/ai-complete', requireDeveloper, aiCompleteIssue)
+router.post('/:id/ai-complete', aiCompleteIssue)
 
 // PATCH /api/admin/issues/:id
 router.patch('/:id', updateIssue)

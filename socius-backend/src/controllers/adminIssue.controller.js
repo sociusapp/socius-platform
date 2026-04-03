@@ -4,32 +4,22 @@ const { syncIssuesToFile } = require('../utils/issueSync')
 const logger = require('../utils/logger')
 
 const getActorLabel = (req) => {
-  if (req?.user?.isDeveloper) return 'Developer'
-  return 'Admin'
+  if (req.user?.isAdmin) return 'Admin'
+  return 'User'
 }
 
-const sanitizeIssueForViewer = (issue, viewer) => {
-  const obj = issue?.toObject ? issue.toObject() : issue
-  if (!obj) return obj
+const sanitizeIssueForViewer = (issue, user) => {
+  const isAdmin = user?.isAdmin
+  const activity = issue.activity.filter((a) => {
+    if (a.visibility === 'both') return true
+    if (a.visibility === 'developer' && isAdmin) return true
+    return false
+  })
 
-  if (!viewer?.isDeveloper) {
-    delete obj.aiEnabled
-    delete obj.aiAssignedBy
-    delete obj.aiAssignedAt
-    delete obj.aiLastCompletedAt
-    if (Array.isArray(obj.activity)) {
-      obj.activity = obj.activity
-        .filter((a) => a?.visibility !== 'developer' || a?.user === 'AI')
-        .map((a) => {
-          if (!a || typeof a !== 'object') return a
-          if (a.user === 'AI') {
-            return { ...a, user: 'Developer' }
-          }
-          return a
-        })
-    }
+  return {
+    ...issue.toObject(),
+    activity,
   }
-  return obj
 }
 
 const createIssue = async (req, res, next) => {
@@ -111,8 +101,8 @@ const getIssues = async (req, res, next) => {
 
 const getAIStats = async (req, res, next) => {
   try {
-    if (!req.user?.isDeveloper) {
-      return forbidden(res, 'Developer access required')
+    if (!req.user?.isAdmin) {
+      return forbidden(res, 'Admin access required')
     }
 
     const allIssues = await Issue.find({ aiEnabled: true })
@@ -179,16 +169,7 @@ const updateIssue = async (req, res, next) => {
     }
 
     if (status && status !== issue.status) {
-      let nextStatus = status
-      if (!req.user?.isDeveloper) {
-        const rawNext = String(nextStatus).trim()
-        const nextLower = rawNext.toLowerCase()
-        const isAllowedAdmin = nextLower === 'pending' || nextLower === 'completed'
-        if (!isAllowedAdmin) {
-          return forbidden(res, 'Only developer can update status')
-        }
-        nextStatus = nextLower === 'completed' ? 'Completed' : 'Pending'
-      }
+      const nextStatus = status
       issue.activity.push({
         type: 'status',
         text: `Status changed from ${issue.status} to ${nextStatus}`,
@@ -210,32 +191,22 @@ const updateIssue = async (req, res, next) => {
     }
 
     if (aiEnabled !== undefined) {
-      if (!req.user?.isDeveloper) {
-        return forbidden(res, 'Only developer can manage AI assignment')
+      if (!req.user?.isAdmin) {
+        return forbidden(res, 'Only admins can manage AI assignment')
       }
 
       const nextValue = !!aiEnabled
       if (issue.aiEnabled !== nextValue) {
         issue.aiEnabled = nextValue
-        issue.aiAssignedBy = nextValue ? req.user._id : null
-        issue.aiAssignedAt = nextValue ? new Date() : null
-
-        if (nextValue && issue.status === 'Pending') {
-          issue.activity.push({
-            type: 'status',
-            text: `Status changed from ${issue.status} to In Progress`,
-            user: getActorLabel(req),
-            visibility: 'both',
-            time: new Date(),
-          })
-          issue.status = 'In Progress'
+        if (nextValue) {
+          issue.aiAssignedBy = req.user._id
+          issue.aiAssignedAt = new Date()
         }
-
         issue.activity.push({
-          type: 'system',
-          text: nextValue ? 'AI automation enabled' : 'AI automation disabled',
+          type: 'status',
+          text: `AI automation ${nextValue ? 'enabled' : 'disabled'}`,
           user: getActorLabel(req),
-          visibility: 'developer',
+          visibility: 'both',
           time: new Date(),
         })
       }
@@ -244,8 +215,8 @@ const updateIssue = async (req, res, next) => {
     // Allow other updates if needed
     const fieldsToUpdate = ['title', 'description', 'category', 'priority', 'screenshot']
     const hasAnyFieldUpdate = fieldsToUpdate.some((field) => req.body[field] !== undefined)
-    if (hasAnyFieldUpdate && !req.user?.isDeveloper) {
-      return forbidden(res, 'Only developer can edit issue fields')
+    if (hasAnyFieldUpdate && !req.user?.isAdmin) {
+      return forbidden(res, 'Only admins can edit issue fields')
     }
     fieldsToUpdate.forEach((field) => {
       if (req.body[field] !== undefined) {
@@ -266,8 +237,8 @@ const updateIssue = async (req, res, next) => {
 
 const deleteIssue = async (req, res, next) => {
   try {
-    if (!req.user?.isDeveloper) {
-      return forbidden(res, 'Only developer can delete issues')
+    if (!req.user?.isAdmin) {
+      return forbidden(res, 'Only admins can delete issues')
     }
     const issue = await Issue.findByIdAndDelete(req.params.id)
     if (!issue) {
@@ -287,8 +258,8 @@ const deleteIssue = async (req, res, next) => {
 
 const aiCompleteIssue = async (req, res, next) => {
   try {
-    if (!req.user?.isDeveloper) {
-      return forbidden(res, 'Developer access required')
+    if (!req.user?.isAdmin) {
+      return forbidden(res, 'Admin access required')
     }
 
     const { activityText } = req.body || {}
@@ -306,28 +277,29 @@ const aiCompleteIssue = async (req, res, next) => {
     if (issue.status !== 'Completed') {
       issue.activity.push({
         type: 'status',
-        text: `Status changed from ${issue.status} to Completed`,
-        user: 'Developer',
+        text: 'AI automation completed',
+        user: 'AI (Developer)',
         visibility: 'both',
         time: new Date(),
       })
       issue.status = 'Completed'
+      issue.aiLastCompletedAt = new Date()
     }
 
-    issue.aiLastCompletedAt = new Date()
-
-    issue.activity.push({
-      type: 'system',
-      text: activityText || 'AI completion recorded',
-      user: 'AI',
-      visibility: 'both',
-      time: new Date(),
-    })
+    if (activityText) {
+      issue.activity.push({
+        type: 'comment',
+        text: activityText,
+        user: 'AI (Developer)',
+        visibility: 'both',
+        time: new Date(),
+      })
+    }
 
     await issue.save()
-    await syncIssuesToFile()
+    await syncIssuesToFile();
 
-    return success(res, sanitizeIssueForViewer(issue, req.user), 'AI completion recorded')
+    return success(res, sanitizeIssueForViewer(issue, req.user), 'Issue updated by AI')
   } catch (err) {
     next(err)
   }

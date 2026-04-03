@@ -160,14 +160,146 @@ const schemas = {
   createPresenceRequest: Joi.object({
     situationType: Joi.string()
       .valid('need_calm_presence', 'being_followed', 'feeling_unsafe', 'other')
-      .required(),
-    description: Joi.string().trim().max(300).optional().allow(''),
+      .required()
+      .messages({
+        'any.only': 'Situation type must be one of: need_calm_presence, being_followed, feeling_unsafe, other',
+        'any.required': 'Situation type is required'
+      }),
+    description: Joi.string()
+      .trim()
+      .max(300)
+      .optional()
+      .allow('')
+      .messages({
+        'string.max': 'Description must be less than 300 characters'
+      }),
     location: Joi.object({
-      lng: Joi.number().min(-180).max(180).required(),
-      lat: Joi.number().min(-90).max(90).required(),
-      address: Joi.string().optional().allow(''),
-    }).required(),
-    maxHelpers: Joi.number().integer().min(2).max(5).default(3),
+      lng: Joi.number()
+        .min(-180)
+        .max(180)
+        .required()
+        .messages({
+          'number.min': 'Longitude must be between -180 and 180',
+          'number.max': 'Longitude must be between -180 and 180',
+          'any.required': 'Longitude is required'
+        }),
+      lat: Joi.number()
+        .min(-90)
+        .max(90)
+        .required()
+        .messages({
+          'number.min': 'Latitude must be between -90 and 90',
+          'number.max': 'Latitude must be between -90 and 90',
+          'any.required': 'Latitude is required'
+        }),
+      address: Joi.string()
+        .optional()
+        .allow('')
+        .max(200)
+        .messages({
+          'string.max': 'Address must be less than 200 characters'
+        }),
+    })
+      .required()
+      .messages({
+        'any.required': 'Location is required'
+      }),
+    maxHelpers: Joi.number()
+      .integer()
+      .min(2)
+      .max(5)
+      .default(3)
+      .messages({
+        'number.min': 'Maximum helpers must be at least 2',
+        'number.max': 'Maximum helpers cannot exceed 5',
+        'number.integer': 'Maximum helpers must be a whole number'
+      }),
+  }),
+  
+  // Update presence request
+  updatePresenceRequest: Joi.object({
+    situationType: Joi.string()
+      .valid('need_calm_presence', 'being_followed', 'feeling_unsafe', 'other')
+      .optional()
+      .messages({
+        'any.only': 'Situation type must be one of: need_calm_presence, being_followed, feeling_unsafe, other'
+      }),
+    description: Joi.string()
+      .trim()
+      .max(300)
+      .optional()
+      .allow('')
+      .messages({
+        'string.max': 'Description must be less than 300 characters'
+      }),
+  }).min(1).messages({
+    'object.min': 'At least one field must be provided for update'
+  }),
+  
+  // Presence status update
+  updatePresenceStatus: Joi.object({
+    status: Joi.string()
+      .valid('en_route', 'arrived')
+      .required()
+      .messages({
+        'any.only': 'Status must be either en_route or arrived',
+        'any.required': 'Status is required'
+      }),
+  }),
+  
+  // Close presence request
+  closePresenceRequest: Joi.object({
+    closureReason: Joi.string()
+      .valid(
+        'calm_mediation',
+        'no_longer_needed',
+        'situation_changed',
+        'chose_to_step_away',
+        'emergency_services_called'
+      )
+      .required()
+      .messages({
+        'any.only': 'Closure reason must be one of: calm_mediation, no_longer_needed, situation_changed, chose_to_step_away, emergency_services_called',
+        'any.required': 'Closure reason is required'
+      }),
+  }),
+  
+  // Nearby presence requests query
+  nearbyPresenceQuery: Joi.object({
+    lat: Joi.number()
+      .min(-90)
+      .max(90)
+      .optional()
+      .messages({
+        'number.min': 'Latitude must be between -90 and 90',
+        'number.max': 'Latitude must be between -90 and 90'
+      }),
+    lng: Joi.number()
+      .min(-180)
+      .max(180)
+      .optional()
+      .messages({
+        'number.min': 'Longitude must be between -180 and 180',
+        'number.max': 'Longitude must be between -180 and 180'
+      }),
+    latitude: Joi.number()
+      .min(-90)
+      .max(90)
+      .optional()
+      .messages({
+        'number.min': 'Latitude must be between -90 and 90',
+        'number.max': 'Latitude must be between -90 and 90'
+      }),
+    longitude: Joi.number()
+      .min(-180)
+      .max(180)
+      .optional()
+      .messages({
+        'number.min': 'Longitude must be between -180 and 180',
+        'number.max': 'Longitude must be between -180 and 180'
+      }),
+  }).xor('lat', 'latitude').messages({
+    'object.xor': 'Provide either lat/lng or latitude/longitude, not both'
   }),
 
   // Close request

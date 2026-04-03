@@ -50,6 +50,9 @@ const ParticipationChoiceScreen = ({ navigation }) => {
   };
 
     const handleContinue = () => {
+    console.log('[ParticipationChoice] handleContinue clicked');
+    console.log('[ParticipationChoice] Selected role:', selectedRole);
+    console.log('[ParticipationChoice] Selected notifications:', selectedNotifications);
     navigation.navigate('IdentityVerification');
   };
 

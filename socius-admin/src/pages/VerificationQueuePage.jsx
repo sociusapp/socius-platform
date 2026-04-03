@@ -125,10 +125,17 @@ const VerificationQueuePage = () => {
             error?.response?.data?.message ||
             error?.message ||
             'Failed to load verification queue';
+          
+          console.error('Verification Queue Error:', error);
           setRequests([]);
           setTotalItems(0);
-          if (status === 401 || status === 403) {
+          
+          // Only redirect on authentication errors, not on permission errors
+          if (status === 401) {
             navigate('/login');
+          } else if (status === 403) {
+            // User doesn't have admin permissions, show message instead of redirect
+            console.warn('Access denied: Admin permissions required for verification queue');
           }
         }
       } finally {

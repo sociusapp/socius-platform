@@ -98,10 +98,15 @@ const BottomTabNavigator = () => {
         setVerificationStatus(status || null);
         setVerificationFailureReasons(data.verificationFailureReasons || []);
         setVerificationAdminNote(data.verificationAdminNote || null);
-        const verified =
-          user.isIdentityVerified &&
-          user.accountStatus === 'active' &&
-          status === 'approved';
+
+        // Allow active, pending_review, and limited statuses
+        const allowedStatuses = ['active', 'pending_review', 'limited'];
+        const isStatusAllowed = allowedStatuses.includes(user.accountStatus || 'active');
+
+        // Allow approved or pending review verification statuses
+        const isVerificationAllowed = status === 'approved' || status === 'pending' || !status;
+
+        const verified = isStatusAllowed && isVerificationAllowed;
         setIsVerified(!!verified);
 
         let hasLoc = !!user.hasGivenLocationPermission;

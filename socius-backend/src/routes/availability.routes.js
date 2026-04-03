@@ -15,5 +15,6 @@ router.patch('/toggle', authenticate, requireActive, validate(schemas.updateAvai
 
 // PATCH /api/availability/location
 router.patch('/location', authenticate, requireActive, updateLocation)
+router.put('/location', authenticate, requireActive, updateLocation)
 
 module.exports = router

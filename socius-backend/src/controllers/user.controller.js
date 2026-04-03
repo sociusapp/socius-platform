@@ -131,7 +131,7 @@ const getPublicUser = async (req, res, next) => {
       .select('fullName profileImage isAvailable accountStatus role isIdentityVerified isPhoneVerified')
       .lean()
 
-    if (!user || user.accountStatus !== 'active') {
+    if (!user || !['active', 'pending_review'].includes(user.accountStatus)) {
       return success(res, null)
     }
 

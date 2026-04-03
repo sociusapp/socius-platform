@@ -6,73 +6,195 @@ const { emitToUser } = require('../config/socket')
 const { findHelpersForPresence } = require('./location.service')
 const { sendPresenceAlarm } = require('./notification.service')
 const { PRESENCE_STATUS, PRESENCE_MATCH_STATUS, HELP_REQUEST_STATUS, GEO, AUTO_CLOSE } = require('../utils/constants')
+const { findNearbyAvailableUsers } = require('../utils/geoQuery')
 const logger = require('../utils/logger')
 const { logRequestAttempt } = require('./requestAttempt.service')
+
+// Enhanced error codes for better client handling
+const PRESENCE_ERROR_CODES = {
+  ACTIVE_REQUEST_EXISTS: 'ACTIVE_REQUEST_EXISTS',
+  INVALID_COORDINATES: 'INVALID_COORDINATES',
+  INVALID_SITUATION_TYPE: 'INVALID_SITUATION_TYPE',
+  REQUEST_NOT_FOUND: 'REQUEST_NOT_FOUND',
+  REQUEST_CLOSED: 'REQUEST_CLOSED',
+  MATCH_NOT_FOUND: 'MATCH_NOT_FOUND',
+  HELPER_BUSY: 'HELPER_BUSY',
+  INVALID_STATUS: 'INVALID_STATUS',
+  FORBIDDEN: 'FORBIDDEN',
+  NO_HELPERS_FOUND: 'NO_HELPERS_FOUND',
+  LOCATION_REQUIRED: 'LOCATION_REQUIRED',
+  MAX_HELPERS_EXCEEDED: 'MAX_HELPERS_EXCEEDED',
+  DESCRIPTION_TOO_LONG: 'DESCRIPTION_TOO_LONG'
+}
+
+// Custom error creator for presence flow
+const createPresenceError = (message, code, statusCode = 400, data = null) => {
+  const err = new Error(message)
+  err.code = code
+  err.statusCode = statusCode
+  err.data = data
+  return err
+}
+
+// Validation helpers
+const validateCoordinates = (location) => {
+  if (!location || typeof location !== 'object') {
+    throw createPresenceError(
+      'Location is required and must be an object',
+      PRESENCE_ERROR_CODES.LOCATION_REQUIRED,
+      400
+    )
+  }
+  
+  const lat = location.lat || location.latitude
+  const lng = location.lng || location.longitude
+  
+  if (lat === undefined || lng === undefined) {
+    throw createPresenceError(
+      'Both latitude and longitude are required',
+      PRESENCE_ERROR_CODES.INVALID_COORDINATES,
+      400
+    )
+  }
+  
+  if (typeof lat !== 'number' || typeof lng !== 'number' || 
+      isNaN(lat) || isNaN(lng) || 
+      lat < -90 || lat > 90 || 
+      lng < -180 || lng > 180) {
+    throw createPresenceError(
+      'Invalid coordinates. Latitude must be between -90 and 90, longitude between -180 and 180',
+      PRESENCE_ERROR_CODES.INVALID_COORDINATES,
+      400
+    )
+  }
+  
+  return { lat, lng }
+}
+
+const validateSituationType = (situationType) => {
+  const validTypes = ['need_calm_presence', 'being_followed', 'feeling_unsafe', 'other']
+  if (!situationType || !validTypes.includes(situationType)) {
+    throw createPresenceError(
+      `Invalid situation type. Must be one of: ${validTypes.join(', ')}`,
+      PRESENCE_ERROR_CODES.INVALID_SITUATION_TYPE,
+      400
+    )
+  }
+  return situationType
+}
+
+const validateDescription = (description) => {
+  if (description && typeof description !== 'string') {
+    throw createPresenceError(
+      'Description must be a string',
+      PRESENCE_ERROR_CODES.DESCRIPTION_TOO_LONG,
+      400
+    )
+  }
+  
+  if (description && description.length > 300) {
+    throw createPresenceError(
+      'Description must be less than 300 characters',
+      PRESENCE_ERROR_CODES.DESCRIPTION_TOO_LONG,
+      400
+    )
+  }
+  
+  return description || null
+}
+
+const validateMaxHelpers = (maxHelpers) => {
+  if (maxHelpers !== undefined) {
+    if (typeof maxHelpers !== 'number' || maxHelpers < 2 || maxHelpers > 5) {
+      throw createPresenceError(
+        'Max helpers must be between 2 and 5',
+        PRESENCE_ERROR_CODES.MAX_HELPERS_EXCEEDED,
+        400
+      )
+    }
+  }
+  return maxHelpers || 3
+}
 
 /**
  * Presence request create karo + alarm bhejo
  */
 const createPresenceRequest = async (requesterId, { situationType, description, location, maxHelpers }, meta = null) => {
-  logger.info(`--- NEW CODE RUNNING --- createPresenceRequest for ${requesterId}`)
-  
-  const activeHelp = await HelpRequest.findOne({
-    requesterId,
-    status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING, HELP_REQUEST_STATUS.MATCHED, HELP_REQUEST_STATUS.ACTIVE] },
-  }).select('_id status')
-
-  if (activeHelp) {
-    logRequestAttempt({
+  try {
+    logger.info(`--- NEW CODE RUNNING --- createPresenceRequest for ${requesterId}`)
+    
+    // Enhanced validation
+    const validatedSituationType = validateSituationType(situationType)
+    const validatedDescription = validateDescription(description)
+    const validatedLocation = validateCoordinates(location)
+    const validatedMaxHelpers = validateMaxHelpers(maxHelpers)
+    
+    // Check for active help request
+    const activeHelp = await HelpRequest.findOne({
       requesterId,
-      requestKind: 'presence_request',
-      outcome: 'blocked_active_request',
-      reason: 'active_help_request',
-      situationType,
-      description,
-      location,
-      radiusMeters: GEO.PRESENCE_RADIUS_METERS,
-      meta,
-    }).catch(() => {})
-    const err = new Error('You already have an active request')
-    err.statusCode = 409
-    err.code = 'ACTIVE_REQUEST_EXISTS'
-    throw err
-  }
+      status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING, HELP_REQUEST_STATUS.MATCHED, HELP_REQUEST_STATUS.ACTIVE] },
+    }).select('_id status')
 
-  // Active presence request check
-  const existing = await PresenceRequest.findOne({
-    requesterId,
-    status: { $in: ['active', 'helpers_notified', 'helpers_accepted'] },
-  })
+    if (activeHelp) {
+      await logRequestAttempt({
+        requesterId,
+        requestKind: 'presence_request',
+        outcome: 'blocked_active_request',
+        reason: 'active_help_request',
+        situationType: validatedSituationType,
+        description: validatedDescription,
+        location: validatedLocation,
+        radiusMeters: GEO.PRESENCE_RADIUS_METERS,
+        meta,
+      }).catch(() => {})
+      throw createPresenceError(
+        'You already have an active help request. Please close it first.',
+        PRESENCE_ERROR_CODES.ACTIVE_REQUEST_EXISTS,
+        409
+      )
+    }
 
-  if (existing) {
-    logRequestAttempt({
+    // Check for active presence request
+    const existing = await PresenceRequest.findOne({
       requesterId,
-      requestKind: 'presence_request',
-      outcome: 'blocked_active_request',
-      reason: 'active_presence_request',
-      situationType,
-      description,
-      location,
-      radiusMeters: GEO.PRESENCE_RADIUS_METERS,
-      meta,
-    }).catch(() => {})
-    const err = new Error('You already have an active presence request')
-    err.statusCode = 409
-    err.code = 'ACTIVE_REQUEST_EXISTS'
-    throw err
-  }
+      status: { $in: ['active', 'helpers_notified', 'helpers_accepted'] },
+    })
 
-  const autoCloseAt = new Date(Date.now() + AUTO_CLOSE.PRESENCE_REQUEST_MINUTES * 60 * 1000)
+    if (existing) {
+      await logRequestAttempt({
+        requesterId,
+        requestKind: 'presence_request',
+        outcome: 'blocked_active_request',
+        reason: 'active_presence_request',
+        situationType: validatedSituationType,
+        description: validatedDescription,
+        location: validatedLocation,
+        radiusMeters: GEO.PRESENCE_RADIUS_METERS,
+        meta,
+      }).catch(() => {})
+      throw createPresenceError(
+        'You already have an active presence request. Please close it first.',
+        PRESENCE_ERROR_CODES.ACTIVE_REQUEST_EXISTS,
+        409
+      )
+    }
 
-  // Nearby helpers dhundho
-  const helpers = await findHelpersForPresence({
-    lng: location.lng,
-    lat: location.lat,
-    maxHelpers: maxHelpers || 3,
-    excludeIds: [requesterId],
-  })
+    const autoCloseAt = new Date(Date.now() + AUTO_CLOSE.PRESENCE_REQUEST_MINUTES * 60 * 1000)
 
-  logger.info(`Helpers found: ${helpers.length}`)
+    // Find nearby helpers with better error handling
+    let helpers = []
+    try {
+      helpers = await findHelpersForPresence({
+        lng: validatedLocation.lng,
+        lat: validatedLocation.lat,
+        maxHelpers: validatedMaxHelpers,
+        excludeIds: [requesterId],
+      })
+      logger.info(`Helpers found: ${helpers.length}`)
+    } catch (error) {
+      logger.error('Error finding helpers for presence:', error)
+      // Continue with empty helpers array - don't fail the request
+    }
 
   let helperAvailabilityHint = null
   let attemptId = null
@@ -123,19 +245,20 @@ const createPresenceRequest = async (requesterId, { situationType, description, 
     } catch (e) { }
   }
 
-  const request = await PresenceRequest.create({
-    requesterId,
-    situationType,
-    description: description || null,
-    location: {
-      type: 'Point',
-      coordinates: [location.lng, location.lat],
-      address: location.address || null,
-    },
-    maxHelpers: maxHelpers || 3,
-    status: PRESENCE_STATUS.ACTIVE,
-    autoCloseScheduledAt: autoCloseAt,
-  })
+    // Create presence request with validated data
+    const request = await PresenceRequest.create({
+      requesterId,
+      situationType: validatedSituationType,
+      description: validatedDescription,
+      location: {
+        type: 'Point',
+        coordinates: [validatedLocation.lng, validatedLocation.lat],
+        address: location.address || null,
+      },
+      maxHelpers: validatedMaxHelpers,
+      status: PRESENCE_STATUS.ACTIVE,
+      autoCloseScheduledAt: autoCloseAt,
+    })
 
   // Populate requester info for notification
   await request.populate('requesterId', 'fullName firstName lastName')
@@ -191,52 +314,86 @@ const createPresenceRequest = async (requesterId, { situationType, description, 
     helperAvailabilityHint,
     attemptId,
   }
+  } catch (error) {
+    logger.error('Error in createPresenceRequest:', error)
+    throw error
+  }
 }
 
 /**
  * Helper ne presence accept kiya
  */
 const acceptPresence = async (helperId, presenceRequestId) => {
-  const busyHelpRequester = await HelpRequest.findOne({
-    requesterId: helperId,
-    status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING, HELP_REQUEST_STATUS.MATCHED, HELP_REQUEST_STATUS.ACTIVE] },
-  }).select('_id status')
+  try {
+    // Validate presence request ID
+    if (!presenceRequestId || presenceRequestId.length !== 24) {
+      throw createPresenceError(
+        'Invalid presence request ID',
+        PRESENCE_ERROR_CODES.REQUEST_NOT_FOUND,
+        404
+      )
+    }
+    
+    // Check if helper has active help request
+    const busyHelpRequester = await HelpRequest.findOne({
+      requesterId: helperId,
+      status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING, HELP_REQUEST_STATUS.MATCHED, HELP_REQUEST_STATUS.ACTIVE] },
+    }).select('_id status')
 
-  if (busyHelpRequester) {
-    const err = new Error('You have an active request. Please close it first.')
-    err.statusCode = 409
-    throw err
-  }
+    if (busyHelpRequester) {
+      throw createPresenceError(
+        'You have an active help request. Please close it first.',
+        PRESENCE_ERROR_CODES.HELPER_BUSY,
+        409
+      )
+    }
 
-  const busyPresenceRequester = await PresenceRequest.findOne({
-    requesterId: helperId,
-    status: { $in: [PRESENCE_STATUS.ACTIVE, PRESENCE_STATUS.HELPERS_NOTIFIED, PRESENCE_STATUS.HELPERS_ACCEPTED] },
-  }).select('_id status')
+    // Check if helper has active presence request
+    const busyPresenceRequester = await PresenceRequest.findOne({
+      requesterId: helperId,
+      status: { $in: [PRESENCE_STATUS.ACTIVE, PRESENCE_STATUS.HELPERS_NOTIFIED, PRESENCE_STATUS.HELPERS_ACCEPTED] },
+    }).select('_id status')
 
-  if (busyPresenceRequester) {
-    const err = new Error('You have an active request. Please close it first.')
-    err.statusCode = 409
-    throw err
-  }
+    if (busyPresenceRequester) {
+      throw createPresenceError(
+        'You have an active presence request. Please close it first.',
+        PRESENCE_ERROR_CODES.HELPER_BUSY,
+        409
+      )
+    }
 
-  const match = await PresenceMatch.findOne({
-    presenceRequestId,
-    helperId,
-    status: PRESENCE_MATCH_STATUS.ALERTED,
-  })
+    // Find the match
+    const match = await PresenceMatch.findOne({
+      presenceRequestId,
+      helperId,
+      status: PRESENCE_MATCH_STATUS.ALERTED,
+    })
 
-  if (!match) {
-    const err = new Error('Presence request not found or already responded')
-    err.statusCode = 404
-    throw err
-  }
+    if (!match) {
+      throw createPresenceError(
+        'Presence request not found or already responded',
+        PRESENCE_ERROR_CODES.MATCH_NOT_FOUND,
+        404
+      )
+    }
 
-  const request = await PresenceRequest.findById(presenceRequestId)
-  if (!request || request.status === PRESENCE_STATUS.CLOSED) {
-    const err = new Error('Presence request is no longer active')
-    err.statusCode = 409
-    throw err
-  }
+    // Check if request is still active
+    const request = await PresenceRequest.findById(presenceRequestId)
+    if (!request) {
+      throw createPresenceError(
+        'Presence request not found',
+        PRESENCE_ERROR_CODES.REQUEST_NOT_FOUND,
+        404
+      )
+    }
+    
+    if (request.status === PRESENCE_STATUS.CLOSED || request.status === PRESENCE_STATUS.CANCELLED) {
+      throw createPresenceError(
+        'Presence request is no longer active',
+        PRESENCE_ERROR_CODES.REQUEST_CLOSED,
+        409
+      )
+    }
 
   // Accept karo
   match.status = PRESENCE_MATCH_STATUS.ACCEPTED
@@ -271,6 +428,10 @@ const acceptPresence = async (helperId, presenceRequestId) => {
   }
 
   return { request, match }
+  } catch (error) {
+    logger.error('Error in acceptPresence:', error)
+    throw error
+  }
 }
 
 /**
@@ -300,23 +461,40 @@ const declinePresence = async (helperId, presenceRequestId) => {
  * Helper status update (en_route, arrived)
  */
 const updatePresenceMatchStatus = async (helperId, presenceRequestId, status) => {
-  if (!['en_route', 'arrived'].includes(status)) {
-    const err = new Error('Invalid status')
-    err.statusCode = 400
-    throw err
-  }
+  try {
+    // Validate status
+    const validStatuses = ['en_route', 'arrived']
+    if (!validStatuses.includes(status)) {
+      throw createPresenceError(
+        `Invalid status. Must be one of: ${validStatuses.join(', ')}`,
+        PRESENCE_ERROR_CODES.INVALID_STATUS,
+        400
+      )
+    }
 
-  const match = await PresenceMatch.findOne({
-    presenceRequestId,
-    helperId,
-    status: { $in: [PRESENCE_MATCH_STATUS.ACCEPTED, PRESENCE_MATCH_STATUS.EN_ROUTE] },
-  })
+    // Validate presence request ID
+    if (!presenceRequestId || presenceRequestId.length !== 24) {
+      throw createPresenceError(
+        'Invalid presence request ID',
+        PRESENCE_ERROR_CODES.REQUEST_NOT_FOUND,
+        404
+      )
+    }
 
-  if (!match) {
-    const err = new Error('No active presence match found')
-    err.statusCode = 404
-    throw err
-  }
+    // Find the match
+    const match = await PresenceMatch.findOne({
+      presenceRequestId,
+      helperId,
+      status: { $in: [PRESENCE_MATCH_STATUS.ACCEPTED, PRESENCE_MATCH_STATUS.EN_ROUTE] },
+    })
+
+    if (!match) {
+      throw createPresenceError(
+        'No active presence match found',
+        PRESENCE_ERROR_CODES.MATCH_NOT_FOUND,
+        404
+      )
+    }
 
   match.status = status
   if (status === 'arrived') {
@@ -347,25 +525,51 @@ const updatePresenceMatchStatus = async (helperId, presenceRequestId, status) =>
   }
 
   return match
+  } catch (error) {
+    logger.error('Error in updatePresenceMatchStatus:', error)
+    throw error
+  }
 }
 
 /**
  * Cancel presence request (requester)
  */
 const cancelPresenceRequest = async (requesterId, presenceRequestId) => {
-  const request = await PresenceRequest.findOne({ _id: presenceRequestId, requesterId })
+  try {
+    // Validate presence request ID
+    if (!presenceRequestId || presenceRequestId.length !== 24) {
+      throw createPresenceError(
+        'Invalid presence request ID',
+        PRESENCE_ERROR_CODES.REQUEST_NOT_FOUND,
+        404
+      )
+    }
+    
+    const request = await PresenceRequest.findOne({ _id: presenceRequestId, requesterId })
 
-  if (!request) {
-    const err = new Error('Request not found')
-    err.statusCode = 404
-    throw err
-  }
+    if (!request) {
+      throw createPresenceError(
+        'Request not found or you do not have permission to cancel it',
+        PRESENCE_ERROR_CODES.REQUEST_NOT_FOUND,
+        404
+      )
+    }
 
-  if (request.status === PRESENCE_STATUS.CLOSED) {
-    const err = new Error('Request already closed')
-    err.statusCode = 409
-    throw err
-  }
+    if (request.status === PRESENCE_STATUS.CLOSED) {
+      throw createPresenceError(
+        'Request already closed',
+        PRESENCE_ERROR_CODES.REQUEST_CLOSED,
+        409
+      )
+    }
+    
+    if (request.status === PRESENCE_STATUS.CANCELLED) {
+      throw createPresenceError(
+        'Request already cancelled',
+        PRESENCE_ERROR_CODES.REQUEST_CLOSED,
+        409
+      )
+    }
 
   request.status = PRESENCE_STATUS.CANCELLED
   request.cancelledAt = new Date()
@@ -377,6 +581,10 @@ const cancelPresenceRequest = async (requesterId, presenceRequestId) => {
   )
 
   return request
+  } catch (error) {
+    logger.error('Error in cancelPresenceRequest:', error)
+    throw error
+  }
 }
 
 /**
@@ -444,16 +652,35 @@ const getActivePresenceRequest = async (userId) => {
 }
 
 const getPresenceById = async (userId, presenceRequestId) => {
-  const request = await PresenceRequest.findById(presenceRequestId)
-  if (!request) return null
+  try {
+    // Validate presence request ID
+    if (!presenceRequestId || presenceRequestId.length !== 24) {
+      throw createPresenceError(
+        'Invalid presence request ID',
+        PRESENCE_ERROR_CODES.REQUEST_NOT_FOUND,
+        404
+      )
+    }
+    
+    const request = await PresenceRequest.findById(presenceRequestId)
+    if (!request) {
+      throw createPresenceError(
+        'Presence request not found',
+        PRESENCE_ERROR_CODES.REQUEST_NOT_FOUND,
+        404
+      )
+    }
 
-  const isRequester = String(request.requesterId) === String(userId)
-  const isHelper = await PresenceMatch.exists({ presenceRequestId, helperId: userId })
-  if (!isRequester && !isHelper) {
-    const err = new Error('Forbidden')
-    err.statusCode = 403
-    throw err
-  }
+    const isRequester = String(request.requesterId) === String(userId)
+    const isHelper = await PresenceMatch.exists({ presenceRequestId, helperId: userId })
+    
+    if (!isRequester && !isHelper) {
+      throw createPresenceError(
+        'You do not have permission to view this request',
+        PRESENCE_ERROR_CODES.FORBIDDEN,
+        403
+      )
+    }
 
   const [acceptedMatches, notifiedMatches] = await Promise.all([
     PresenceMatch.find({
@@ -464,12 +691,13 @@ const getPresenceById = async (userId, presenceRequestId) => {
       .lean(),
     PresenceMatch.find({ presenceRequestId })
       .populate('helperId', 'fullName profileImage location isAvailable role')
-      .sort({ alertedAt: -1 })
       .lean(),
   ])
 
-  const helperIds = notifiedMatches
-    .map((m) => m?.helperId?._id)
+  const helperIds = [
+    ...acceptedMatches.map((m) => m?.helperId?._id),
+    ...notifiedMatches.map((m) => m?.helperId?._id),
+  ]
     .filter(Boolean)
     .map((id) => String(id))
 
@@ -505,6 +733,10 @@ const getPresenceById = async (userId, presenceRequestId) => {
       availableNotifiedCount: notifiedAvailable.length,
       acceptedCount: request?.totalAccepted || acceptedMatches.length,
     },
+  }
+  } catch (error) {
+    logger.error('Error in getPresenceById:', error)
+    throw error
   }
 }
 
@@ -576,29 +808,53 @@ const getNearbyPresenceRequests = async (userId, coords = null) => {
  * Presence request update karo (sirf description/situation ke liye)
  */
 const updatePresenceRequest = async (userId, presenceRequestId, updates) => {
-  const request = await PresenceRequest.findById(presenceRequestId)
+  try {
+    // Validate presence request ID
+    if (!presenceRequestId || presenceRequestId.length !== 24) {
+      throw createPresenceError(
+        'Invalid presence request ID',
+        PRESENCE_ERROR_CODES.REQUEST_NOT_FOUND,
+        404
+      )
+    }
+    
+    const request = await PresenceRequest.findById(presenceRequestId)
 
-  if (!request) {
-    const err = new Error('Presence request not found')
-    err.statusCode = 404
-    throw err
-  }
+    if (!request) {
+      throw createPresenceError(
+        'Presence request not found',
+        PRESENCE_ERROR_CODES.REQUEST_NOT_FOUND,
+        404
+      )
+    }
 
-  if (String(request.requesterId) !== String(userId)) {
-    const err = new Error('Forbidden')
-    err.statusCode = 403
-    throw err
-  }
+    if (String(request.requesterId) !== String(userId)) {
+      throw createPresenceError(
+        'You do not have permission to update this request',
+        PRESENCE_ERROR_CODES.FORBIDDEN,
+        403
+      )
+    }
 
-  if (request.status === 'closed' || request.status === 'cancelled') {
-    const err = new Error('Cannot update a closed or cancelled request')
-    err.statusCode = 400
-    throw err
-  }
+    if (request.status === 'closed' || request.status === 'cancelled') {
+      throw createPresenceError(
+        'Cannot update a closed or cancelled request',
+        PRESENCE_ERROR_CODES.REQUEST_CLOSED,
+        400
+      )
+    }
 
-  if (updates.description) {
-    request.description = updates.description
-  }
+    // Validate and update description
+    if (updates.description !== undefined) {
+      const validatedDescription = validateDescription(updates.description)
+      request.description = validatedDescription
+    }
+    
+    // Validate and update situation type if provided
+    if (updates.situationType !== undefined) {
+      const validatedSituationType = validateSituationType(updates.situationType)
+      request.situationType = validatedSituationType
+    }
 
   await request.save()
 
@@ -615,6 +871,10 @@ const updatePresenceRequest = async (userId, presenceRequestId, updates) => {
   }
 
   return request
+  } catch (error) {
+    logger.error('Error in updatePresenceRequest:', error)
+    throw error
+  }
 }
 
 module.exports = {
@@ -627,4 +887,6 @@ module.exports = {
   getPresenceById,
   getNearbyPresenceRequests,
   updatePresenceRequest,
+  PRESENCE_ERROR_CODES,
+  createPresenceError
 }

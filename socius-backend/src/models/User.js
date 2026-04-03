@@ -96,7 +96,7 @@ const userSchema = new mongoose.Schema(
     accountStatus: {
       type: String,
       enum: ['pending_review', 'active', 'limited', 'suspended'],
-      default: 'pending_review',
+      default: 'active',
     },
     accountLimitedReason: {
       type: String,
@@ -178,12 +178,6 @@ const userSchema = new mongoose.Schema(
       default: false,
     },
 
-    // Developer flag (internal)
-    isDeveloper: {
-      type: Boolean,
-      default: false,
-    },
-
     // Soft delete
     isDeleted: {
       type: Boolean,
@@ -196,8 +190,29 @@ const userSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
   }
 )
+
+// Virtuals for status checks
+userSchema.virtual('isActive').get(function () {
+  // If status is missing, assume active (default)
+  const status = this.accountStatus || 'active'
+  return ['active', 'pending_review', 'limited'].includes(status)
+})
+
+userSchema.virtual('isSuspended').get(function () {
+  return this.accountStatus === 'suspended'
+})
+
+userSchema.virtual('isPendingReview').get(function () {
+  return this.accountStatus === 'pending_review'
+})
+
+userSchema.virtual('isLimited').get(function () {
+  return this.accountStatus === 'limited'
+})
 
 // 2dsphere index for geo queries
 userSchema.index({ location: '2dsphere' })

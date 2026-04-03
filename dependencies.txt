@@ -1,0 +1,30 @@
+# Required packages for React Native App Update System
+
+# For device info and version checking
+npm install react-native-device-info
+
+# For downloading APK files
+npm install rn-fetch-blob
+
+# For file operations (optional)
+npm install react-native-fs
+
+# For network state checking (optional)
+npm install @react-native-community/netinfo
+
+# For permissions (Android)
+npm install react-native-permissions
+
+# Installation commands:
+# npm install react-native-device-info rn-fetch-blob
+# cd ios && pod install (for iOS)
+
+# Android Permissions needed in AndroidManifest.xml:
+# <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+# <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+# <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+
+# ProGuard rules (if needed):
+# -keep class com RNFetchBlob { *; }
+# -dontwarn okhttp3.**
+# -dontwarn okio.**

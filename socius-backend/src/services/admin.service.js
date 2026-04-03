@@ -35,15 +35,30 @@ const getPendingVerifications = async ({ page = 1, limit = 20, status, rangeDays
   }
 
   const since = rangeDays ? new Date(Date.now() - Number(rangeDays) * 24 * 60 * 60 * 1000) : null
-  const vQuery = { status: { $in: statusFilter } }
+  const vQuery = { 
+    status: { $in: statusFilter },
+    userId: { $exists: true, $ne: null } // Filter out null userId
+  }
   if (since) {
     vQuery.$or = [{ submittedAt: { $gte: since } }, { createdAt: { $gte: since } }]
   }
 
-  const verifications = await Verification.find(vQuery)
-    .sort({ createdAt: 1 })
-    .populate('userId', 'fullName phone accountStatus isIdentityVerified role isAvailable createdAt')
-    .lean()
+  let verifications = []
+  try {
+    verifications = await Verification.find(vQuery)
+      .sort({ createdAt: 1 })
+      .populate('userId', 'fullName phone accountStatus isIdentityVerified role isAvailable createdAt')
+      .lean()
+  } catch (error) {
+    console.error('Error fetching verifications:', error)
+    // Fallback without populate
+    verifications = await Verification.find(vQuery)
+      .sort({ createdAt: 1 })
+      .lean()
+  }
+
+  // Filter out any results with null userId
+  verifications = verifications.filter(v => v.userId != null)
 
   let combined = verifications
 

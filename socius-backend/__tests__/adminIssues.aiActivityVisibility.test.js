@@ -9,12 +9,7 @@ jest.mock('../src/utils/issueSync', () => ({
 
 jest.mock('../src/middlewares/auth', () => ({
   authenticate: (req, res, next) => {
-    const kind = String(req.headers['x-test-user'] || 'admin').toLowerCase()
-    if (kind === 'developer') {
-      req.user = { _id: 'test-dev', role: 'developer', isDeveloper: true }
-    } else {
-      req.user = { _id: 'test-admin', role: 'admin', isDeveloper: false }
-    }
+    req.user = { _id: 'test-admin', role: 'admin', isAdmin: true }
     next()
   },
   requireActive: (req, res, next) => next(),
@@ -22,11 +17,6 @@ jest.mock('../src/middlewares/auth', () => ({
 
 jest.mock('../src/middlewares/admin', () => ({
   requireAdmin: (req, res, next) => next(),
-  requireDeveloper: (req, res, next) => {
-    if (req.user?.isDeveloper) return next()
-    return res.status(403).json({ success: false, message: 'Developer access required' })
-  },
-  requireAdminOrDeveloper: (req, res, next) => next(),
 }))
 
 const routes = require('../src/routes')

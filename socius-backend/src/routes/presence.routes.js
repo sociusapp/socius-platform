@@ -16,7 +16,7 @@ const { validate, schemas } = require('../middlewares/validate')
 const { presenceLimiter } = require('../middlewares/rateLimiter')
 
 // GET /api/presence/nearby
-router.get('/nearby', authenticate, getNearbyPresenceRequests)
+router.get('/nearby', authenticate, validate(schemas.nearbyPresenceQuery, 'query'), getNearbyPresenceRequests)
 
 // GET /api/presence/active
 router.get('/active', authenticate, getActivePresenceRequest)
@@ -25,7 +25,7 @@ router.get('/active', authenticate, getActivePresenceRequest)
 router.get('/:id', authenticate, getPresenceById)
 
 // PATCH /api/presence/:id (requester)
-router.patch('/:id', authenticate, requireActive, updatePresenceRequest)
+router.patch('/:id', authenticate, requireActive, validate(schemas.updatePresenceRequest), updatePresenceRequest)
 
 // POST /api/presence
 router.post(
@@ -41,7 +41,7 @@ router.post(
 router.patch('/:id/accept', authenticate, requireActive, acceptPresence)
 
 // PATCH /api/presence/:id/status (helper - en_route, arrived)
-router.patch('/:id/status', authenticate, requireActive, updatePresenceMatchStatus)
+router.patch('/:id/status', authenticate, requireActive, validate(schemas.updatePresenceStatus), updatePresenceMatchStatus)
 
 // PATCH /api/presence/:id/decline  (helper)
 router.patch('/:id/decline', authenticate, declinePresence)
@@ -50,6 +50,6 @@ router.patch('/:id/decline', authenticate, declinePresence)
 router.patch('/:id/cancel', authenticate, cancelPresenceRequest)
 
 // PATCH /api/presence/:id/close
-router.patch('/:id/close', authenticate, closePresenceRequest)
+router.patch('/:id/close', authenticate, validate(schemas.closePresenceRequest), closePresenceRequest)
 
 module.exports = router
