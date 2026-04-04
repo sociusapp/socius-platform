@@ -34,6 +34,7 @@ app.use('/uploads/documents', express.static(path.join(__dirname, 'uploads/docum
 app.use('/uploads/selfies', express.static(path.join(__dirname, 'uploads/selfies')))
 app.use('/uploads/help-categories', express.static(path.join(__dirname, 'uploads/help-categories')))
 app.use('/uploads/issue-screenshots', express.static(path.join(__dirname, 'uploads/issue-screenshots')))
+app.use('/uploads/gallery', express.static(path.join(__dirname, 'uploads/gallery')))
 
 app.use('/public', require('./src/routes/public.routes'))
 app.use('/api/tracking-links', require('./src/routes/trackingLink.routes'))

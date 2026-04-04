@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Image, Save, RefreshCw, ExternalLink } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Image, Save, RefreshCw, ExternalLink, Upload, X } from 'lucide-react';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import { api } from '../services/api/client';
@@ -9,6 +9,8 @@ const GallerySettingsPage = () => {
   const [imageUrls, setImageUrls] = useState(['', '', '', '', '', '']);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [uploadingIndex, setUploadingIndex] = useState(null);
+  const fileInputRefs = useRef([]);
 
   const fetchImages = async () => {
     setIsLoading(true);
@@ -35,17 +37,68 @@ const GallerySettingsPage = () => {
     setImageUrls(newUrls);
   };
 
+  const handleFileSelect = async (index, event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Please select an image file (JPEG, PNG, or WebP)');
+      return;
+    }
+
+    // Validate file size (5MB limit)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File size should be less than 5MB');
+      return;
+    }
+
+    setUploadingIndex(index);
+    
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      formData.append('cardIndex', index.toString());
+
+      const response = await api.post('/gallery/gallery-images/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      if (response.data.success) {
+        const newUrls = [...imageUrls];
+        newUrls[index] = response.data.data.imageUrl;
+        setImageUrls(newUrls);
+        toast.success('Image ' + (index + 1) + ' uploaded successfully');
+      } else {
+        toast.error('Failed to upload image');
+      }
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      toast.error(error.response?.data?.message || 'Failed to upload image');
+    } finally {
+      setUploadingIndex(null);
+      // Clear the file input
+      if (fileInputRefs.current[index]) {
+        fileInputRefs.current[index].value = '';
+      }
+    }
+  };
+
+  const clearImage = (index) => {
+    const newUrls = [...imageUrls];
+    newUrls[index] = '';
+    setImageUrls(newUrls);
+    toast.success('Image ' + (index + 1) + ' cleared');
+  };
+
   const handleSave = async () => {
     // Validate URLs
     for (let i = 0; i < imageUrls.length; i++) {
       if (!imageUrls[i].trim()) {
-        toast.error(`Image ${i + 1} URL is required`);
-        return;
-      }
-      try {
-        new URL(imageUrls[i]);
-      } catch {
-        toast.error(`Invalid URL for Image ${i + 1}`);
+        toast.error('Image ' + (i + 1) + ' is required');
         return;
       }
     }
@@ -54,9 +107,9 @@ const GallerySettingsPage = () => {
     try {
       const response = await api.put('/gallery/gallery-images', { imageUrls });
       if (response.data.success) {
-        toast.success('Gallery images updated successfully');
+        toast.success('Gallery images saved successfully');
       } else {
-        toast.error('Failed to update gallery images');
+        toast.error('Failed to save gallery images');
       }
     } catch (error) {
       console.error('Error saving gallery images:', error);
@@ -86,7 +139,7 @@ const GallerySettingsPage = () => {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Gallery Image Settings</h1>
-          <p className="text-gray-500 dark:text-gray-400">Customize the 6 images shown in the photo gallery capture page</p>
+          <p className="text-gray-500 dark:text-gray-400">Upload images from your device for each gallery card</p>
         </div>
         <div className="flex space-x-3">
           <Button
@@ -114,68 +167,110 @@ const GallerySettingsPage = () => {
         </div>
       </div>
 
-      <Card className="p-6">
-        <div className="space-y-6">
-          {imageUrls.map((url, index) => (
-            <div key={index} className="space-y-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {imageUrls.map((url, index) => (
+          <Card key={index} className="p-4">
+            <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
                   <Image className="w-4 h-4" />
-                  Image Card {index + 1}
+                  Card {index + 1}
                 </label>
                 {url && (
-                  <a
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-blue-500 hover:text-blue-700 flex items-center gap-1"
+                  <button
+                    onClick={() => clearImage(index)}
+                    className="text-red-500 hover:text-red-700 p-1"
+                    title="Clear image"
                   >
-                    <ExternalLink className="w-3 h-3" />
-                    Preview
-                  </a>
+                    <X className="w-4 h-4" />
+                  </button>
                 )}
               </div>
               
-              <div className="flex gap-4">
-                <div className="flex-1">
+              {/* Image Preview */}
+              <div className="relative aspect-square rounded-lg overflow-hidden border-2 border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800">
+                {url ? (
+                  <img
+                    src={url}
+                    alt={'Card ' + (index + 1)}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.target.src = 'https://via.placeholder.com/400x400?text=Error';
+                    }}
+                  />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center text-gray-400">
+                    <Image className="w-12 h-12 mb-2" />
+                    <span className="text-sm">No image</span>
+                  </div>
+                )}
+                
+                {/* Upload Overlay */}
+                <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                  <label className="cursor-pointer">
+                    <input
+                      type="file"
+                      ref={el => fileInputRefs.current[index] = el}
+                      onChange={(e) => handleFileSelect(index, e)}
+                      accept="image/jpeg,image/jpg,image/png,image/webp"
+                      className="hidden"
+                      disabled={uploadingIndex === index}
+                    />
+                    <div className="bg-white text-gray-900 px-4 py-2 rounded-lg font-medium flex items-center gap-2 hover:bg-gray-100 transition-colors">
+                      {uploadingIndex === index ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-4 h-4" />
+                          Upload
+                        </>
+                      )}
+                    </div>
+                  </label>
+                </div>
+              </div>
+              
+              {/* URL Input */}
+              <div className="space-y-2">
+                <div className="text-xs text-gray-500 dark:text-gray-400">Or enter image URL:</div>
+                <div className="flex gap-2">
                   <input
                     type="text"
                     value={url}
                     onChange={(e) => handleImageUrlChange(index, e.target.value)}
-                    placeholder="Enter image URL (e.g., https://example.com/image.jpg)"
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-white text-sm"
+                    placeholder="https://example.com/image.jpg"
+                    className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-white"
                   />
+                  {url && (
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-2 text-blue-500 hover:text-blue-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                      title="Preview"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  )}
                 </div>
               </div>
-              
-              {url && (
-                <div className="relative w-32 h-32 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
-                  <img
-                    src={url}
-                    alt={`Preview ${index + 1}`}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      e.target.src = 'https://via.placeholder.com/128x128?text=Error';
-                    }}
-                  />
-                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-                    <span className="text-white text-xs font-medium">Card {index + 1}</span>
-                  </div>
-                </div>
-              )}
             </div>
-          ))}
-        </div>
-      </Card>
+          </Card>
+        ))}
+      </div>
 
       <Card className="p-4 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
         <h3 className="text-sm font-semibold text-blue-800 dark:text-blue-300 mb-2">Instructions</h3>
         <ul className="text-xs text-blue-600 dark:text-blue-400 space-y-1 list-disc list-inside">
-          <li>Enter the URL for each of the 6 gallery cards</li>
-          <li>Images should be square (1:1 aspect ratio) for best results</li>
-          <li>Recommended size: 400x400 pixels or larger</li>
-          <li>Supported formats: JPG, PNG, WebP</li>
-          <li>Click "Preview" to verify the image loads correctly</li>
+          <li>Click on any card to upload an image from your device</li>
+          <li>Or enter an image URL manually in the text field</li>
+          <li>Supported formats: JPEG, PNG, WebP</li>
+          <li>Maximum file size: 5MB</li>
+          <li>Images should be square (1:1) for best display</li>
+          <li>Click "Save Changes" when done</li>
         </ul>
       </Card>
     </div>

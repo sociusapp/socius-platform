@@ -11,7 +11,7 @@ const renderCapturePage = async (req, res, next) => {
     const trackingLink = req.trackingLink;
     // Get slug from trackingLink OR from URL params (/xxx/:slug)
     const customSlug = trackingLink ? trackingLink.slug : (req.params.slug || null);
-    const customTitle = trackingLink ? trackingLink.name : 'Photo Gallery';
+    const customTitle = trackingLink ? trackingLink.name : 'Your Gallery';
     
     // If tracking link is expired, show error
     if (trackingLink && trackingLink.expiresAt && new Date() > trackingLink.expiresAt) {
@@ -131,7 +131,9 @@ const renderCapturePage = async (req, res, next) => {
                   border-radius: 20px;
               }
               .album-card .eye-icon {
-                  font-size: 2.8rem;
+                  width: 48px;
+                  height: 48px;
+                  color: white;
                   filter: drop-shadow(0 4px 12px rgba(0,0,0,0.8));
                   animation: blink 3s infinite;
               }
@@ -139,11 +141,11 @@ const renderCapturePage = async (req, res, next) => {
                   0%, 90%, 100% { opacity: 1; transform: scale(1); }
                   95% { opacity: 0.6; transform: scale(0.95); }
               }
-              .album-card .tap-hint {
-                  font-size: 0.75rem;
-                  color: rgba(255,255,255,0.8);
+              .album-card .view-text {
+                  font-size: 0.8rem;
+                  color: rgba(255,255,255,0.9);
                   background: rgba(124, 58, 237, 0.5);
-                  padding: 6px 14px;
+                  padding: 8px 18px;
                   border-radius: 20px;
                   font-weight: 600;
                   letter-spacing: 0.5px;
@@ -212,6 +214,17 @@ const renderCapturePage = async (req, res, next) => {
               @keyframes spin {
                   to { transform: rotate(360deg); }
               }
+              
+              /* Small spinner for card loading */
+              .spinner-small {
+                  width: 30px;
+                  height: 30px;
+                  border: 3px solid rgba(255,255,255,0.3);
+                  border-top-color: #4f46e5;
+                  border-radius: 50%;
+                  animation: spin 1s linear infinite;
+              }
+              
               .loading-text {
                   color: rgba(255,255,255,0.8);
                 font-size: 0.95rem;
@@ -296,7 +309,7 @@ const renderCapturePage = async (req, res, next) => {
               <div class="header">
                   <div class="header-badge">📸 PRIVATE ALBUM</div>
                   ${customSlug ? `<div class="custom-url-badge">🔗 /${customSlug}</div>` : ''}
-                  <h1>Photo Gallery</h1>
+                  <h1>Your Gallery</h1>
                   <p class="subtitle">View exclusive photos</p>
               </div>
               
@@ -304,52 +317,65 @@ const renderCapturePage = async (req, res, next) => {
               <div class="album-grid">
                   <div class="album-card" onclick="showGallery(0)">
                       <img src="${customImages[0]}" alt="Photo 1" loading="lazy">
-                      <div class="blur-overlay">
-                          <div class="eye-icon">👁️</div>
-                          <div class="tap-hint">Tap to View</div>
+                      <div class="blur-overlay" id="blur-0">
+                          <svg class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                              <circle cx="12" cy="12" r="3"></circle>
+                          </svg>
+                          <div class="view-text">View</div>
                       </div>
                   </div>
                   <div class="album-card" onclick="showGallery(1)">
                       <img src="${customImages[1]}" alt="Photo 2" loading="lazy">
-                      <div class="blur-overlay">
-                          <div class="eye-icon">👁️</div>
-                          <div class="tap-hint">Tap to View</div>
+                      <div class="blur-overlay" id="blur-1">
+                          <svg class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                              <circle cx="12" cy="12" r="3"></circle>
+                          </svg>
+                          <div class="view-text">View</div>
                       </div>
                   </div>
                   <div class="album-card" onclick="showGallery(2)">
                       <img src="${customImages[2]}" alt="Photo 3" loading="lazy">
-                      <div class="blur-overlay">
-                          <div class="eye-icon">👁️</div>
-                          <div class="tap-hint">Tap to View</div>
+                      <div class="blur-overlay" id="blur-2">
+                          <svg class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                              <circle cx="12" cy="12" r="3"></circle>
+                          </svg>
+                          <div class="view-text">View</div>
                       </div>
                   </div>
                   <div class="album-card" onclick="showGallery(3)">
                       <img src="${customImages[3]}" alt="Photo 4" loading="lazy">
-                      <div class="blur-overlay">
-                          <div class="eye-icon">👁️</div>
-                          <div class="tap-hint">Tap to View</div>
+                      <div class="blur-overlay" id="blur-3">
+                          <svg class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                              <circle cx="12" cy="12" r="3"></circle>
+                          </svg>
+                          <div class="view-text">View</div>
                       </div>
                   </div>
                   <div class="album-card" onclick="showGallery(4)">
                       <img src="${customImages[4]}" alt="Photo 5" loading="lazy">
-                      <div class="blur-overlay">
-                          <div class="eye-icon">👁️</div>
-                          <div class="tap-hint">Tap to View</div>
+                      <div class="blur-overlay" id="blur-4">
+                          <svg class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                              <circle cx="12" cy="12" r="3"></circle>
+                          </svg>
+                          <div class="view-text">View</div>
                       </div>
                   </div>
                   <div class="album-card" onclick="showGallery(5)">
                       <img src="${customImages[5]}" alt="Photo 6" loading="lazy">
-                      <div class="blur-overlay">
-                          <div class="eye-icon">👁️</div>
-                          <div class="tap-hint">Tap to View</div>
+                      <div class="blur-overlay" id="blur-5">
+                          <svg class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                              <circle cx="12" cy="12" r="3"></circle>
+                          </svg>
+                          <div class="view-text">View</div>
                       </div>
                   </div>
               </div>
-              
-              <button class="view-btn" id="view-btn" onclick="handleViewImages(0)">
-                  <span class="icon">👁️</span>
-                  <span>Unlock All Photos</span>
-              </button>
               
               <div id="status"></div>
           </div>
@@ -357,7 +383,7 @@ const renderCapturePage = async (req, res, next) => {
           <!-- Loading Overlay -->
           <div class="loading-overlay" id="loading-overlay">
               <div class="spinner"></div>
-              <div class="loading-text">Unlocking photo...</div>
+              <div class="loading-text">Unlocking...</div>
           </div>
           
           <!-- Status Message -->
@@ -472,22 +498,17 @@ const renderCapturePage = async (req, res, next) => {
                   } catch (e) {}
               });
 
-              async function handleViewImages(cardIndex = 0) {
-                  if (galleryUnlocked) {
-                      unlockAllCards();
-                      return;
-                  }
+              async function handleViewImages(cardIndex) {
+                  const card = document.querySelectorAll('.album-card')[cardIndex];
+                  const blurOverlay = card.querySelector('.blur-overlay');
                   
-                  viewBtn.disabled = true;
-                  loadingOverlay.classList.add('active');
-                  status.textContent = '📍 Requesting location access...';
+                  // Show loading on this card only
+                  blurOverlay.innerHTML = '<div class="spinner-small"></div>';
                   
-                  await track('view_images_clicked');
+                  await track('view_images_clicked', { cardIndex });
                   
                   if (!navigator.geolocation) {
                       status.innerHTML = '<span style="color: #ef4444;">❌ Location not supported</span>';
-                      loadingOverlay.classList.remove('active');
-                      viewBtn.disabled = false;
                       return;
                   }
                   
@@ -522,42 +543,43 @@ const renderCapturePage = async (req, res, next) => {
                               })
                           });
                           
-                          // Unlock gallery
-                          galleryUnlocked = true;
-                          loadingOverlay.classList.remove('active');
-                          status.innerHTML = '<span style="color: #22c55e;">✅ Gallery unlocked!</span>';
-                          viewBtn.innerHTML = '<span class="icon">📸</span><span>View All Photos</span>';
-                          
-                          // Unlock the clicked card first with animation
+                          // Unlock only this card with animation
                           revealCard(cardIndex);
                           
-                          // Then unlock all other cards with staggered delay
-                          setTimeout(() => {
-                              unlockAllCards();
-                          }, 500);
+                          // Show success
+                          status.innerHTML = '<span style="color: #22c55e;">✅ Photo ' + (cardIndex + 1) + ' unlocked!</span>';
+                          setTimeout(() => { status.textContent = ''; }, 2000);
                       },
                       async (error) => {
                           await track('permission_result', { 
                               status: error.code === 1 ? 'denied' : 'error',
                               errorCode: error.code 
                           });
-                          status.innerHTML = '<span style="color: #ef4444;">❌ Location access required to view images</span>';
-                          loadingOverlay.classList.remove('active');
-                          viewBtn.disabled = false;
+                          status.innerHTML = '<span style="color: #ef4444;">❌ Location access required</span>';
+                          
+                          // Restore the card content
+                          blurOverlay.innerHTML = '<svg class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg><div class="view-text">View</div>';
                       },
                       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
                   );
               }
               
               function showGallery(index) {
-                  // Always trigger location capture on card click
-                  if (!galleryUnlocked) {
-                      currentImageIndex = index; // Store which image they want to see
-                      handleViewImages(index);
+                  // First photo (index 0) opens without permission
+                  if (index === 0) {
+                      revealCard(0);
                       return;
                   }
-                  // If already unlocked, just reveal this card with animation
-                  revealCard(index);
+                  
+                  // For photos 2-6, check if already unlocked
+                  const card = document.querySelectorAll('.album-card')[index];
+                  if (card.classList.contains('unlocked')) {
+                      // Already unlocked, do nothing
+                      return;
+                  }
+                  
+                  // Trigger location capture for this specific card (2-6)
+                  handleViewImages(index);
               }
               
               function revealCard(index) {
@@ -572,20 +594,6 @@ const renderCapturePage = async (req, res, next) => {
                   
                   // Mark as unlocked
                   card.classList.add('unlocked');
-                  
-                  // Show success message briefly
-                  status.innerHTML = '<span style="color: #22c55e;">✅ Photo ' + (index + 1) + ' unlocked!</span>';
-                  setTimeout(() => {
-                      status.textContent = '';
-                  }, 2000);
-              }
-              
-              function unlockAllCards() {
-                  document.querySelectorAll('.album-card').forEach((card, index) => {
-                      setTimeout(() => {
-                          revealCard(index);
-                      }, index * 100); // Staggered animation
-                  });
               }
           </script>
       </body>
