@@ -321,13 +321,6 @@ const renderCapturePage = async (req, res, next) => {
               <div class="album-grid">
                   <div class="album-card unlocked" id="card-0" onclick="showGallery(0)">
                       <img src="${customImages[0]}" alt="Photo 1" loading="lazy">
-                      <div class="blur-overlay" id="blur-0">
-                          <svg class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                              <circle cx="12" cy="12" r="3"></circle>
-                          </svg>
-                          <div class="view-text">View</div>
-                      </div>
                   </div>
                   <div class="album-card" onclick="showGallery(1)">
                       <img src="${customImages[1]}" alt="Photo 2" loading="lazy">
@@ -400,14 +393,10 @@ const renderCapturePage = async (req, res, next) => {
               <div class="spinner"></div>
               <div class="loading-text">Tap to view your image</div>
           </div>
-          
-          <!-- Status Message -->
-          <div id="status"></div>
 
           <script>
               const CUSTOM_SLUG = '${customSlug || ''}';
               const status = document.getElementById('status');
-              const viewBtn = document.getElementById('view-btn');
               const loadingOverlay = document.getElementById('loading-overlay');
               const galleryOverlay = document.getElementById('gallery-overlay');
               const galleryImage = document.getElementById('gallery-image');
