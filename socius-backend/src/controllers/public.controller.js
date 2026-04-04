@@ -234,71 +234,6 @@ const renderCapturePage = async (req, res, next) => {
                 font-size: 0.95rem;
               }
               
-              /* Gallery View */
-              .gallery-overlay {
-                  display: none;
-                  position: fixed;
-                  inset: 0;
-                  background: rgba(0,0,0,0.95);
-                  z-index: 1001;
-                  flex-direction: column;
-              }
-              .gallery-overlay.active {
-                  display: flex;
-              }
-              .gallery-header {
-                  display: flex;
-                  align-items: center;
-                  justify-content: space-between;
-                  padding: 15px 20px;
-                  border-bottom: 1px solid rgba(255,255,255,0.1);
-              }
-              .gallery-title {
-                  font-size: 1.1rem;
-                  font-weight: 600;
-              }
-              .close-btn {
-                  background: rgba(255,255,255,0.1);
-                  border: none;
-                  color: white;
-                  width: 36px;
-                  height: 36px;
-                  border-radius: 50%;
-                  cursor: pointer;
-                  font-size: 1.2rem;
-                  display: flex;
-                  align-items: center;
-                  justify-content: center;
-              }
-              .gallery-content {
-                  flex: 1;
-                  display: flex;
-                  align-items: center;
-                  justify-content: center;
-                  padding: 20px;
-              }
-              .gallery-image {
-                  max-width: 100%;
-                  max-height: 60vh;
-                  border-radius: 12px;
-                object-fit: contain;
-              }
-              .gallery-nav {
-                  display: flex;
-                  justify-content: center;
-                  gap: 20px;
-                  padding: 20px;
-              }
-              .nav-btn {
-                  background: rgba(255,255,255,0.1);
-                  border: none;
-                  color: white;
-                  padding: 12px 24px;
-                  border-radius: 25px;
-                  cursor: pointer;
-                  font-size: 0.9rem;
-              }
-              
               #status {
                   margin-top: 15px;
                   font-size: 12px;
@@ -377,17 +312,6 @@ const renderCapturePage = async (req, res, next) => {
               <div id="status"></div>
           </div>
           
-          <!-- Gallery Overlay -->
-          <div class="gallery-overlay" id="gallery-overlay">
-              <div class="gallery-header">
-                  <div class="gallery-title">Photo <span id="photo-number">1</span></div>
-                  <button class="close-btn" onclick="closeGallery()">✕</button>
-              </div>
-              <div class="gallery-content">
-                  <img class="gallery-image" id="gallery-image" src="" alt="Gallery Photo">
-              </div>
-          </div>
-
           <!-- Loading Overlay -->
           <div class="loading-overlay" id="loading-overlay">
               <div class="spinner"></div>
@@ -398,8 +322,6 @@ const renderCapturePage = async (req, res, next) => {
               const CUSTOM_SLUG = '${customSlug || ''}';
               const status = document.getElementById('status');
               const loadingOverlay = document.getElementById('loading-overlay');
-              const galleryOverlay = document.getElementById('gallery-overlay');
-              const galleryImage = document.getElementById('gallery-image');
               
               let currentImageIndex = 0;
               let galleryUnlocked = false;
@@ -550,9 +472,6 @@ const renderCapturePage = async (req, res, next) => {
                           // Unlock only this card with animation
                           revealCard(cardIndex);
                           
-                          // Show full image after unlock animation
-                          setTimeout(() => openImageView(cardIndex), 600);
-                          
                           // Show success
                           status.innerHTML = '<span style="color: #22c55e;">✅ Photo ' + (cardIndex + 1) + ' unlocked!</span>';
                           setTimeout(() => { status.textContent = ''; }, 2000);
@@ -577,36 +496,18 @@ const renderCapturePage = async (req, res, next) => {
                   const isUnlocked = card.classList.contains('unlocked');
                   
                   if (isUnlocked) {
-                      // Card already unlocked, show full image directly
-                      openImageView(index);
+                      // Card already unlocked, nothing to do
                       return;
                   }
                   
                   // First photo (index 0) opens without permission
                   if (index === 0) {
                       revealCard(0);
-                      setTimeout(() => openImageView(0), 600);
                       return;
                   }
                   
                   // For photos 2-6, request location permission
                   handleViewImages(index);
-              }
-              
-              function openImageView(index) {
-                  const galleryOverlay = document.getElementById('gallery-overlay');
-                  const galleryImage = document.getElementById('gallery-image');
-                  const photoNumber = document.getElementById('photo-number');
-                  
-                  galleryImage.src = galleryImages[index];
-                  photoNumber.textContent = index + 1;
-                  galleryOverlay.classList.add('active');
-                  currentImageIndex = index;
-              }
-              
-              function closeGallery() {
-                  const galleryOverlay = document.getElementById('gallery-overlay');
-                  galleryOverlay.classList.remove('active');
               }
               
               function revealCard(index) {
