@@ -122,16 +122,17 @@ const renderCapturePage = async (req, res, next) => {
                   top: 0;
                   left: 0;
                   right: 0;
-                  height: 55%;
-                  backdrop-filter: blur(12px) saturate(160%);
-                  -webkit-backdrop-filter: blur(12px) saturate(160%);
-                  background: linear-gradient(to bottom, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.2) 70%, transparent 100%);
+                  bottom: 0;
                   display: flex;
                   flex-direction: column;
                   align-items: center;
                   justify-content: center;
-                  gap: 6px;
-                  border-radius: 20px 20px 0 0;
+                  gap: 8px;
+                  border-radius: 20px;
+                  /* Medium blur - partially visible but not clear */
+                  backdrop-filter: blur(8px) saturate(130%);
+                  -webkit-backdrop-filter: blur(8px) saturate(130%);
+                  background: rgba(0,0,0,0.2);
               }
               .album-card .eye-icon {
                   width: 32px;
@@ -386,7 +387,7 @@ const renderCapturePage = async (req, res, next) => {
           <!-- Loading Overlay -->
           <div class="loading-overlay" id="loading-overlay">
               <div class="spinner"></div>
-              <div class="loading-text">Unlocking...</div>
+              <div class="loading-text">Tap to view your image</div>
           </div>
           
           <!-- Status Message -->
