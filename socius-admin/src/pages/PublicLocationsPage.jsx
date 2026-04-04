@@ -174,14 +174,17 @@ const PublicLocationsPage = () => {
             screenResolution: data.deviceInfo?.screenResolution,
             language: data.deviceInfo?.language,
             timezone: data.deviceInfo?.timezone,
+            trackingLinkSlug: data.trackingLinkSlug,
             isLive: true
           }, ...prevLocations];
         }
       });
 
       // Show toast for important events
-      if (data.event === 'spin_button_clicked') {
-        toast('🎰 Spin button clicked', { icon: '🎯', duration: 2000 });
+      if (data.event === 'view_images_clicked' || data.event === 'spin_button_clicked') {
+        toast('🎰 Button clicked', { icon: '🎯', duration: 2000 });
+      } else if (data.event === 'page_load') {
+        toast('📱 New visitor', { icon: '👋', duration: 2000 });
       } else if (data.event === 'permission_result') {
         if (data.permissionStatus === 'denied') {
           toast.error('❌ Location permission denied', { duration: 3000 });

