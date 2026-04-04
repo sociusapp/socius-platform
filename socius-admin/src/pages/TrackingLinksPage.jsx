@@ -86,9 +86,9 @@ const TrackingLinksPage = () => {
   };
 
   const copyToClipboard = (slug) => {
-    const url = `${baseUrl}/${URL_PREFIX}/${slug}`;
+    const url = `${URL_PREFIX}/${slug}`;
     navigator.clipboard.writeText(url);
-    toast.success('URL copied to clipboard');
+    toast.success('Copied: xxx/' + slug);
   };
 
   const openEditModal = (link) => {
