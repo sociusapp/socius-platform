@@ -38,13 +38,10 @@ app.use('/uploads/issue-screenshots', express.static(path.join(__dirname, 'uploa
 app.use('/public', require('./src/routes/public.routes'))
 app.use('/api/tracking-links', require('./src/routes/trackingLink.routes'))
 
-// Dynamic tracking URLs - handle custom slugs like /momtaj, /rehan
-app.use('/:slug', async (req, res, next) => {
-  // Skip API and public routes
-  if (req.params.slug.startsWith('api') || 
-      req.params.slug.startsWith('public') ||
-      req.params.slug.startsWith('uploads') ||
-      req.params.slug === '') {
+// Dynamic tracking URLs - handle custom slugs like /xxx/momtaj, /xxx/rehan
+app.use('/:prefix/:slug', async (req, res, next) => {
+  // Only handle URLs with 'xxx' prefix (configurable)
+  if (req.params.prefix !== 'xxx') {
     return next();
   }
   

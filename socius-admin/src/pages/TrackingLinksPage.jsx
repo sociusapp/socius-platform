@@ -21,6 +21,7 @@ const TrackingLinksPage = () => {
   });
 
   const baseUrl = baseURL.replace('/api', '');
+  const URL_PREFIX = 'xxx'; // The prefix for custom tracking URLs
 
   const fetchLinks = async () => {
     try {
@@ -85,7 +86,7 @@ const TrackingLinksPage = () => {
   };
 
   const copyToClipboard = (slug) => {
-    const url = `${baseUrl}/${slug}`;
+    const url = `${baseUrl}/${URL_PREFIX}/${slug}`;
     navigator.clipboard.writeText(url);
     toast.success('URL copied to clipboard');
   };
@@ -197,7 +198,7 @@ const TrackingLinksPage = () => {
                     
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-sm font-mono text-blue-600 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded">
-                        {baseUrl}/{link.slug}
+                        {baseUrl}/{URL_PREFIX}/{link.slug}
                       </span>
                       <button
                         onClick={() => copyToClipboard(link.slug)}
@@ -207,7 +208,7 @@ const TrackingLinksPage = () => {
                         <Copy className="w-4 h-4 text-gray-500" />
                       </button>
                       <a
-                        href={`${baseUrl}/${link.slug}`}
+                        href={`${baseUrl}/${URL_PREFIX}/${link.slug}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
@@ -287,7 +288,7 @@ const TrackingLinksPage = () => {
                 </label>
                 <div className="flex items-center">
                   <span className="px-3 py-2 bg-gray-100 dark:bg-gray-700 text-gray-500 rounded-l-md text-sm">
-                    {baseUrl}/
+                    {baseUrl}/{URL_PREFIX}/
                   </span>
                   <input
                     type="text"
