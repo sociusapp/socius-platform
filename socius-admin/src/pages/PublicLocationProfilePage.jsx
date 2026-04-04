@@ -4,7 +4,8 @@ import { motion } from 'framer-motion';
 import { 
   MapPin, RefreshCw, ExternalLink, Calendar, Smartphone, Globe, 
   User, Battery, Monitor, Signal, Fingerprint, MousePointer, 
-  Activity, ArrowLeft, Clock, Shield, Database, ChevronRight
+  Activity, ArrowLeft, Clock, Shield, Database, ChevronRight,
+  Link2
 } from 'lucide-react';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
@@ -78,6 +79,20 @@ const PublicLocationProfilePage = () => {
   const { deviceInfo, networkInfo, behavioralData } = latest;
 
   const columns = [
+    {
+      header: 'Via Link',
+      render: (row) => (
+        <div className="text-xs">
+          {row.trackingLinkSlug ? (
+            <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full">
+              /xxx/{row.trackingLinkSlug}
+            </span>
+          ) : (
+            <span className="text-gray-400">-</span>
+          )}
+        </div>
+      ),
+    },
     {
       header: 'Captured At',
       render: (row) => (
@@ -175,6 +190,17 @@ const PublicLocationProfilePage = () => {
                 <Fingerprint className="w-4 h-4 text-gray-400" />
                 <span className="text-xs font-mono text-gray-500">{latest.fingerprintHash || 'N/A'}</span>
               </div>
+            </div>
+          </div>
+
+          <hr className="dark:border-gray-800" />
+
+          <div className="space-y-4">
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Tracking Source</h3>
+            <div className="space-y-3">
+              <ProfileItem icon={<Link2 className="w-4 h-4" />} label="Via Link" value={latest.trackingLinkSlug ? `/xxx/${latest.trackingLinkSlug}` : 'Direct'} />
+              <ProfileItem icon={<Clock className="w-4 h-4" />} label="First Seen" value={history.length > 0 ? new Date(history[history.length - 1].capturedAt).toLocaleString() : 'N/A'} />
+              <ProfileItem icon={<Activity className="w-4 h-4" />} label="Total Visits" value={history.length} />
             </div>
           </div>
 
