@@ -119,16 +119,19 @@ const renderCapturePage = async (req, res, next) => {
               }
               .album-card .blur-overlay {
                   position: absolute;
-                  inset: 0;
-                  backdrop-filter: blur(15px) saturate(180%);
-                  -webkit-backdrop-filter: blur(15px) saturate(180%);
-                  background: rgba(0,0,0,0.25);
+                  top: 0;
+                  left: 0;
+                  right: 0;
+                  height: 55%;
+                  backdrop-filter: blur(12px) saturate(160%);
+                  -webkit-backdrop-filter: blur(12px) saturate(160%);
+                  background: linear-gradient(to bottom, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.2) 70%, transparent 100%);
                   display: flex;
                   flex-direction: column;
                   align-items: center;
                   justify-content: center;
-                  gap: 8px;
-                  border-radius: 20px;
+                  gap: 6px;
+                  border-radius: 20px 20px 0 0;
               }
               .album-card .eye-icon {
                   width: 32px;
