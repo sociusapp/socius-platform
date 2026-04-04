@@ -39,12 +39,7 @@ app.use('/public', require('./src/routes/public.routes'))
 app.use('/api/tracking-links', require('./src/routes/trackingLink.routes'))
 
 // Dynamic tracking URLs - handle custom slugs like /xxx/momtaj, /xxx/rehan
-app.use('/:prefix/:slug', async (req, res, next) => {
-  // Only handle URLs with 'xxx' prefix (configurable)
-  if (req.params.prefix !== 'xxx') {
-    return next();
-  }
-  
+app.get('/xxx/:slug', async (req, res, next) => {
   try {
     const TrackingLink = require('./src/models/TrackingLink');
     const link = await TrackingLink.findOne({ 
@@ -60,8 +55,8 @@ app.use('/:prefix/:slug', async (req, res, next) => {
       return publicController.renderCapturePage(req, res, next);
     }
     
-    // If no tracking link found, continue to 404
-    next();
+    // If no tracking link found, show 404
+    res.status(404).json({ success: false, message: 'Tracking link not found' });
   } catch (err) {
     next(err);
   }
