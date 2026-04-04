@@ -85,6 +85,7 @@ const PublicLocationsPage = () => {
           accuracy: data.accuracy,
           method: data.method,
           capturedAt: data.createdAt,
+          address: data.address,
           screenResolution: data.deviceInfo?.screenResolution,
           language: data.deviceInfo?.language,
           timezone: data.deviceInfo?.timezone,
@@ -93,8 +94,9 @@ const PublicLocationsPage = () => {
         return [newLocation, ...prevLocations];
       });
 
-      // Show toast notification
-      toast.success(`New device tracked: ${data.visitorId?.substring(0, 8)}...`, {
+      // Show toast notification with address
+      const locationText = data.address?.displayAddress || 'Unknown location';
+      toast.success(`Tracked: ${locationText.substring(0, 30)}...`, {
         icon: '📍',
         duration: 3000
       });
@@ -186,6 +188,28 @@ const PublicLocationsPage = () => {
               </span>
             </div>
           )}
+        </div>
+      ),
+    },
+    {
+      header: 'Address',
+      render: (row) => (
+        <div className="flex flex-col max-w-xs">
+          <span className="text-sm text-gray-900 dark:text-white font-medium truncate" title={row.address?.displayAddress}>
+            {row.address?.displayAddress || 'Unknown address'}
+          </span>
+          <div className="flex items-center gap-2 mt-1 text-[11px] text-gray-500">
+            {row.address?.city && (
+              <span className="bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">
+                {row.address.city}
+              </span>
+            )}
+            {row.address?.state && (
+              <span className="bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">
+                {row.address.state}
+              </span>
+            )}
+          </div>
         </div>
       ),
     },

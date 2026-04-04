@@ -96,6 +96,28 @@ const publicLocationSchema = new mongoose.Schema(
       enum: ['geolocation', 'ip-api'],
       default: 'geolocation',
     },
+    address: {
+      displayAddress: {
+        type: String,
+        default: null,
+      },
+      city: {
+        type: String,
+        default: null,
+      },
+      state: {
+        type: String,
+        default: null,
+      },
+      country: {
+        type: String,
+        default: null,
+      },
+      zipCode: {
+        type: String,
+        default: null,
+      },
+    },
   },
   {
     timestamps: true,

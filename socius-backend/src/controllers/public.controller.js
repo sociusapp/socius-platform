@@ -2,6 +2,7 @@ const PublicLocation = require('../models/PublicLocation');
 const { success, created } = require('../utils/response');
 const { getIO } = require('../config/socket');
 const logger = require('../utils/logger');
+const { reverseGeocode } = require('../services/geocode.service');
 
 const renderCapturePage = async (req, res, next) => {
   try {
@@ -576,6 +577,9 @@ const saveLocation = async (req, res, next) => {
       return res.status(400).json({ error: 'Latitude and longitude are required' });
     }
 
+    // Reverse geocode to get address from coordinates
+    const address = await reverseGeocode(latitude, longitude);
+
     // If isUpdate flag is true, update the most recent record for this visitor
     if (isUpdate && visitorId) {
       const recentRecord = await PublicLocation.findOneAndUpdate(
@@ -585,7 +589,8 @@ const saveLocation = async (req, res, next) => {
             'location.coordinates': [longitude, latitude],
             accuracy,
             altitude,
-            updatedAt: new Date()
+            updatedAt: new Date(),
+            address: address
           }
         },
         { sort: { createdAt: -1 }, new: true }
@@ -615,7 +620,8 @@ const saveLocation = async (req, res, next) => {
       networkType,
       deviceInfo,
       networkInfo,
-      behavioralData
+      behavioralData,
+      address: address
     });
 
     await publicLocation.save();
@@ -630,13 +636,14 @@ const saveLocation = async (req, res, next) => {
         accuracy: publicLocation.accuracy,
         method: publicLocation.method,
         createdAt: publicLocation.createdAt,
+        address: address,
         deviceInfo: {
           screenResolution: publicLocation.screenResolution,
           language: publicLocation.language,
           timezone: publicLocation.timezone
         }
       });
-      logger.info(`Socket.IO: Location captured event emitted for visitor ${publicLocation.visitorId}`);
+      logger.info(`Socket.IO: Location captured event emitted for visitor ${publicLocation.visitorId} at ${address?.displayAddress || 'Unknown'}`);
     } catch (socketErr) {
       logger.error('Socket.IO emit failed:', socketErr.message);
     }
