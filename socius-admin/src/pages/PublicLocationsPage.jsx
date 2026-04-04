@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { MapPin, RefreshCw, ExternalLink, Calendar, Smartphone, Globe, User, Battery, Monitor, Signal, Fingerprint, Info, MousePointer, Activity, ChevronRight } from 'lucide-react';
+import { MapPin, RefreshCw, ExternalLink, Calendar, Smartphone, Globe, User, Battery, Monitor, Signal, Fingerprint, Info, MousePointer, Activity, ChevronRight, Wifi } from 'lucide-react';
+import { io } from 'socket.io-client';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Table from '../components/common/Table';
@@ -14,6 +15,8 @@ const PublicLocationsPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [filterVisitorId, setFilterVisitorId] = useState(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [liveUpdates, setLiveUpdates] = useState(0);
 
   // The capture page is on the backend. BaseURL usually has /api at the end.
   const publicCaptureUrl = baseURL.replace('/api', '') + '/public/capture';
@@ -38,6 +41,68 @@ const PublicLocationsPage = () => {
 
   useEffect(() => {
     fetchLocations();
+
+    // Socket.IO Connection for live updates
+    const socketUrl = baseURL.replace('/api', '');
+    const token = localStorage.getItem('token');
+    
+    const socket = io(socketUrl, {
+      auth: { token },
+      transports: ['websocket', 'polling']
+    });
+
+    socket.on('connect', () => {
+      console.log('Socket connected:', socket.id);
+      setIsConnected(true);
+      // Join admin room
+      socket.emit('admin:join');
+    });
+
+    socket.on('disconnect', () => {
+      console.log('Socket disconnected');
+      setIsConnected(false);
+    });
+
+    socket.on('admin:joined', (data) => {
+      if (data.success) {
+        console.log('Joined admin room');
+        toast.success('Live tracking enabled');
+      }
+    });
+
+    // Listen for new location captures
+    socket.on('location:captured', (data) => {
+      console.log('New location captured:', data);
+      setLiveUpdates(prev => prev + 1);
+      
+      // Add new location to the list (at the top)
+      setLocations(prevLocations => {
+        const newLocation = {
+          _id: Date.now().toString(),
+          visitorId: data.visitorId,
+          ip: data.ip,
+          location: data.location,
+          accuracy: data.accuracy,
+          method: data.method,
+          capturedAt: data.createdAt,
+          screenResolution: data.deviceInfo?.screenResolution,
+          language: data.deviceInfo?.language,
+          timezone: data.deviceInfo?.timezone,
+          isLive: true  // Mark as live update
+        };
+        return [newLocation, ...prevLocations];
+      });
+
+      // Show toast notification
+      toast.success(`New device tracked: ${data.visitorId?.substring(0, 8)}...`, {
+        icon: '📍',
+        duration: 3000
+      });
+    });
+
+    return () => {
+      socket.disconnect();
+    };
   }, []);
 
   const filteredLocations = filterVisitorId 
@@ -71,9 +136,16 @@ const PublicLocationsPage = () => {
       header: 'Captured At',
       render: (row) => (
         <div className="flex flex-col">
-          <span className="text-sm text-gray-900 dark:text-white">
-            {new Date(row.capturedAt).toLocaleString()}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-900 dark:text-white">
+              {new Date(row.capturedAt).toLocaleString()}
+            </span>
+            {row.isLive && (
+              <span className="px-1.5 py-0.5 bg-green-100 text-green-700 text-[10px] font-bold rounded animate-pulse">
+                NEW
+              </span>
+            )}
+          </div>
           <div className="flex items-center mt-1 space-x-2">
             <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase ${row.method === 'geolocation' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
               {row.method || 'GPS'}
@@ -147,7 +219,20 @@ const PublicLocationsPage = () => {
       <div className="space-y-6 p-6">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Advanced Device Tracking</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Advanced Device Tracking</h1>
+              {isConnected && (
+                <span className="flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full animate-pulse">
+                  <Wifi className="w-3 h-3" />
+                  LIVE
+                  {liveUpdates > 0 && (
+                    <span className="ml-1 bg-green-600 text-white px-1.5 rounded-full text-[10px]">
+                      {liveUpdates}
+                    </span>
+                  )}
+                </span>
+              )}
+            </div>
             <p className="text-gray-500 dark:text-gray-400">Deep fingerprinting, behavioral analysis, and network forensics</p>
           </div>
           <div className="flex space-x-3">
