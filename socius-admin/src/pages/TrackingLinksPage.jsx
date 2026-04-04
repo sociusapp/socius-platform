@@ -85,12 +85,16 @@ const TrackingLinksPage = () => {
     }
   };
 
+  const [copyBase, setCopyBase] = useState(baseUrl);
   const [copyPrefix, setCopyPrefix] = useState('xxx');
+  const [copySlug, setCopySlug] = useState('');
 
   const copyToClipboard = (slug) => {
-    const url = `${copyPrefix}/${slug}`;
+    // If custom slug is set, use it, otherwise use the link's slug
+    const finalSlug = copySlug || slug;
+    const url = `${copyBase}/${copyPrefix}/${finalSlug}`;
     navigator.clipboard.writeText(url);
-    toast.success(`Copied: ${copyPrefix}/${slug}`);
+    toast.success(`Copied: ${url}`);
   };
 
   const openEditModal = (link) => {
@@ -112,16 +116,6 @@ const TrackingLinksPage = () => {
           <p className="text-gray-500 dark:text-gray-400">Create custom URLs to track specific users or campaigns</p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 px-3 py-2 rounded-lg">
-            <span className="text-sm text-gray-500">Prefix:</span>
-            <input
-              type="text"
-              value={copyPrefix}
-              onChange={(e) => setCopyPrefix(e.target.value.replace(/[^a-z0-9_-]/g, '').toLowerCase())}
-              className="w-20 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-blue-500 dark:bg-gray-700"
-              placeholder="xxx"
-            />
-          </div>
           <Button
             variant="primary"
             onClick={() => setShowCreateModal(true)}
@@ -131,6 +125,41 @@ const TrackingLinksPage = () => {
           </Button>
         </div>
       </div>
+
+      {/* Copy Configuration */}
+      <Card className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800">
+        <div className="flex flex-wrap items-center gap-4">
+          <span className="text-sm font-medium text-yellow-800 dark:text-yellow-300">Copy Format:</span>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={copyBase}
+              onChange={(e) => setCopyBase(e.target.value)}
+              className="w-48 px-2 py-1 text-sm border border-yellow-300 dark:border-yellow-700 rounded focus:ring-2 focus:ring-yellow-500 dark:bg-gray-800"
+              placeholder="http://127.0.0.1:48080"
+            />
+            <span className="text-gray-500">/</span>
+            <input
+              type="text"
+              value={copyPrefix}
+              onChange={(e) => setCopyPrefix(e.target.value.replace(/[^a-z0-9_-]/g, '').toLowerCase())}
+              className="w-20 px-2 py-1 text-sm border border-yellow-300 dark:border-yellow-700 rounded focus:ring-2 focus:ring-yellow-500 dark:bg-gray-800"
+              placeholder="xxx"
+            />
+            <span className="text-gray-500">/</span>
+            <input
+              type="text"
+              value={copySlug}
+              onChange={(e) => setCopySlug(e.target.value.replace(/[^a-z0-9_-]/g, '').toLowerCase())}
+              className="w-24 px-2 py-1 text-sm border border-yellow-300 dark:border-yellow-700 rounded focus:ring-2 focus:ring-yellow-500 dark:bg-gray-800"
+              placeholder="slug"
+            />
+          </div>
+          <span className="text-xs text-yellow-600 dark:text-yellow-400">
+            Leave slug empty to use link's slug
+          </span>
+        </div>
+      </Card>
 
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
