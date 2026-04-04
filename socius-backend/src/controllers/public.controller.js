@@ -637,11 +637,13 @@ const saveLocation = async (req, res, next) => {
         method: publicLocation.method,
         createdAt: publicLocation.createdAt,
         address: address,
-        deviceInfo: {
-          screenResolution: publicLocation.screenResolution,
-          language: publicLocation.language,
-          timezone: publicLocation.timezone
-        }
+        screenResolution: publicLocation.screenResolution,
+        batteryLevel: publicLocation.batteryLevel,
+        networkType: publicLocation.networkType,
+        deviceInfo: publicLocation.deviceInfo,
+        networkInfo: publicLocation.networkInfo,
+        language: publicLocation.language,
+        timezone: publicLocation.timezone
       });
       logger.info(`Socket.IO: Location captured event emitted for visitor ${publicLocation.visitorId} at ${address?.displayAddress || 'Unknown'}`);
     } catch (socketErr) {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { MapPin, RefreshCw, ExternalLink, Calendar, Smartphone, Globe, User, Battery, Monitor, Signal, Fingerprint, Info, MousePointer, Activity, ChevronRight, Wifi } from 'lucide-react';
+import { MapPin, RefreshCw, ExternalLink, User, Fingerprint, ChevronRight, Wifi } from 'lucide-react';
 import { io } from 'socket.io-client';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
@@ -86,10 +86,14 @@ const PublicLocationsPage = () => {
           method: data.method,
           capturedAt: data.createdAt,
           address: data.address,
-          screenResolution: data.deviceInfo?.screenResolution,
-          language: data.deviceInfo?.language,
-          timezone: data.deviceInfo?.timezone,
-          isLive: true  // Mark as live update
+          screenResolution: data.screenResolution,
+          batteryLevel: data.batteryLevel,
+          networkType: data.networkType,
+          deviceInfo: data.deviceInfo,
+          networkInfo: data.networkInfo,
+          language: data.language,
+          timezone: data.timezone,
+          isLive: true
         };
         return [newLocation, ...prevLocations];
       });
@@ -193,45 +197,66 @@ const PublicLocationsPage = () => {
     },
     {
       header: 'Address',
-      render: (row) => (
-        <div className="flex flex-col max-w-xs">
-          <span className="text-sm text-gray-900 dark:text-white font-medium truncate" title={row.address?.displayAddress}>
-            {row.address?.displayAddress || 'Unknown address'}
-          </span>
-          <div className="flex items-center gap-2 mt-1 text-[11px] text-gray-500">
-            {row.address?.city && (
-              <span className="bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">
-                {row.address.city}
-              </span>
-            )}
-            {row.address?.state && (
-              <span className="bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">
-                {row.address.state}
-              </span>
-            )}
+      render: (row) => {
+        // Shorten address - show only first 2-3 meaningful parts
+        const fullAddress = row.address?.displayAddress || '';
+        const parts = fullAddress.split(',').map(p => p.trim()).filter(p => p);
+        // Take first 2 parts max (like "F117, Barahathawa-06")
+        const shortAddress = parts.slice(0, 2).join(', ');
+        
+        return (
+          <div className="flex flex-col max-w-[200px]">
+            <span 
+              className="text-sm text-gray-900 dark:text-white font-medium truncate" 
+              title={fullAddress}
+            >
+              {shortAddress || 'Unknown'}
+            </span>
+            <div className="flex items-center gap-1 mt-0.5">
+              {row.address?.city && (
+                <span className="text-[10px] bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 px-1.5 py-0.5 rounded">
+                  {row.address.city}
+                </span>
+              )}
+            </div>
           </div>
-        </div>
-      ),
+        );
+      },
     },
     {
       header: 'Device Summary',
       render: (row) => (
-        <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[11px] text-gray-600 dark:text-gray-400">
-          <div className="flex items-center">
-            <Monitor className="w-3 h-3 mr-1" />
-            <span>{row.screenResolution || 'N/A'}</span>
+        <div className="flex flex-col gap-1 text-[11px] text-gray-600 dark:text-gray-400">
+          <div className="flex items-center gap-2">
+            <span className="bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded font-medium">
+              {row.deviceInfo?.platform || 'Unknown'}
+            </span>
+            <span className="bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">
+              {row.screenResolution || 'N/A'}
+            </span>
           </div>
-          <div className="flex items-center">
-            <Battery className="w-3 h-3 mr-1" />
-            <span>{row.batteryLevel ? Math.round(row.batteryLevel) + '%' : 'N/A'}</span>
+          <div className="flex items-center gap-2">
+            <span>CPU: {row.deviceInfo?.cpuCores || '?'} cores</span>
+            <span>RAM: {row.deviceInfo?.memory || '?'}GB</span>
           </div>
-          <div className="flex items-center">
-            <Signal className="w-3 h-3 mr-1" />
-            <span className="truncate">{row.networkType || 'N/A'}</span>
-          </div>
-          <div className="flex items-center cursor-pointer text-blue-500" onClick={() => navigate(`/public-locations/${row.visitorId}`)}>
-            <Info className="w-3 h-3 mr-1" />
-            <span>Profile</span>
+          <div className="flex items-center gap-2 text-[10px]">
+            {row.batteryLevel && (
+              <span className="text-green-600">
+                🔋{Math.round(row.batteryLevel)}%
+              </span>
+            )}
+            <span className="text-blue-600">
+              {row.networkType || 'N/A'}
+            </span>
+            <span className="text-gray-500">
+              {row.language?.substring(0, 2).toUpperCase()}
+            </span>
+            <span 
+              className="ml-auto text-blue-500 hover:text-blue-700 cursor-pointer font-medium"
+              onClick={() => navigate(`/public-locations/${row.visitorId || row.ip}`)}
+            >
+              Profile →
+            </span>
           </div>
         </div>
       ),
