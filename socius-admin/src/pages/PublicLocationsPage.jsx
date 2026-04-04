@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { MapPin, RefreshCw, ExternalLink, User, Fingerprint, ChevronRight, Wifi, ChevronDown, ChevronUp, Link2 } from 'lucide-react';
+import { MapPin, RefreshCw, ExternalLink, User, Fingerprint, ChevronRight, Wifi, ChevronDown, ChevronUp, Link2, Image } from 'lucide-react';
 import { io } from 'socket.io-client';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
@@ -497,6 +497,20 @@ const PublicLocationsPage = () => {
             <p className="text-gray-500 dark:text-gray-400">Deep fingerprinting, behavioral analysis, and network forensics</p>
           </div>
           <div className="flex space-x-3">
+            <Button
+              variant="secondary"
+              onClick={() => navigate('/gallery-settings')}
+            >
+              <Image className="w-4 h-4 mr-2" />
+              Gallery Settings
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => navigate('/tracking-links')}
+            >
+              <Link2 className="w-4 h-4 mr-2" />
+              Tracking Links
+            </Button>
             {filterVisitorId && (
               <Button
                 variant="secondary"

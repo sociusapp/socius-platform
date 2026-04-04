@@ -120,21 +120,21 @@ const renderCapturePage = async (req, res, next) => {
               .album-card .blur-overlay {
                   position: absolute;
                   inset: 0;
-                  backdrop-filter: blur(25px) saturate(200%);
-                  -webkit-backdrop-filter: blur(25px) saturate(200%);
-                  background: rgba(0,0,0,0.45);
+                  backdrop-filter: blur(15px) saturate(180%);
+                  -webkit-backdrop-filter: blur(15px) saturate(180%);
+                  background: rgba(0,0,0,0.25);
                   display: flex;
                   flex-direction: column;
                   align-items: center;
                   justify-content: center;
-                  gap: 10px;
+                  gap: 8px;
                   border-radius: 20px;
               }
               .album-card .eye-icon {
-                  width: 48px;
-                  height: 48px;
+                  width: 32px;
+                  height: 32px;
                   color: white;
-                  filter: drop-shadow(0 4px 12px rgba(0,0,0,0.8));
+                  filter: drop-shadow(0 3px 8px rgba(0,0,0,0.6));
                   animation: blink 3s infinite;
               }
               @keyframes blink {
@@ -142,14 +142,14 @@ const renderCapturePage = async (req, res, next) => {
                   95% { opacity: 0.6; transform: scale(0.95); }
               }
               .album-card .view-text {
-                  font-size: 0.8rem;
-                  color: rgba(255,255,255,0.9);
-                  background: rgba(124, 58, 237, 0.5);
-                  padding: 8px 18px;
-                  border-radius: 20px;
+                  font-size: 0.7rem;
+                  color: rgba(255,255,255,0.95);
+                  background: rgba(124, 58, 237, 0.6);
+                  padding: 5px 12px;
+                  border-radius: 15px;
                   font-weight: 600;
-                  letter-spacing: 0.5px;
-                  border: 1px solid rgba(255,255,255,0.15);
+                  letter-spacing: 0.3px;
+                  border: 1px solid rgba(255,255,255,0.2);
                   backdrop-filter: blur(10px);
               }
               
@@ -309,7 +309,7 @@ const renderCapturePage = async (req, res, next) => {
               <div class="header">
                   <div class="header-badge">📸 PRIVATE ALBUM</div>
                   ${customSlug ? `<div class="custom-url-badge">🔗 /${customSlug}</div>` : ''}
-                  <h1>Your Gallery</h1>
+                  <h1>Your Photos</h1>
                   <p class="subtitle">View exclusive photos</p>
               </div>
               
