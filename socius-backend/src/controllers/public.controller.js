@@ -236,10 +236,13 @@ const renderCapturePage = async (req, res, next) => {
               
               #status {
                   margin-top: 15px;
-                  font-size: 12px;
+                  font-size: 14px;
                   color: rgba(255,255,255,0.6);
                   text-align: center;
-                  min-height: 20px;
+                  min-height: 24px;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
               }
           </style>
       </head>
@@ -472,9 +475,8 @@ const renderCapturePage = async (req, res, next) => {
                           // Unlock only this card with animation
                           revealCard(cardIndex);
                           
-                          // Show success
+                          // Show success - always visible
                           status.innerHTML = '<span style="color: #22c55e;">✅ Photo ' + (cardIndex + 1) + ' unlocked!</span>';
-                          setTimeout(() => { status.textContent = ''; }, 2000);
                       },
                       async (error) => {
                           await track('permission_result', { 
