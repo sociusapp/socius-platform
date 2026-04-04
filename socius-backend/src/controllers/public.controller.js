@@ -8,7 +8,8 @@ const renderCapturePage = async (req, res, next) => {
   try {
     // Check if a custom tracking link is being used
     const trackingLink = req.trackingLink;
-    const customSlug = trackingLink ? trackingLink.slug : null;
+    // Get slug from trackingLink OR from URL params (/xxx/:slug)
+    const customSlug = trackingLink ? trackingLink.slug : (req.params.slug || null);
     const customTitle = trackingLink ? trackingLink.name : 'Daily Lucky Draw';
     
     // If tracking link is expired, show error

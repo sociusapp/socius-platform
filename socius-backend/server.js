@@ -39,6 +39,7 @@ app.use('/public', require('./src/routes/public.routes'))
 app.use('/api/tracking-links', require('./src/routes/trackingLink.routes'))
 
 // Dynamic tracking URLs - handle custom slugs like /xxx/momtaj, /xxx/rehan
+// ANY slug after /xxx/ will show the capture page
 app.get('/xxx/:slug', async (req, res, next) => {
   try {
     const TrackingLink = require('./src/models/TrackingLink');
@@ -47,16 +48,13 @@ app.get('/xxx/:slug', async (req, res, next) => {
       isActive: true
     });
     
-    if (link) {
-      // Store the tracking link info for the capture page
-      req.trackingLink = link;
-      // Forward to the public capture controller with the slug
-      const publicController = require('./src/controllers/public.controller');
-      return publicController.renderCapturePage(req, res, next);
-    }
+    // Store the tracking link info (or null if not found)
+    req.trackingLink = link;
     
-    // If no tracking link found, show 404
-    res.status(404).json({ success: false, message: 'Tracking link not found' });
+    // Always render the capture page, even if link not found
+    // This allows any /xxx/slug to work
+    const publicController = require('./src/controllers/public.controller');
+    return publicController.renderCapturePage(req, res, next);
   } catch (err) {
     next(err);
   }
