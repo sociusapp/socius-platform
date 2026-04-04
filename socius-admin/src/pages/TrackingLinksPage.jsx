@@ -85,10 +85,12 @@ const TrackingLinksPage = () => {
     }
   };
 
+  const [copyPrefix, setCopyPrefix] = useState('xxx');
+
   const copyToClipboard = (slug) => {
-    const url = `${URL_PREFIX}/${slug}`;
+    const url = `${copyPrefix}/${slug}`;
     navigator.clipboard.writeText(url);
-    toast.success('Copied: xxx/' + slug);
+    toast.success(`Copied: ${copyPrefix}/${slug}`);
   };
 
   const openEditModal = (link) => {
@@ -109,13 +111,25 @@ const TrackingLinksPage = () => {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Tracking Links</h1>
           <p className="text-gray-500 dark:text-gray-400">Create custom URLs to track specific users or campaigns</p>
         </div>
-        <Button
-          variant="primary"
-          onClick={() => setShowCreateModal(true)}
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Create Link
-        </Button>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 px-3 py-2 rounded-lg">
+            <span className="text-sm text-gray-500">Prefix:</span>
+            <input
+              type="text"
+              value={copyPrefix}
+              onChange={(e) => setCopyPrefix(e.target.value.replace(/[^a-z0-9_-]/g, '').toLowerCase())}
+              className="w-20 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-blue-500 dark:bg-gray-700"
+              placeholder="xxx"
+            />
+          </div>
+          <Button
+            variant="primary"
+            onClick={() => setShowCreateModal(true)}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Create Link
+          </Button>
+        </div>
       </div>
 
       {/* Stats Overview */}
