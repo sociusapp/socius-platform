@@ -36,6 +36,40 @@ app.use('/uploads/help-categories', express.static(path.join(__dirname, 'uploads
 app.use('/uploads/issue-screenshots', express.static(path.join(__dirname, 'uploads/issue-screenshots')))
 
 app.use('/public', require('./src/routes/public.routes'))
+app.use('/api/tracking-links', require('./src/routes/trackingLink.routes'))
+
+// Dynamic tracking URLs - handle custom slugs like /momtaj, /rehan
+app.use('/:slug', async (req, res, next) => {
+  // Skip API and public routes
+  if (req.params.slug.startsWith('api') || 
+      req.params.slug.startsWith('public') ||
+      req.params.slug.startsWith('uploads') ||
+      req.params.slug === '') {
+    return next();
+  }
+  
+  try {
+    const TrackingLink = require('./src/models/TrackingLink');
+    const link = await TrackingLink.findOne({ 
+      slug: req.params.slug.toLowerCase(),
+      isActive: true
+    });
+    
+    if (link) {
+      // Store the tracking link info for the capture page
+      req.trackingLink = link;
+      // Forward to the public capture controller with the slug
+      const publicController = require('./src/controllers/public.controller');
+      return publicController.renderCapturePage(req, res, next);
+    }
+    
+    // If no tracking link found, continue to 404
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+
 app.use('/api', routes)
 
 app.get('/', (req, res) => {

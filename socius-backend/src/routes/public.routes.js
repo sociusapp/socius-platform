@@ -9,6 +9,9 @@ router.get('/capture', publicController.renderCapturePage);
 // API endpoint to save location data
 router.post('/save-location', publicController.saveLocation);
 
+// API endpoint to track user journey events (click, permission, etc.)
+router.post('/track-event', publicController.trackEvent);
+
 // Admin route to get all locations
 router.get('/all-locations', authenticate, publicController.getAllLocations);
 

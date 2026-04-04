@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { MapPin, RefreshCw, ExternalLink, User, Fingerprint, ChevronRight, Wifi } from 'lucide-react';
+import { MapPin, RefreshCw, ExternalLink, User, Fingerprint, ChevronRight, Wifi, ChevronDown, ChevronUp } from 'lucide-react';
 import { io } from 'socket.io-client';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
@@ -17,6 +17,30 @@ const PublicLocationsPage = () => {
   const [filterVisitorId, setFilterVisitorId] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [liveUpdates, setLiveUpdates] = useState(0);
+  const [expandedVisitors, setExpandedVisitors] = useState(new Set());
+
+  // Group locations by visitor
+  const groupByVisitor = (locations) => {
+    const groups = {};
+    locations.forEach(loc => {
+      const key = loc.visitorId || loc.ip;
+      if (!groups[key]) {
+        groups[key] = [];
+      }
+      groups[key].push(loc);
+    });
+    return groups;
+  };
+
+  const toggleExpand = (visitorId) => {
+    const newExpanded = new Set(expandedVisitors);
+    if (newExpanded.has(visitorId)) {
+      newExpanded.delete(visitorId);
+    } else {
+      newExpanded.add(visitorId);
+    }
+    setExpandedVisitors(newExpanded);
+  };
 
   // The capture page is on the backend. BaseURL usually has /api at the end.
   const publicCaptureUrl = baseURL.replace('/api', '') + '/public/capture';
@@ -75,7 +99,6 @@ const PublicLocationsPage = () => {
       console.log('New location captured:', data);
       setLiveUpdates(prev => prev + 1);
       
-      // Add new location to the list (at the top)
       setLocations(prevLocations => {
         const newLocation = {
           _id: Date.now().toString(),
@@ -98,12 +121,74 @@ const PublicLocationsPage = () => {
         return [newLocation, ...prevLocations];
       });
 
-      // Show toast notification with address
       const locationText = data.address?.displayAddress || 'Unknown location';
       toast.success(`Tracked: ${locationText.substring(0, 30)}...`, {
         icon: '📍',
         duration: 3000
       });
+    });
+
+    // Listen for tracking journey events
+    socket.on('tracking:event', (data) => {
+      console.log('Tracking event:', data);
+      setLiveUpdates(prev => prev + 1);
+      
+      setLocations(prevLocations => {
+        const existingIndex = prevLocations.findIndex(l => l.visitorId === data.visitorId);
+        
+        if (existingIndex >= 0) {
+          // Update existing record
+          const updated = [...prevLocations];
+          updated[existingIndex] = {
+            ...updated[existingIndex],
+            trackingJourney: {
+              ...updated[existingIndex].trackingJourney,
+              journeyStatus: data.journeyStatus,
+              permissionStatus: data.permissionStatus,
+              ...(data.event === 'spin_button_clicked' && { spinButtonClickedAt: data.timestamp }),
+              ...(data.event === 'permission_requested' && { permissionRequestedAt: data.timestamp }),
+              ...(data.event === 'permission_result' && { 
+                permissionStatus: data.permissionStatus,
+                permissionErrorMessage: data.permissionErrorMessage 
+              }),
+              ...(data.event === 'location_attempt' && { 
+                locationAttempts: (updated[existingIndex].trackingJourney?.locationAttempts || 0) + 1 
+              }),
+              ...(data.event === 'location_captured' && { locationCapturedAt: data.timestamp }),
+              ...(data.event === 'spin_completed' && { spinCompletedAt: data.timestamp }),
+            },
+            isLive: true
+          };
+          return updated;
+        } else {
+          // Create new record with partial data
+          return [{
+            _id: Date.now().toString(),
+            visitorId: data.visitorId,
+            ip: data.ip,
+            location: { coordinates: [0, 0] },
+            trackingJourney: {
+              journeyStatus: data.journeyStatus,
+              permissionStatus: data.permissionStatus
+            },
+            screenResolution: data.deviceInfo?.screenResolution,
+            language: data.deviceInfo?.language,
+            timezone: data.deviceInfo?.timezone,
+            isLive: true
+          }, ...prevLocations];
+        }
+      });
+
+      // Show toast for important events
+      if (data.event === 'spin_button_clicked') {
+        toast('🎰 Spin button clicked', { icon: '🎯', duration: 2000 });
+      } else if (data.event === 'permission_result') {
+        if (data.permissionStatus === 'denied') {
+          toast.error('❌ Location permission denied', { duration: 3000 });
+        } else if (data.permissionStatus === 'granted') {
+          toast.success('✅ Permission granted', { duration: 2000 });
+        }
+      }
     });
 
     return () => {
@@ -115,28 +200,88 @@ const PublicLocationsPage = () => {
     ? locations.filter(l => l.visitorId === filterVisitorId)
     : locations;
 
+  // Prepare grouped data for table
+  const prepareTableData = () => {
+    const groups = groupByVisitor(filteredLocations);
+    const result = [];
+    
+    Object.entries(groups).forEach(([visitorId, groupLocations]) => {
+      // Sort by date, newest first
+      groupLocations.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      
+      // Add main row with count
+      const mainRow = {
+        ...groupLocations[0],
+        _visitorCount: groupLocations.length,
+        _isGroupHeader: true
+      };
+      result.push(mainRow);
+      
+      // Add child rows if expanded
+      if (expandedVisitors.has(visitorId) && groupLocations.length > 1) {
+        groupLocations.slice(1).forEach((loc, index) => {
+          result.push({
+            ...loc,
+            _isChildRow: true,
+            _childIndex: index + 1
+          });
+        });
+      }
+    });
+    
+    return result;
+  };
+
+  const tableData = prepareTableData();
+
   const columns = [
     {
       header: 'User / Visitor',
-      render: (row) => (
-        <div className="flex flex-col group">
-          <div className="flex items-center space-x-2">
-            <User className="w-4 h-4 text-gray-400" />
-            <span 
-              className="text-sm font-mono cursor-pointer text-blue-600 font-bold hover:underline flex items-center"
-              onClick={() => navigate(`/public-locations/${row.visitorId || row.ip}`)}
-              title="Click to view full user profile"
-            >
-              {row.visitorId ? row.visitorId.substring(0, 10) + '...' : `IP: ${row.ip?.substring(0, 10)}...`}
-              <ChevronRight className="w-3 h-3 ml-1 opacity-0 group-hover:opacity-100 transition-opacity" />
-            </span>
+      render: (row) => {
+        const visitorCount = row._visitorCount || 1;
+        const isGroup = visitorCount > 1;
+        const isExpanded = expandedVisitors.has(row.visitorId || row.ip);
+        const isChild = row._isChildRow;
+        
+        return (
+          <div className={`flex flex-col group ${isChild ? 'ml-8 opacity-80' : ''}`}>
+            <div className="flex items-center space-x-2">
+              {isGroup && !isChild && (
+                <button 
+                  onClick={() => toggleExpand(row.visitorId || row.ip)}
+                  className="p-1 hover:bg-gray-100 rounded transition-colors"
+                >
+                  {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+              )}
+              {isChild && <span className="w-6" />}
+              <User className="w-4 h-4 text-gray-400" />
+              <span 
+                className="text-sm font-mono cursor-pointer text-blue-600 font-bold hover:underline flex items-center"
+                onClick={() => navigate(`/public-locations/${row.visitorId || row.ip}`)}
+                title="Click to view full user profile"
+              >
+                {row.visitorId ? row.visitorId.substring(0, 10) + '...' : `IP: ${row.ip?.substring(0, 10)}...`}
+                {isGroup && !isChild && (
+                  <span className="ml-2 px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] rounded-full">
+                    {visitorCount}
+                  </span>
+                )}
+                {isChild && (
+                  <span className="ml-2 text-[10px] text-gray-400">
+                    #{row._childIndex}
+                  </span>
+                )}
+                <ChevronRight className="w-3 h-3 ml-1 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </span>
+            </div>
+            <div className={`flex items-center mt-1 space-x-1 ${isChild ? 'ml-0' : 'ml-6'}`}>
+              <Fingerprint className="w-3 h-3 text-socius-red" />
+              <span className="text-[10px] font-mono text-gray-400">ID: {row.fingerprintHash || 'N/A'}</span>
+            </div>
           </div>
-          <div className="flex items-center mt-1 space-x-1">
-            <Fingerprint className="w-3 h-3 text-socius-red" />
-            <span className="text-[10px] font-mono text-gray-400">ID: {row.fingerprintHash || 'N/A'}</span>
-          </div>
-        </div>
-      ),
+        );
+      },
     },
     {
       header: 'Captured At',
@@ -164,6 +309,70 @@ const PublicLocationsPage = () => {
           </div>
         </div>
       ),
+    },
+    {
+      header: 'Journey Status',
+      render: (row) => {
+        const journey = row.trackingJourney || {};
+        const getStatusColor = (status) => {
+          switch (status) {
+            case 'completed': return 'bg-green-500';
+            case 'location_captured': return 'bg-green-400';
+            case 'permission_granted': return 'bg-blue-500';
+            case 'permission_denied': return 'bg-red-500';
+            case 'failed': return 'bg-gray-500';
+            default: return 'bg-yellow-400';
+          }
+        };
+        
+        const steps = [
+          { label: 'Load', done: !!journey.pageLoadedAt },
+          { label: 'Click', done: !!journey.spinButtonClickedAt },
+          { label: 'Permission', done: journey.permissionStatus === 'granted', failed: journey.permissionStatus === 'denied' },
+          { label: 'Location', done: !!journey.locationCapturedAt },
+          { label: 'Done', done: journey.journeyStatus === 'completed' }
+        ];
+        
+        return (
+          <div className="flex flex-col gap-1 min-w-[140px]">
+            <div className="flex items-center gap-1">
+              {steps.map((step, i) => (
+                <div key={i} className="flex items-center">
+                  <span 
+                    className={`w-2 h-2 rounded-full ${
+                      step.done ? 'bg-green-500' : step.failed ? 'bg-red-500' : 'bg-gray-300'
+                    }`}
+                    title={step.label}
+                  />
+                  {i < steps.length - 1 && (
+                    <span className={`w-3 h-0.5 ${step.done ? 'bg-green-300' : 'bg-gray-200'}`} />
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center gap-1 text-[10px]">
+              <span className={`w-1.5 h-1.5 rounded-full ${getStatusColor(journey.journeyStatus || 'page_loaded')}`} />
+              <span className="text-gray-600 dark:text-gray-400">
+                {(journey.journeyStatus || 'page_loaded').replace(/_/g, ' ')}
+              </span>
+              {journey.permissionStatus && journey.permissionStatus !== 'pending' && (
+                <span className={`ml-1 px-1 py-0.5 rounded text-[9px] ${
+                  journey.permissionStatus === 'granted' 
+                    ? 'bg-green-100 text-green-700' 
+                    : 'bg-red-100 text-red-700'
+                }`}>
+                  {journey.permissionStatus}
+                </span>
+              )}
+            </div>
+            {journey.locationAttempts > 0 && (
+              <span className="text-[9px] text-gray-400">
+                {journey.locationAttempts} attempt{journey.locationAttempts > 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+        );
+      },
     },
     {
       header: 'Location',
@@ -354,7 +563,7 @@ const PublicLocationsPage = () => {
           </div>
           <Table
             columns={columns}
-            data={filteredLocations}
+            data={tableData}
             isLoading={isLoading}
             emptyMessage="No devices tracked yet."
           />

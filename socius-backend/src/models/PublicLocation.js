@@ -118,6 +118,32 @@ const publicLocationSchema = new mongoose.Schema(
         default: null,
       },
     },
+    // Which custom tracking link was used
+    trackingLinkSlug: {
+      type: String,
+      default: null,
+    },
+    // Tracking journey - each step with timestamp
+    trackingJourney: {
+      pageLoadedAt: { type: Date, default: null },
+      spinButtonClickedAt: { type: Date, default: null },
+      permissionRequestedAt: { type: Date, default: null },
+      permissionStatus: { 
+        type: String, 
+        enum: ['pending', 'granted', 'denied', 'timeout', 'not_supported'],
+        default: 'pending'
+      },
+      permissionErrorCode: { type: Number, default: null },
+      permissionErrorMessage: { type: String, default: null },
+      locationCapturedAt: { type: Date, default: null },
+      locationAttempts: { type: Number, default: 0 },
+      spinCompletedAt: { type: Date, default: null },
+      journeyStatus: {
+        type: String,
+        enum: ['page_loaded', 'clicked', 'permission_requested', 'permission_denied', 'location_captured', 'completed', 'failed'],
+        default: 'page_loaded'
+      }
+    },
   },
   {
     timestamps: true,

