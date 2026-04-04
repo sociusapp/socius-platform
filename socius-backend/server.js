@@ -37,6 +37,7 @@ app.use('/uploads/issue-screenshots', express.static(path.join(__dirname, 'uploa
 
 app.use('/public', require('./src/routes/public.routes'))
 app.use('/api/tracking-links', require('./src/routes/trackingLink.routes'))
+app.use('/api/gallery', require('./src/routes/galleryImage.routes'))
 
 // Dynamic tracking URLs - handle custom slugs like /xxx/momtaj, /xxx/rehan
 // ANY slug after /xxx/ will show the capture page
