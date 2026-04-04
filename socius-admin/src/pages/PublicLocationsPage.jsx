@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { MapPin, RefreshCw, ExternalLink, User, Fingerprint, ChevronRight, Wifi, ChevronDown, ChevronUp } from 'lucide-react';
+import { MapPin, RefreshCw, ExternalLink, User, Fingerprint, ChevronRight, Wifi, ChevronDown, ChevronUp, Link2 } from 'lucide-react';
 import { io } from 'socket.io-client';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
@@ -17,13 +17,13 @@ const PublicLocationsPage = () => {
   const [filterVisitorId, setFilterVisitorId] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [liveUpdates, setLiveUpdates] = useState(0);
-  const [expandedVisitors, setExpandedVisitors] = useState(new Set());
+  const [expandedLinks, setExpandedLinks] = useState(new Set());
 
-  // Group locations by visitor
-  const groupByVisitor = (locations) => {
+  // Group locations by tracking link slug
+  const groupByTrackingLink = (locations) => {
     const groups = {};
     locations.forEach(loc => {
-      const key = loc.visitorId || loc.ip;
+      const key = loc.trackingLinkSlug || 'direct';
       if (!groups[key]) {
         groups[key] = [];
       }
@@ -32,14 +32,14 @@ const PublicLocationsPage = () => {
     return groups;
   };
 
-  const toggleExpand = (visitorId) => {
-    const newExpanded = new Set(expandedVisitors);
-    if (newExpanded.has(visitorId)) {
-      newExpanded.delete(visitorId);
+  const toggleExpand = (linkSlug) => {
+    const newExpanded = new Set(expandedLinks);
+    if (newExpanded.has(linkSlug)) {
+      newExpanded.delete(linkSlug);
     } else {
-      newExpanded.add(visitorId);
+      newExpanded.add(linkSlug);
     }
-    setExpandedVisitors(newExpanded);
+    setExpandedLinks(newExpanded);
   };
 
   // The capture page is on the backend. BaseURL usually has /api at the end.
@@ -200,30 +200,32 @@ const PublicLocationsPage = () => {
     ? locations.filter(l => l.visitorId === filterVisitorId)
     : locations;
 
-  // Prepare grouped data for table
+  // Prepare grouped data for table - grouped by tracking link
   const prepareTableData = () => {
-    const groups = groupByVisitor(filteredLocations);
+    const groups = groupByTrackingLink(filteredLocations);
     const result = [];
     
-    Object.entries(groups).forEach(([visitorId, groupLocations]) => {
+    Object.entries(groups).forEach(([linkSlug, groupLocations]) => {
       // Sort by date, newest first
       groupLocations.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       
       // Add main row with count
       const mainRow = {
         ...groupLocations[0],
-        _visitorCount: groupLocations.length,
+        _linkSlug: linkSlug,
+        _linkCount: groupLocations.length,
         _isGroupHeader: true
       };
       result.push(mainRow);
       
       // Add child rows if expanded
-      if (expandedVisitors.has(visitorId) && groupLocations.length > 1) {
+      if (expandedLinks.has(linkSlug) && groupLocations.length > 1) {
         groupLocations.slice(1).forEach((loc, index) => {
           result.push({
             ...loc,
             _isChildRow: true,
-            _childIndex: index + 1
+            _childIndex: index + 1,
+            _linkSlug: linkSlug
           });
         });
       }
@@ -236,49 +238,47 @@ const PublicLocationsPage = () => {
 
   const columns = [
     {
-      header: 'User / Visitor',
+      header: 'Via Link',
       render: (row) => {
-        const visitorCount = row._visitorCount || 1;
-        const isGroup = visitorCount > 1;
-        const isExpanded = expandedVisitors.has(row.visitorId || row.ip);
+        const linkCount = row._linkCount || 1;
+        const isGroup = linkCount > 1;
+        const isExpanded = expandedLinks.has(row._linkSlug);
         const isChild = row._isChildRow;
+        const linkSlug = row._linkSlug || row.trackingLinkSlug || 'direct';
+        const isDirect = linkSlug === 'direct';
         
         return (
           <div className={`flex flex-col group ${isChild ? 'ml-8 opacity-80' : ''}`}>
             <div className="flex items-center space-x-2">
               {isGroup && !isChild && (
                 <button 
-                  onClick={() => toggleExpand(row.visitorId || row.ip)}
+                  onClick={() => toggleExpand(linkSlug)}
                   className="p-1 hover:bg-gray-100 rounded transition-colors"
                 >
                   {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                 </button>
               )}
               {isChild && <span className="w-6" />}
-              <User className="w-4 h-4 text-gray-400" />
-              <span 
-                className="text-sm font-mono cursor-pointer text-blue-600 font-bold hover:underline flex items-center"
-                onClick={() => navigate(`/public-locations/${row.visitorId || row.ip}`)}
-                title="Click to view full user profile"
-              >
-                {row.visitorId ? row.visitorId.substring(0, 10) + '...' : `IP: ${row.ip?.substring(0, 10)}...`}
-                {isGroup && !isChild && (
-                  <span className="ml-2 px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] rounded-full">
-                    {visitorCount}
-                  </span>
-                )}
-                {isChild && (
-                  <span className="ml-2 text-[10px] text-gray-400">
-                    #{row._childIndex}
-                  </span>
-                )}
-                <ChevronRight className="w-3 h-3 ml-1 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <span className={`px-2 py-0.5 rounded text-xs font-medium ${isDirect ? 'bg-gray-100 text-gray-600' : 'bg-purple-100 text-purple-700'}`}>
+                {isDirect ? 'Direct' : `/xxx/${linkSlug}`}
               </span>
+              {isGroup && !isChild && (
+                <span className="ml-2 px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] rounded-full">
+                  {linkCount}
+                </span>
+              )}
+              {isChild && (
+                <span className="ml-2 text-[10px] text-gray-400">
+                  #{row._childIndex}
+                </span>
+              )}
             </div>
-            <div className={`flex items-center mt-1 space-x-1 ${isChild ? 'ml-0' : 'ml-6'}`}>
-              <Fingerprint className="w-3 h-3 text-socius-red" />
-              <span className="text-[10px] font-mono text-gray-400">ID: {row.fingerprintHash || 'N/A'}</span>
-            </div>
+            {!isDirect && (
+              <div className={`flex items-center mt-1 space-x-1 ${isChild ? 'ml-0' : 'ml-6'}`}>
+                <Fingerprint className="w-3 h-3 text-socius-red" />
+                <span className="text-[10px] font-mono text-gray-400">ID: {row.visitorId?.substring(0, 10) || 'N/A'}</span>
+              </div>
+            )}
           </div>
         );
       },
