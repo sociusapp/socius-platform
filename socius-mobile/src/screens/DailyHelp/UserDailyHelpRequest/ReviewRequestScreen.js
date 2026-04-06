@@ -48,6 +48,46 @@ const ReviewRequestScreen = ({ navigation, route }) => {
     ? description
     : 'Need a quick printout near the bus stop';
   const timeText = time && time.trim().length > 0 ? time : '10–15 minutes';
+  
+  // Calculate return time based on time needed
+  const calculateReturnTime = () => {
+    const now = new Date();
+    let minutesToAdd = 30; // default 30 minutes
+    
+    // Parse timeText to extract minutes
+    if (timeText) {
+      // Check for hour format (e.g., "1 hour", "2 hours")
+      const hourMatch = timeText.match(/(\d+)\s*hour/);
+      if (hourMatch) {
+        minutesToAdd = parseInt(hourMatch[1]) * 60;
+      } else {
+        // Check for minutes format (e.g., "30 minutes", "10–15 minutes")
+        const minuteMatch = timeText.match(/(\d+)[^0-9]*(\d+)?\s*minute/);
+        if (minuteMatch) {
+          if (minuteMatch[2]) {
+            // Range like "10–15 minutes" - use the higher value
+            minutesToAdd = parseInt(minuteMatch[2]);
+          } else {
+            // Single value like "30 minutes"
+            minutesToAdd = parseInt(minuteMatch[1]);
+          }
+        }
+      }
+    }
+    
+    const returnTime = new Date(now.getTime() + minutesToAdd * 60000);
+    
+    // Format the time
+    const hours = returnTime.getHours();
+    const minutes = returnTime.getMinutes();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours % 12 || 12;
+    const displayMinutes = minutes.toString().padStart(2, '0');
+    
+    return `Return by today, ${displayHours}:${displayMinutes} ${ampm}`;
+  };
+  
+  const returnByText = calculateReturnTime();
   const helpTypeLabel = helpType?.label || 'Everyday Help';
   const helpTypeIcon = helpType?.icon || 'flower';
   const helpTypeColor = helpType?.color || '#DC5C69';
@@ -458,11 +498,10 @@ const ReviewRequestScreen = ({ navigation, route }) => {
         showsVerticalScrollIndicator={false}
       >
         <View style={{ width: contentWidth }}>
-          {/* Title Section */}
+            {/* Title Section */}
           <MotionView preset="fadeUp" duration={220}>
             <View style={[styles.titleSection, { marginBottom: vscale(15) }]}>
-              <Text style={[styles.mainTitle, { fontSize: ms(22), marginBottom: vscale(8) }]}>Review your request</Text>
-              <Text style={[styles.subtitle, { fontSize: ms(16) }]}>This is what nearby people will see.</Text>
+              <Text style={[styles.mainTitle, { fontSize: ms(22), marginBottom: vscale(8) }]}>Review & confirm</Text>
             </View>
           </MotionView>
 
@@ -493,7 +532,7 @@ const ReviewRequestScreen = ({ navigation, route }) => {
                 <Text
                   style={[
                     styles.requestLabel,
-                    { fontSize: ms(14), marginLeft: spacing(8) },
+                    { fontSize: ms(14), marginLeft: spacing(0) },
                   ]}
                 >
                   Your request
@@ -515,7 +554,7 @@ const ReviewRequestScreen = ({ navigation, route }) => {
                     resizeMode="cover"
                   />
                 ) : (
-                  <Icon name={helpTypeIcon} size={scale(20)} color={helpTypeColor} />
+                  <Icon name="wrench-outline" size={scale(20)} color="#6B7280" />
                 )}
                 <Text
                   style={[
@@ -532,7 +571,7 @@ const ReviewRequestScreen = ({ navigation, route }) => {
                   { fontSize: ms(14), maxWidth: '60%' },
                 ]}
               >
-                {String(helpTypeLabel || '').toUpperCase()}
+                {String(helpTypeLabel || 'Local help · Tool / small assistance')}
               </Text>
             </View>
 
@@ -543,7 +582,7 @@ const ReviewRequestScreen = ({ navigation, route }) => {
               ]}
             >
               <View style={[styles.requestRowLeft, { marginRight: spacing(12) }]}>
-                <Icon name="note-text-outline" size={scale(20)} color="#4B5563" />
+                <Icon name="message-text-outline" size={scale(20)} color="#6B7280" />
                 <Text
                   style={[
                     styles.requestRowLabel,
@@ -559,7 +598,7 @@ const ReviewRequestScreen = ({ navigation, route }) => {
                   { fontSize: ms(14), lineHeight: ms(20), maxWidth: '60%' },
                 ]}
               >
-                {requestText}
+                "{requestText}"
               </Text>
             </View>
 
@@ -570,7 +609,7 @@ const ReviewRequestScreen = ({ navigation, route }) => {
               ]}
             >
               <View style={[styles.requestRowLeft, { marginRight: spacing(12) }]}>
-                <Icon name="map-marker" size={scale(20)} color="#DC5C69" />
+                <Icon name="map-marker-outline" size={scale(20)} color="#6B7280" />
                 <Text
                   style={[
                     styles.requestRowLabel,
@@ -590,9 +629,9 @@ const ReviewRequestScreen = ({ navigation, route }) => {
               </Text>
             </View>
 
-            <View style={[styles.requestRow, { paddingVertical: vscale(6) }]}>
+            <View style={[styles.requestRow, { paddingVertical: vscale(6), borderBottomWidth: scale(1) }]}>
               <View style={[styles.requestRowLeft, { marginRight: spacing(12) }]}>
-                <Icon name="clock-outline" size={scale(20)} color="#DC5C69" />
+                <Icon name="clock-outline" size={scale(20)} color="#6B7280" />
                 <Text
                   style={[
                     styles.requestRowLabel,
@@ -608,13 +647,35 @@ const ReviewRequestScreen = ({ navigation, route }) => {
                   { fontSize: ms(14), maxWidth: '60%' },
                 ]}
               >
-                {timeText}
+                About {timeText}
+              </Text>
+            </View>
+
+            <View style={[styles.requestRow, { paddingVertical: vscale(6) }]}>
+              <View style={[styles.requestRowLeft, { marginRight: spacing(12) }]}>
+                <Icon name="calendar-check" size={scale(20)} color="#6B7280" />
+                <Text
+                  style={[
+                    styles.requestRowLabel,
+                    { fontSize: ms(13), marginLeft: spacing(8) },
+                  ]}
+                >
+                  Return by
+                </Text>
+              </View>
+              <Text
+                style={[
+                  styles.requestRowValue,
+                  { fontSize: ms(14), maxWidth: '60%' },
+                ]}
+              >
+                {returnByText}
               </Text>
             </View>
             </View>
           </MotionView>
 
-          {/* Info Box 1 */}
+          {/* Who will see this Card */}
           <View style={[styles.infoBox, { 
             borderRadius: scale(16),
             borderWidth: scale(1),
@@ -625,21 +686,31 @@ const ReviewRequestScreen = ({ navigation, route }) => {
             shadowRadius: scale(6),
             elevation: scale(2)
           }]}>
-            <Text style={[styles.infoText, { fontSize: ms(14), lineHeight: ms(22) }]}>This request will be visible only to nearby available people. You can cancel it anytime.</Text>
+            <Text style={[styles.infoBoxTitle, { fontSize: ms(14), fontWeight: '600', color: '#374151', marginBottom: vscale(10) }]}>Who will see this</Text>
+            <View style={{ width: '100%', height: 1, backgroundColor: '#E5E7EB', marginBottom: vscale(10) }} />
+            <View style={styles.bulletRow}>
+              <Icon name="circle-small" size={scale(16)} color="#6B7280" />
+              <Text style={[styles.bulletText, { fontSize: ms(13), color: '#6B7280' }]}>Only nearby available people</Text>
+            </View>
+            <View style={styles.bulletRow}>
+              <Icon name="circle-small" size={scale(16)} color="#6B7280" />
+              <Text style={[styles.bulletText, { fontSize: ms(13), color: '#6B7280' }]}>Limited number, not public</Text>
+            </View>
+            <View style={styles.bulletRow}>
+              <Icon name="circle-small" size={scale(16)} color="#6B7280" />
+              <Text style={[styles.bulletText, { fontSize: ms(13), color: '#6B7280' }]}>No obligation to respond</Text>
+            </View>
           </View>
 
-          {/* Info Box 2 */}
-          <View style={[styles.infoBox, { 
+          {/* You can cancel info */}
+          <View style={[styles.cancelInfoBox, { 
             borderRadius: scale(16),
             borderWidth: scale(1),
             paddingHorizontal: spacing(16),
-            paddingVertical: vscale(16),
-            marginBottom: vscale(10),
-            shadowOffset: { width: 0, height: vscale(2) },
-            shadowRadius: scale(6),
-            elevation: scale(2)
+            paddingVertical: vscale(12),
+            marginBottom: vscale(16),
           }]}>
-            <Text style={[styles.infoText, { fontSize: ms(14), lineHeight: ms(22) }]}>This is for small, everyday help. For emergencies, use <Text style={styles.emergencyLink}>Emergency Contacts</Text>.</Text>
+            <Text style={[styles.cancelInfoText, { fontSize: ms(13), color: '#6B7280', textAlign: 'center' }]}>You can cancel this request at any time.</Text>
           </View>
 
           {/* Spacer */}
@@ -647,29 +718,30 @@ const ReviewRequestScreen = ({ navigation, route }) => {
 
           {/* Buttons Container */}
           <MotionView preset="fadeUp" duration={220} delay={90}>
-          <View style={[styles.buttonsContainer, { gap: vscale(12), marginBottom: vscale(20) }]}>
-            <Button
-              title="Share Request"
+          <View style={[styles.buttonsContainer, { gap: vscale(12), marginBottom: vscale(12) }]}>
+            <TouchableOpacity
+              style={[styles.shareButton, { borderRadius: scale(28), paddingVertical: vscale(16) }]}
               onPress={handleShareRequest}
-              variant="gradient"
-              loading={submitting}
-              success={success}
-              fly={true}
-              icon={<Icon name="send" size={scale(18)} color="#FFFFFF" />}
-              accessibilityLabel="Share this request with people nearby"
-            />
+              disabled={submitting}
+              activeOpacity={0.9}
+            >
+              <Text style={[styles.shareButtonText, { fontSize: ms(16) }]}>Share request</Text>
+            </TouchableOpacity>
 
-            <Button
-              title="Edit Details"
+            <TouchableOpacity
+              style={[styles.editButton, { borderRadius: scale(28), paddingVertical: vscale(16), borderWidth: 1 }]}
               onPress={handleEditDetails}
-              variant="white"
-              icon={<Icon name="pencil-outline" size={scale(18)} color="#2C3E50" />}
-              accessibilityLabel="Edit request details"
-            />
+              activeOpacity={0.9}
+            >
+              <Text style={[styles.editButtonText, { fontSize: ms(16) }]}>Edit details</Text>
+            </TouchableOpacity>
           </View>
           </MotionView>
 
-          <View style={[styles.bottomSpacer, { height: vscale(20) }]} />
+          {/* Bottom text */}
+          <Text style={[styles.bottomText, { fontSize: ms(12), color: '#9CA3AF', textAlign: 'center', fontStyle: 'italic', marginBottom: vscale(20) }]}>
+            Sharing is voluntary and temporary.
+          </Text>
         </View>
       </ScrollView>
 
@@ -759,18 +831,62 @@ const styles = StyleSheet.create({
 
   // ===== INFO BOXES =====
   infoBox: {
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#FFFFFF',
     borderColor: '#E5E7EB',
   },
-
+  infoBoxTitle: {
+    fontWeight: '600',
+    color: '#374151',
+  },
+  bulletRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  bulletText: {
+    fontWeight: '400',
+    marginLeft: 4,
+  },
+  cancelInfoBox: {
+    backgroundColor: '#F3F4F6',
+    borderColor: '#E5E7EB',
+  },
+  cancelInfoText: {
+    fontWeight: '400',
+  },
   infoText: {
     fontWeight: '400',
     color: '#4B5563',
   },
-
   emergencyLink: {
     color: '#DC5C69',
     textDecorationLine: 'underline',
+  },
+
+  // ===== BUTTONS =====
+  shareButton: {
+    backgroundColor: '#B94A48',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  shareButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  editButton: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#D1D5DB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editButtonText: {
+    color: '#374151',
+    fontWeight: '500',
   },
 
   spacer: {
@@ -779,7 +895,8 @@ const styles = StyleSheet.create({
   buttonsContainer: {
   },
 
-  bottomSpacer: {
+  bottomText: {
+    fontStyle: 'italic',
   },
 });
 

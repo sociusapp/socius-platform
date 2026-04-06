@@ -60,12 +60,12 @@ const verificationSchema = new mongoose.Schema(
       {
         status: {
           type: String,
-          enum: ['approved', 'failed'],
+          enum: ['approved', 'failed', 'pending'],
           required: true,
         },
         action: {
           type: String,
-          enum: ['approved', 'rejected'],
+          enum: ['approved', 'rejected', 'submitted', 'resubmitted'],
           required: true,
         },
         reviewedBy: {

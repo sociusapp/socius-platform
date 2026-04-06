@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, Modal } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, Modal, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import * as ImagePicker from 'expo-image-picker';
@@ -8,7 +8,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import Button from '../../components/common/Button';
 import Header from '../../components/common/Header';
 import { useResponsive } from '../../utils/responsive';
-import { submitVerificationDocuments } from '../../services/api/verification.api';
+import { submitVerificationDocuments, retryVerification, getVerificationStatus } from '../../services/api/verification.api';
 import { loadAuth } from '../../services/storage/asyncStorage.service';
 
 const IdentityVerificationScreen = ({ navigation }) => {
@@ -22,8 +22,61 @@ const IdentityVerificationScreen = ({ navigation }) => {
   const [imageToCrop, setImageToCrop] = useState(null);
   const [croppingTarget, setCroppingTarget] = useState(null);
   const [isCropping, setIsCropping] = useState(false);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(true);
   const cameraRef = useRef(null);
   const [permission, requestPermission] = useCameraPermissions();
+
+  // Check verification status on screen load - redirect if already submitted
+  useEffect(() => {
+    const checkVerificationStatus = async () => {
+      try {
+        const { accessToken } = await loadAuth();
+        if (!accessToken) {
+          setIsCheckingStatus(false);
+          return;
+        }
+
+        const result = await getVerificationStatus(accessToken);
+        const status = result?.data?.status || result?.status;
+
+        // Check if this is a resubmission
+        const isFailed = status === 'failed';
+        setIsResubmit(isFailed);
+        if (isFailed) {
+          const count = result?.data?.retryCount || 0;
+          setRetryCount(count);
+          console.log('[IdentityVerification] Resubmission attempt:', count);
+        }
+
+        // If already submitted or approved, redirect to appropriate screen
+        if (status === 'pending' || status === 'review_requested') {
+          console.log('[IdentityVerification] Already submitted, redirecting to ProfileReview');
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'ProfileReview' }],
+          });
+          return;
+        }
+
+        if (status === 'approved') {
+          console.log('[IdentityVerification] Already approved, redirecting to MainApp');
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'MainApp' }],
+          });
+          return;
+        }
+
+        // If failed or not_submitted, allow to stay on this screen
+        setIsCheckingStatus(false);
+      } catch (error) {
+        console.log('[IdentityVerification] Error checking status:', error);
+        setIsCheckingStatus(false);
+      }
+    };
+
+    checkVerificationStatus();
+  }, [navigation]);
 
   const openCropModal = (uri, target) => {
     setImageToCrop(uri);
@@ -95,7 +148,7 @@ const IdentityVerificationScreen = ({ navigation }) => {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
         quality: 1,
@@ -177,6 +230,11 @@ const IdentityVerificationScreen = ({ navigation }) => {
   };
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResubmit, setIsResubmit] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [successMessage, setSuccessMessage] = useState(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   const handleSubmitForReview = async () => {
     console.log('[IdentityVerification] handleSubmitForReview clicked');
@@ -186,6 +244,13 @@ const IdentityVerificationScreen = ({ navigation }) => {
       return;
     }
 
+    // Show confirmation modal first
+    setShowConfirmModal(true);
+  };
+
+  const confirmSubmit = async () => {
+    setShowConfirmModal(false);
+    
     try {
       setIsSubmitting(true);
       const { accessToken } = await loadAuth();
@@ -196,11 +261,28 @@ const IdentityVerificationScreen = ({ navigation }) => {
         return;
       }
 
-      console.log('[IdentityVerification] Submitting documents...');
-      const result = await submitVerificationDocuments(accessToken, {
-        governmentIdUri: governmentIDImage,
-        selfieUri: selfieImage,
-      });
+      // Check current verification status to determine which API to use
+      console.log('[IdentityVerification] Checking verification status...');
+      const statusResult = await getVerificationStatus(accessToken);
+      const currentStatus = statusResult?.data?.status || 'not_submitted';
+      console.log('[IdentityVerification] Current status:', currentStatus);
+
+      let result;
+      if (currentStatus === 'failed') {
+        // Use retry API for resubmission after rejection
+        console.log('[IdentityVerification] Resubmitting documents after rejection...');
+        result = await retryVerification(accessToken, {
+          governmentIdUri: governmentIDImage,
+          selfieUri: selfieImage,
+        });
+      } else {
+        // Use normal submit for first time submission
+        console.log('[IdentityVerification] Submitting documents...');
+        result = await submitVerificationDocuments(accessToken, {
+          governmentIdUri: governmentIDImage,
+          selfieUri: selfieImage,
+        });
+      }
 
       console.log('[IdentityVerification] API response:', result);
 
@@ -213,8 +295,14 @@ const IdentityVerificationScreen = ({ navigation }) => {
         return;
       }
 
-      console.log('[IdentityVerification] Success! Navigating to BeforeContinue');
-      navigation.navigate('BeforeContinue');
+      console.log('[IdentityVerification] Success!');
+      setSuccessMessage(isResubmit ? 'Documents resubmitted successfully!' : 'Documents submitted successfully!');
+      
+      // Hide success message after 2 seconds and navigate
+      setTimeout(() => {
+        setSuccessMessage(null);
+        navigation.navigate('BeforeContinue');
+      }, 2000);
     } catch (error) {
       console.log('[IdentityVerification] Catch error:', error);
       const apiMessage =
@@ -229,6 +317,24 @@ const IdentityVerificationScreen = ({ navigation }) => {
       setIsSubmitting(false);
     }
   };
+
+  if (!permission) {
+    return (
+      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#E85555" />
+        <Text style={{ marginTop: 16, color: '#666' }}>Checking permissions...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (isCheckingStatus) {
+    return (
+      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#E85555" />
+        <Text style={{ marginTop: 16, color: '#666' }}>Checking verification status...</Text>
+      </SafeAreaView>
+    );
+  }
 
   if (showCamera) {
     return (
@@ -266,6 +372,64 @@ const IdentityVerificationScreen = ({ navigation }) => {
         onBackPress={() => navigation.goBack()}
         style={{ borderBottomWidth: 0 }}
       />
+
+      <Modal
+        visible={showConfirmModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowConfirmModal(false)}
+      >
+        <View style={styles.confirmModalOverlay}>
+          <View style={[styles.confirmModalContent, { padding: spacing(20), borderRadius: scale(24) }]}>
+            <Icon name="file-document-check" size={scale(48)} color="#E85555" />
+            <Text style={[styles.confirmModalTitle, { fontSize: titleFont(20), marginTop: vscale(16) }]}>
+              Ready to Submit?
+            </Text>
+            <Text style={[styles.confirmModalSubtitle, { fontSize: subtitleFont(14), marginTop: vscale(8) }]}>
+              Please review your documents before submitting
+            </Text>
+            
+            {/* Document Preview Summary */}
+            <View style={[styles.documentSummary, { marginTop: vscale(20), padding: spacing(16), borderRadius: scale(16) }]}>
+              <View style={styles.summaryRow}>
+                <Icon name="check-circle" size={scale(20)} color="#48BB78" />
+                <Text style={[styles.summaryText, { fontSize: bodyFont(14), marginLeft: spacing(10) }]}>
+                  Government ID uploaded
+                </Text>
+              </View>
+              <View style={[styles.summaryRow, { marginTop: vscale(12) }]}>
+                <Icon name="check-circle" size={scale(20)} color="#48BB78" />
+                <Text style={[styles.summaryText, { fontSize: bodyFont(14), marginLeft: spacing(10) }]}>
+                  Selfie captured
+                </Text>
+              </View>
+            </View>
+
+            {isResubmit && (
+              <View style={[styles.resubmitWarning, { marginTop: vscale(16), padding: spacing(12), borderRadius: scale(12) }]}>
+                <Text style={[styles.resubmitWarningText, { fontSize: smallFont(12) }]}>
+                  This is a resubmission. Your previous documents were rejected.
+                </Text>
+              </View>
+            )}
+
+            <View style={[styles.confirmModalButtons, { marginTop: vscale(24) }]}>
+              <TouchableOpacity
+                style={[styles.cancelButton, { paddingVertical: vscale(12), paddingHorizontal: spacing(24), borderRadius: scale(25) }]}
+                onPress={() => setShowConfirmModal(false)}
+              >
+                <Text style={[styles.cancelButtonText, { fontSize: bodyFont(16) }]}>Review Again</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmButton, { paddingVertical: vscale(12), paddingHorizontal: spacing(24), borderRadius: scale(25), marginLeft: spacing(12) }]}
+                onPress={confirmSubmit}
+              >
+                <Text style={[styles.confirmButtonText, { fontSize: bodyFont(16) }]}>Submit Now</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={cropModalVisible}
@@ -321,6 +485,40 @@ const IdentityVerificationScreen = ({ navigation }) => {
             elevation: scale(5)
           }]}>
             <View style={[styles.headerSection, { marginBottom: vscale(24) }]}>
+              {/* Step Progress Indicator */}
+              <View style={[styles.stepIndicator, { marginBottom: vscale(16) }]}>
+                <View style={[styles.stepDot, styles.stepDotActive]}>
+                  <Text style={styles.stepNumber}>1</Text>
+                </View>
+                <View style={[styles.stepLine, governmentIDUploaded && selfieUploaded ? styles.stepLineActive : null]} />
+                <View style={[styles.stepDot, governmentIDUploaded && selfieUploaded ? styles.stepDotActive : null]}>
+                  <Text style={styles.stepNumber}>2</Text>
+                </View>
+              </View>
+              <Text style={[styles.stepLabel, { fontSize: smallFont(12), marginBottom: vscale(8) }]}>
+                Step {governmentIDUploaded && selfieUploaded ? '2' : '1'} of 2
+              </Text>
+              
+              {/* Resubmission Warning Banner */}
+              {isResubmit && (
+                <View style={[styles.resubmitBanner, { marginBottom: vscale(16), padding: spacing(12), borderRadius: scale(12) }]}>
+                  <Icon name="alert-circle" size={scale(20)} color="#FF6B6B" />
+                  <View style={{ marginLeft: spacing(10), flex: 1 }}>
+                    <Text style={[styles.resubmitTitle, { fontSize: subtitleFont(14), fontWeight: '600' }]}>
+                      Resubmission Required
+                    </Text>
+                    <Text style={[styles.resubmitText, { fontSize: smallFont(12), marginTop: vscale(2) }]}>
+                      Previous documents were rejected. Please upload new ones.
+                    </Text>
+                    {retryCount > 0 && (
+                      <Text style={[styles.retryCount, { fontSize: smallFont(11), marginTop: vscale(4) }]}>
+                        Attempt {retryCount + 1} of 3
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              )}
+              
               <Text style={[styles.title, { fontSize: titleFont(24), marginBottom: vscale(12) }]}>Verify your identity</Text>
               <Text style={[styles.subtitle, { fontSize: subtitleFont(15), lineHeight: subtitleFont(22) }]}>This helps keep Socius safe and trusted for everyone.</Text>
             </View>
@@ -451,6 +649,19 @@ const IdentityVerificationScreen = ({ navigation }) => {
         </View>
       </ScrollView>
 
+      {/* Success Snackbar */}
+      {successMessage && (
+        <View style={[styles.snackbar, { bottom: vscale(100), left: spacing(20), right: spacing(20), padding: spacing(16), borderRadius: scale(12) }]}>
+          <Icon name="check-circle" size={scale(20)} color="#48BB78" />
+          <Text style={[styles.snackbarText, { fontSize: bodyFont(14), marginLeft: spacing(10), flex: 1 }]}>
+            {successMessage}
+          </Text>
+          <TouchableOpacity onPress={() => setSuccessMessage(null)}>
+            <Icon name="close" size={scale(18)} color="#718096" />
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Button Footer */}
       <View style={[styles.footer, { paddingHorizontal: spacing(20), paddingVertical: vscale(12), paddingBottom: vscale(24), borderTopWidth: 0 }]}>
         <View style={{ width: contentWidth, alignSelf: 'center' }}>
@@ -527,6 +738,64 @@ const styles = StyleSheet.create({
 
   headerSection: {
     alignItems: 'center',
+  },
+
+  // Step Progress Indicator Styles
+  stepIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepDot: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#E2E8F0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stepDotActive: {
+    backgroundColor: '#E85555',
+  },
+  stepNumber: {
+    fontFamily: 'Outfit-Bold',
+    fontSize: 14,
+    color: '#FFFFFF',
+  },
+  stepLine: {
+    width: 60,
+    height: 3,
+    backgroundColor: '#E2E8F0',
+    marginHorizontal: 8,
+  },
+  stepLineActive: {
+    backgroundColor: '#E85555',
+  },
+  stepLabel: {
+    fontFamily: 'Outfit-Medium',
+    color: '#718096',
+  },
+
+  // Resubmission Banner Styles
+  resubmitBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#FFF5F5',
+    borderWidth: 1,
+    borderColor: '#FED7D7',
+    width: '100%',
+  },
+  resubmitTitle: {
+    fontFamily: 'Outfit-SemiBold',
+    color: '#C53030',
+  },
+  resubmitText: {
+    fontFamily: 'Outfit-Regular',
+    color: '#9B2C2C',
+  },
+  retryCount: {
+    fontFamily: 'Outfit-Medium',
+    color: '#E85555',
   },
 
   title: {
@@ -703,6 +972,96 @@ const styles = StyleSheet.create({
   cropConfirmText: {
     fontFamily: 'Outfit-SemiBold',
     color: '#FFFFFF',
+  },
+
+  // Confirmation Modal Styles
+  confirmModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  confirmModalContent: {
+    backgroundColor: '#FFFFFF',
+    width: '100%',
+    alignItems: 'center',
+  },
+  confirmModalTitle: {
+    fontFamily: 'Outfit-Bold',
+    color: '#2D3748',
+    textAlign: 'center',
+  },
+  confirmModalSubtitle: {
+    fontFamily: 'Outfit-Regular',
+    color: '#718096',
+    textAlign: 'center',
+  },
+  documentSummary: {
+    backgroundColor: '#F0FFF4',
+    borderWidth: 1,
+    borderColor: '#9AE6B4',
+    width: '100%',
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  summaryText: {
+    fontFamily: 'Outfit-Medium',
+    color: '#22543D',
+  },
+  resubmitWarning: {
+    backgroundColor: '#FFFAF0',
+    borderWidth: 1,
+    borderColor: '#FBD38D',
+    width: '100%',
+  },
+  resubmitWarningText: {
+    fontFamily: 'Outfit-Regular',
+    color: '#7B341E',
+    textAlign: 'center',
+  },
+  confirmModalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    width: '100%',
+  },
+  cancelButton: {
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#FFFFFF',
+  },
+  cancelButtonText: {
+    fontFamily: 'Outfit-SemiBold',
+    color: '#4A5568',
+  },
+  confirmButton: {
+    backgroundColor: '#E85555',
+  },
+  confirmButtonText: {
+    fontFamily: 'Outfit-SemiBold',
+    color: '#FFFFFF',
+  },
+
+  // Snackbar Styles
+  snackbar: {
+    position: 'absolute',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#9AE6B4',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
+    zIndex: 1000,
+  },
+  snackbarText: {
+    fontFamily: 'Outfit-Medium',
+    color: '#22543D',
   },
 });
 

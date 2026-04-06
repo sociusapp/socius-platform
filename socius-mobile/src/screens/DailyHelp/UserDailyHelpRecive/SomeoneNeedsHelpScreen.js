@@ -3,7 +3,15 @@ import { acceptHelpAsVolunteer } from '../../../services/api/volunteer.api';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
 import { getSocket } from '../../../services/socket/socket.service';
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Image,
+  Modal,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../../components/common/Header';
@@ -55,6 +63,9 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
     icon: 'alert-circle-outline',
     iconColor: '#DC5C69'
   });
+
+  // Trust Signals Modal State
+  const [trustModalVisible, setTrustModalVisible] = useState(false);
 
   const showAlert = (title, message, buttons = [], icon = 'alert-circle-outline', iconColor = '#DC5C69') => {
     setAlertConfig({
@@ -453,18 +464,10 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
             ]}
           >
             <View style={[styles.trustRow, { justifyContent: 'space-around' }]}>
-              <View style={[styles.trustIconContainer, { width: scale(56), height: scale(56), borderRadius: scale(28) }]}>
-                <Icon name="handshake-outline" size={scale(32)} color={trustSignals.closes_properly ? '#28C76F' : '#E0E0E0'} />
-              </View>
-              <View style={[styles.trustIconContainer, { width: scale(56), height: scale(56), borderRadius: scale(28) }]}>
-                <Icon name="clock-check-outline" size={scale(32)} color={trustSignals.returns_on_time ? '#28C76F' : '#E0E0E0'} />
-              </View>
-              <View style={[styles.trustIconContainer, { width: scale(56), height: scale(56), borderRadius: scale(28) }]}>
-                <Icon name="account-group-outline" size={scale(32)} color={trustSignals.helps_others ? '#007BFF' : '#E0E0E0'} />
-              </View>
-              <View style={[styles.trustIconContainer, { width: scale(56), height: scale(56), borderRadius: scale(28) }]}>
-                <Icon name="calendar-blank-outline" size={scale(32)} color={trustSignals.occasional_requester ? '#FFC107' : '#E0E0E0'} />
-              </View>
+              <Image source={require('../../../assets/images/daily-4.png')} style={{ width: scale(48), height: scale(48) }} resizeMode="contain" />
+              <Image source={require('../../../assets/images/daily-3.png')} style={{ width: scale(48), height: scale(48) }} resizeMode="contain" />
+              <Image source={require('../../../assets/images/daily-2.png')} style={{ width: scale(48), height: scale(48) }} resizeMode="contain" />
+              <Image source={require('../../../assets/images/daily-1.png')} style={{ width: scale(48), height: scale(48) }} resizeMode="contain" />
             </View>
           </View>
 
@@ -477,39 +480,40 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
             >
               These signals reflect past local interactions — not ratings or scores.
             </Text>
-            <Icon
-              name="information-outline"
-              size={scale(18)}
-              color="#9CA3AF"
-              style={{ marginLeft: spacing(8) }}
-            />
+            <TouchableOpacity
+              onPress={() => setTrustModalVisible(true)}
+              activeOpacity={0.7}
+              style={{ marginLeft: spacing(8), padding: scale(4) }}
+            >
+              <Icon
+                name="information-outline"
+                size={scale(18)}
+                color="#9CA3AF"
+              />
+            </TouchableOpacity>
           </View>
 
           <View style={[styles.divider, { marginBottom: vscale(20) }]} />
 
-          <View style={{ marginBottom: vscale(10) }}>
-            <Button
-              title="Open Details"
+          <View style={{ marginBottom: vscale(12) }}>
+            <TouchableOpacity
+              style={[styles.openDetailsBtn, { borderRadius: scale(28), paddingVertical: vscale(16) }]}
               onPress={handleOpenDetails}
-              variant="gradient"
-              fullWidth
-              loading={isProcessing}
               disabled={isProcessing}
-              icon={<Icon name="clipboard-text-outline" size={scale(18)} color="#FFFFFF" />}
-              accessibilityLabel="Open request details"
-            />
+              activeOpacity={0.9}
+            >
+              <Text style={[styles.openDetailsText, { fontSize: ms(16) }]}>Open Details</Text>
+            </TouchableOpacity>
           </View>
 
-          <Button
-            title="Not Available"
+          <TouchableOpacity
+            style={[styles.notAvailableBtn, { borderRadius: scale(28), paddingVertical: vscale(16), borderWidth: 1 }]}
             onPress={handleNotAvailable}
-            variant="white"
-            fullWidth
-            loading={isDeclining}
             disabled={isDeclining || isProcessing}
-            icon={<Icon name="close-circle-outline" size={scale(18)} color="#2C3E50" />}
-            accessibilityLabel="Mark yourself as not available"
-          />
+            activeOpacity={0.9}
+          >
+            <Text style={[styles.notAvailableText, { fontSize: ms(16) }]}>Not Available</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
       <CustomAlert
@@ -521,6 +525,62 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
         iconColor={alertConfig.iconColor}
         onClose={closeAlert}
       />
+
+      {/* Trust Signals Modal */}
+      <Modal
+        transparent
+        visible={trustModalVisible}
+        animationType="fade"
+        onRequestClose={() => setTrustModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { borderRadius: scale(20), padding: spacing(20) }]}>
+            <Text style={[styles.modalTitle, { fontSize: ms(18), marginBottom: vscale(16) }]}>
+              Community Trust Signals
+            </Text>
+
+            <View style={[styles.modalItem, { marginBottom: vscale(12) }]}>
+              <Image source={require('../../../assets/images/daily-4.png')} style={{ width: scale(32), height: scale(32), marginRight: spacing(12) }} resizeMode="contain" />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.modalItemTitle, { fontSize: ms(14) }]}>Closes requests properly</Text>
+                <Text style={[styles.modalItemDesc, { fontSize: ms(12) }]}>This person properly completes requests</Text>
+              </View>
+            </View>
+
+            <View style={[styles.modalItem, { marginBottom: vscale(12) }]}>
+              <Image source={require('../../../assets/images/daily-3.png')} style={{ width: scale(32), height: scale(32), marginRight: spacing(12) }} resizeMode="contain" />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.modalItemTitle, { fontSize: ms(14) }]}>Returns items on time</Text>
+                <Text style={[styles.modalItemDesc, { fontSize: ms(12) }]}>This person returns borrowed items promptly</Text>
+              </View>
+            </View>
+
+            <View style={[styles.modalItem, { marginBottom: vscale(12) }]}>
+              <Image source={require('../../../assets/images/daily-2.png')} style={{ width: scale(32), height: scale(32), marginRight: spacing(12) }} resizeMode="contain" />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.modalItemTitle, { fontSize: ms(14) }]}>Also helps others</Text>
+                <Text style={[styles.modalItemDesc, { fontSize: ms(12) }]}>This person actively helps others in community</Text>
+              </View>
+            </View>
+
+            <View style={[styles.modalItem, { marginBottom: vscale(20) }]}>
+              <Image source={require('../../../assets/images/daily-1.png')} style={{ width: scale(32), height: scale(32), marginRight: spacing(12) }} resizeMode="contain" />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.modalItemTitle, { fontSize: ms(14) }]}>Occasional requester</Text>
+                <Text style={[styles.modalItemDesc, { fontSize: ms(12) }]}>This person requests help occasionally, not frequently</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.modalCloseBtn, { borderRadius: scale(12), paddingVertical: vscale(14) }]}
+              onPress={() => setTrustModalVisible(false)}
+              activeOpacity={0.9}
+            >
+              <Text style={[styles.modalCloseText, { fontSize: ms(16) }]}>Got it</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -571,11 +631,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  trustIconContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F3F4F6',
-  },
   trustInfoText: {
     fontFamily: 'Inter-Regular',
     color: '#6B7280',
@@ -584,6 +639,76 @@ const styles = StyleSheet.create({
     height: StyleSheet.hairlineWidth,
     backgroundColor: '#E5E7EB',
     width: '100%',
+  },
+  openDetailsBtn: {
+    backgroundColor: '#D84D42',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  openDetailsText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  notAvailableBtn: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notAvailableText: {
+    color: '#374151',
+    fontWeight: '500',
+  },
+
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    backgroundColor: '#FFFFFF',
+    width: '100%',
+    maxWidth: 340,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  modalTitle: {
+    fontWeight: '700',
+    color: '#1E293B',
+    textAlign: 'center',
+  },
+  modalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  modalItemTitle: {
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 2,
+  },
+  modalItemDesc: {
+    color: '#6B7280',
+    lineHeight: 18,
+  },
+  modalCloseBtn: {
+    backgroundColor: '#D84D42',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCloseText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
 });
 

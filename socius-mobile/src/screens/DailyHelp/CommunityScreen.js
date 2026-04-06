@@ -320,11 +320,21 @@ const CommunityScreen = ({ navigation }) => {
         <View style={{ width: contentWidth }}>
           {/* Header Section */}
           <View style={[styles.titleSection, { marginBottom: vscale(20), alignItems: 'center' }]}>
-            <Text style={[styles.mainTitle, { fontSize: ms(24), fontWeight: '700', color: '#374151' }]}>
-              Community
+            <Text style={[styles.mainTitle, { fontSize: ms(28), fontWeight: '700', color: '#374151' }]}>
+              Community Around You
             </Text>
-            <Text style={[styles.subtitle, { fontSize: ms(14), color: '#6B7280', marginTop: vscale(4) }]}>
-              Small help, close by.
+            <View style={{ width: '60%', height: 1, backgroundColor: '#E5E7EB', marginVertical: vscale(8) }} />
+            <Text style={[styles.subtitle, { fontSize: ms(14), color: '#9CA3AF', marginTop: vscale(4) }]}>
+              Awareness without exposure.
+            </Text>
+          </View>
+
+          {/* Local Awareness Network Card */}
+          <View style={styles.awarenessCard}>
+            <Text style={styles.awarenessTitle}>Local awareness network</Text>
+            <View style={styles.awarenessDivider} />
+            <Text style={styles.awarenessDescription}>
+              Socius helps people stay aware and supportive{'\n'}without public feeds, groups, or coordination.
             </Text>
           </View>
 
@@ -387,15 +397,6 @@ const CommunityScreen = ({ navigation }) => {
             </TouchableOpacity>
           </View>
 
-          {/* Local Improvements (Coming Soon) */}
-          <View style={styles.improvementsCard}>
-            <Text style={styles.improvementsTitle}>Local Improvements</Text>
-            <View style={styles.improvementsDivider} />
-            <Text style={styles.improvementsDescription}>
-              Community cleanups and shared fixes. <Text style={{ fontStyle: 'italic' }}>Coming soon.</Text>
-            </Text>
-          </View>
-
           <View style={{ marginTop: vscale(20) }}>
             <Text style={[styles.sectionTitle, { fontSize: ms(15), marginBottom: vscale(10) }]}>Types of presence nearby</Text>
             <View style={[styles.grid, { marginBottom: vscale(20) }]}>
@@ -408,13 +409,22 @@ const CommunityScreen = ({ navigation }) => {
             </View>
 
             <View style={styles.pointsCard}>
-              <Text style={styles.pointsTitle}>Community principles</Text>
+              <Text style={styles.pointsTitle}>How this community works</Text>
               {communityPoints.map((point, idx) => (
                 <View key={idx} style={styles.pointRow}>
                   <Icon name="check-circle-outline" size={scale(16)} color="#34C759" />
                   <Text style={styles.pointText}>{point}</Text>
                 </View>
               ))}
+              <View style={styles.pointsDivider} />
+              <TouchableOpacity 
+                style={styles.guidelinesLink}
+                onPress={() => navigation.navigate('CommunityGuidelines')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.guidelinesLinkText}>Read community guidelines</Text>
+                <Icon name="chevron-right" size={scale(16)} color="#DC5C69" />
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -453,17 +463,17 @@ const styles = StyleSheet.create({
   mockupCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
-    padding: 24,
+    padding: 10,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 5,
-    marginBottom: 16,
+    marginBottom: 10,
   },
   illustrationContainer: {
-    marginBottom: 16,
+    marginBottom: 5,
     width: 140,
     height: 140,
     justifyContent: 'center',
@@ -477,7 +487,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     color: '#374151',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   mockupDivider: {
     width: '100%',
@@ -486,7 +496,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   mockupDescription: {
-    fontSize: 15,
+    fontSize: 13,
     color: '#6B7280',
     textAlign: 'center',
     lineHeight: 22,
@@ -509,7 +519,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
   },
-  // Local Improvements Styles
+ 
   improvementsCard: {
     backgroundColor: '#F3F4F6',
     borderRadius: 16,
@@ -547,6 +557,55 @@ const styles = StyleSheet.create({
   pointsTitle: { fontWeight: '600', color: '#2C3E50', fontSize: 14, marginBottom: 8 },
   pointRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
   pointText: { color: '#546E7A', fontSize: 13, marginLeft: 8 },
+  pointsDivider: { 
+    width: '100%', 
+    height: 1, 
+    backgroundColor: '#E5E7EB', 
+    marginTop: 8, 
+    marginBottom: 8 
+  },
+  guidelinesLink: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center',
+    paddingTop: 4 
+  },
+  guidelinesLinkText: { 
+    color: '#DC5C69', 
+    fontSize: 13, 
+    fontWeight: '500',
+    marginRight: 4,
+    textDecorationLine: 'underline'
+  },
+  // Local Awareness Network Card Styles
+  awarenessCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  awarenessTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 10,
+  },
+  awarenessDivider: {
+    width: '100%',
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginBottom: 12,
+  },
+  awarenessDescription: {
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 22,
+  },
 });
 
 export default CommunityScreen;

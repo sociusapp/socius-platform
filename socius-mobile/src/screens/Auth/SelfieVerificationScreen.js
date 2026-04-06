@@ -9,7 +9,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { submitVerificationDocuments } from '../../services/api/verification.api';
 import { loadAuth } from '../../services/storage/asyncStorage.service';
 
-const SelfieVerificationScreen = ({ navigation }) => {
+const SelfieVerificationScreen = ({ navigation, route }) => {
   const [photoTaken, setPhotoTaken] = useState(false);
   const [photoUri, setPhotoUri] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -63,6 +63,16 @@ const SelfieVerificationScreen = ({ navigation }) => {
         const message =
           result?.message || 'Failed to submit selfie for verification.';
         Alert.alert('Error', message);
+        return;
+      }
+
+      // Check if resubmit mode - navigate to HomeReviewScreen
+      const isResubmit = route?.params?.mode === 'resubmit';
+      if (isResubmit) {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'HomeReview' }],
+        });
         return;
       }
 

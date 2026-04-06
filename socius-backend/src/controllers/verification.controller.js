@@ -41,9 +41,20 @@ const submitReviewRequest = async (req, res, next) => {
   }
 }
 
+const updateSelfie = async (req, res, next) => {
+  try {
+    const selfieFile = req.files?.selfie?.[0] || req.file
+    const verification = await verificationService.updateSelfieOnly(req.user._id, selfieFile)
+    return success(res, verification, 'Selfie updated successfully')
+  } catch (err) {
+    next(err)
+  }
+}
+
 module.exports = {
   getVerificationStatus,
   submitDocuments,
   retryVerification,
   submitReviewRequest,
+  updateSelfie,
 }

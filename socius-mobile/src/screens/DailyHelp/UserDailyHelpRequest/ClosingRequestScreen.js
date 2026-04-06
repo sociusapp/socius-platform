@@ -219,8 +219,8 @@ const ClosingRequestScreen = ({ navigation, route }) => {
                   variant={providedHelp === true ? 'primary' : 'outline'}
                   size="large"
                   fullWidth
-                  textStyle={providedHelp === true ? { color: '#FFFFFF' } : { color: '#DC5C69' }}
-                  icon={<Icon name="thumb-up-outline" size={scale(18)} color={providedHelp === true ? '#FFFFFF' : '#DC5C69'} />}
+                  textStyle={{ color: '#DC5C69' }}
+                  icon={<Icon name="thumb-up-outline" size={scale(18)} color="#DC5C69" />}
                   accessibilityLabel="Yes, help was provided"
                 />
               </View>
@@ -231,8 +231,8 @@ const ClosingRequestScreen = ({ navigation, route }) => {
                   variant={providedHelp === false ? 'primary' : 'outline'}
                   size="large"
                   fullWidth
-                  textStyle={providedHelp === false ? { color: '#FFFFFF' } : { color: '#DC5C69' }}
-                  icon={<Icon name="thumb-down-outline" size={scale(18)} color={providedHelp === false ? '#FFFFFF' : '#DC5C69'} />}
+                  textStyle={{ color: '#DC5C69' }}
+                  icon={<Icon name="thumb-down-outline" size={scale(18)} color="#DC5C69" />}
                   accessibilityLabel="No, help was not provided"
                 />
               </View>

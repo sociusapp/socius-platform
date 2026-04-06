@@ -8,7 +8,6 @@ import BottomTabNavigator from './BottomTabNavigator';
 import PhoneVerificationScreen from '../screens/Auth/PhoneVerificationScreen';
 // import OTPScreen from '../screens/Auth/OTPScreen';
 import OTPFormScreen from '../screens/Auth/OTPFormScreen';
-import SelfieVerificationScreen from '../screens/Auth/SelfieVerificationScreen';
 import ProfileInfoScreen from '../screens/Auth/ProfileInfoScreen';
 import VerificationReviewScreen from '../screens/Auth/VerificationReviewScreen';
 
@@ -76,7 +75,6 @@ import WhenToAskPresenceScreen from '../screens/Prepare/WhenToAskPresenceScreen'
 
 // ==================== COMMUNITY SCREENS (20) ====================
 import CommunityAroundScreen from '../screens/DailyHelp/CommunityAroundScreen';
-import AskLocalHelpScreen from '../screens/DailyHelp/UserDailyHelpRequest/AskLocalHelpScreen';
 import HelpTypeScreen from '../screens/DailyHelp/UserDailyHelpRequest/HelpTypeScreen';
 import AddDetailsScreen from '../screens/DailyHelp/UserDailyHelpRequest/AddDetailsScreen';
 import ReviewRequestScreen from '../screens/DailyHelp/UserDailyHelpRequest/ReviewRequestScreen';
@@ -165,7 +163,6 @@ const StackNavigator = () => {
       <Stack.Screen name="PhoneVerification" component={PhoneVerificationScreen} />
       {/* <Stack.Screen name="OTP" component={OTPScreen} /> */}
       <Stack.Screen name="OTPForm" component={OTPFormScreen} />
-      <Stack.Screen name="SelfieVerification" component={SelfieVerificationScreen} />
       <Stack.Screen name="ProfileInfo" component={ProfileInfoScreen} />
       <Stack.Screen name="VerificationReview" component={VerificationReviewScreen} />
 
@@ -218,7 +215,6 @@ const StackNavigator = () => {
 
       {/* ==================== COMMUNITY FLOW SCREENS ==================== */}
       <Stack.Screen name="CommunityAround" component={CommunityAroundScreen} />
-      <Stack.Screen name="AskLocalHelp" component={AskLocalHelpScreen} />
       <Stack.Screen name="HelpType" component={HelpTypeScreen} />
       <Stack.Screen name="AddDetails" component={AddDetailsScreen} />
       <Stack.Screen name="ReviewRequest" component={ReviewRequestScreen} />

@@ -3,6 +3,22 @@ const User = require('../models/User')
 const logger = require('../utils/logger')
 const { compressImage } = require('../utils/imageCompressor')
 const redis = require('../config/redis')
+const path = require('path')
+
+/**
+ * Convert full file path to relative URL path
+ */
+const toRelativePath = (fullPath) => {
+  if (!fullPath) return null
+  // Extract just the /uploads/... part from full path
+  const uploadsIndex = fullPath.indexOf('/uploads/')
+  if (uploadsIndex !== -1) {
+    return fullPath.substring(uploadsIndex)
+  }
+  // If no /uploads/ found, return the filename with /uploads prefix
+  const filename = path.basename(fullPath)
+  return `/uploads/${filename}`
+}
 
 /**
  * Verification record get karo (ya banao agar nahi hai)
@@ -12,6 +28,37 @@ const getOrCreate = async (userId) => {
   if (!verification) {
     verification = await Verification.create({ userId })
   }
+  return verification
+}
+
+/**
+ * Update selfie only — user profile mein selfie update karne ke liye
+ * Yeh pending status mein bhi allowed hai
+ */
+const updateSelfieOnly = async (userId, file) => {
+  const verification = await getOrCreate(userId)
+  
+  if (!file) {
+    const err = new Error('Selfie file required')
+    err.statusCode = 400
+    throw err
+  }
+
+  await compressImage(file.path, 60)
+  
+  verification.selfie = {
+    fileUrl: toRelativePath(file.path),
+    fileName: file.filename,
+    uploadedAt: new Date(),
+  }
+  
+  // Update user profile image bhi
+  await User.findByIdAndUpdate(userId, {
+    profileImage: toRelativePath(file.path),
+  })
+
+  await verification.save()
+  logger.info(`Selfie updated for user: ${userId}`)
   return verification
 }
 
@@ -33,7 +80,7 @@ const submitDocuments = async (userId, files) => {
     const f = files.government_id[0]
     await compressImage(f.path, 70)
     updates.governmentId = {
-      fileUrl: f.path,
+      fileUrl: toRelativePath(f.path),
       fileName: f.filename,
       fileType: f.mimetype,
       uploadedAt: new Date(),
@@ -44,7 +91,7 @@ const submitDocuments = async (userId, files) => {
     const f = files.selfie[0]
     await compressImage(f.path, 60)
     updates.selfie = {
-      fileUrl: f.path,
+      fileUrl: toRelativePath(f.path),
       fileName: f.filename,
       uploadedAt: new Date(),
     }
@@ -57,6 +104,18 @@ const submitDocuments = async (userId, files) => {
   }
 
   Object.assign(verification, updates)
+  
+  // Add submit entry to review history
+  ensureHistoryArray(verification)
+  verification.reviewHistory.push({
+    status: 'pending',
+    action: 'submitted',
+    reviewedBy: userId,
+    reviewedAt: new Date(),
+    failureReasons: [],
+    adminNote: 'User submitted documents for verification',
+  })
+  
   await verification.save()
 
   logger.info(`Verification submitted: ${userId}`)
@@ -95,7 +154,7 @@ const retryVerification = async (userId, files) => {
     const f = files.government_id[0]
     await compressImage(f.path, 70)
     updates.governmentId = {
-      fileUrl: f.path,
+      fileUrl: toRelativePath(f.path),
       fileName: f.filename,
       fileType: f.mimetype,
       uploadedAt: new Date(),
@@ -106,13 +165,25 @@ const retryVerification = async (userId, files) => {
     const f = files.selfie[0]
     await compressImage(f.path, 60)
     updates.selfie = {
-      fileUrl: f.path,
+      fileUrl: toRelativePath(f.path),
       fileName: f.filename,
       uploadedAt: new Date(),
     }
   }
 
   Object.assign(verification, updates)
+  
+  // Add resubmit entry to review history
+  ensureHistoryArray(verification)
+  verification.reviewHistory.push({
+    status: 'pending',
+    action: 'resubmitted',
+    reviewedBy: userId,
+    reviewedAt: new Date(),
+    failureReasons: [],
+    adminNote: `User resubmitted documents (Retry #${verification.retryCount})`,
+  })
+  
   await verification.save()
 
   logger.info(`Verification retry: ${userId} (attempt ${verification.retryCount})`)
@@ -142,8 +213,8 @@ const submitReviewRequest = async (userId, { userExplanation, files }) => {
     isRequested: true,
     requestedAt: new Date(),
     userExplanation: userExplanation || null,
-    updatedDocUrl: files?.updated_doc?.[0]?.path || null,
-    updatedSelfieUrl: files?.updated_selfie?.[0]?.path || null,
+    updatedDocUrl: files?.updated_doc?.[0] ? toRelativePath(files.updated_doc[0].path) : null,
+    updatedSelfieUrl: files?.updated_selfie?.[0] ? toRelativePath(files.updated_selfie[0].path) : null,
     status: 'pending',
   }
   verification.status = 'review_requested'
@@ -298,4 +369,5 @@ module.exports = {
   approveVerification,
   rejectVerification,
   requestResubmission,
+  updateSelfieOnly,
 }

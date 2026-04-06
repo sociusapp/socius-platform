@@ -20,9 +20,18 @@ import { loadAuth } from '../../services/storage/asyncStorage.service';
 const genderOptions = ['Male', 'Female', 'Other'];
 
 const UserProfileScreen = ({ navigation, route }) => {
-  const [fullName, setFullName] = useState('');
-  const [age, setAge] = useState('');
-  const [selectedGender, setSelectedGender] = useState('Male');
+  // Check if update mode
+  const isUpdateMode = route?.params?.mode === 'update';
+  const existingProfile = route?.params?.profile || null;
+
+  const [fullName, setFullName] = useState(existingProfile?.fullName || '');
+  const [age, setAge] = useState(existingProfile?.age ? String(existingProfile.age) : '');
+  const [selectedGender, setSelectedGender] = useState(() => {
+    const gender = existingProfile?.gender;
+    if (gender === 'male') return 'Male';
+    if (gender === 'female') return 'Female';
+    return 'Other';
+  });
   const [addressLine1, setAddressLine1] = useState('');
   const [addressLine2, setAddressLine2] = useState('');
   const [addressCity, setAddressCity] = useState('');
@@ -146,7 +155,14 @@ const UserProfileScreen = ({ navigation, route }) => {
         return;
       }
 
-      console.log('[ProfileInfo] Success! Navigating to ParticipationChoice');
+      console.log('[ProfileInfo] Success! Navigating...');
+      
+      // If update mode, go back to DocumentDetails
+      if (isUpdateMode) {
+        navigation.navigate('DocumentDetails');
+        return;
+      }
+      
       navigation.navigate('ParticipationChoice');
     } catch (error) {
       console.log('[ProfileInfo] Catch error:', error);
@@ -284,7 +300,9 @@ const UserProfileScreen = ({ navigation, route }) => {
                   maxLength={3}
                   value={age}
                   onChangeText={(text) => {
-                    setAge(text);
+                    // Only allow numeric characters
+                    const numericText = text.replace(/[^0-9]/g, '');
+                    setAge(numericText);
                     if (fieldErrors.age) {
                       setFieldErrors((prev) => ({ ...prev, age: '' }));
                     }
@@ -552,7 +570,9 @@ const UserProfileScreen = ({ navigation, route }) => {
                     placeholderTextColor="#CCCCCC"
                     value={addressPincodeZip}
                     onChangeText={(text) => {
-                      setAddressPincodeZip(text);
+                      // Only allow numeric characters
+                      const numericText = text.replace(/[^0-9]/g, '');
+                      setAddressPincodeZip(numericText);
                       if (fieldErrors.addressPincodeZip) {
                         setFieldErrors((prev) => ({ ...prev, addressPincodeZip: '' }));
                       }
@@ -608,7 +628,7 @@ const UserProfileScreen = ({ navigation, route }) => {
           ]}
         >
           <Button
-            title="Continue"
+            title={isUpdateMode ? 'Update Profile' : 'Continue'}
             onPress={handleContinue}
             loading={isLoading}
             disabled={isLoading}

@@ -42,6 +42,14 @@ const VerificationReviewPage = () => {
     return 'Pending';
   };
 
+  const mapActionLabel = (action) => {
+    if (action === 'approved') return 'Approved';
+    if (action === 'rejected') return 'Rejected';
+    if (action === 'submitted') return 'Submitted';
+    if (action === 'resubmitted') return 'Resubmitted';
+    return action;
+  };
+
   const mapFailureReasons = (reasons) => {
     if (!Array.isArray(reasons) || reasons.length === 0) return '-';
     const labels = {
@@ -62,6 +70,13 @@ const VerificationReviewPage = () => {
     return `${root}/${path}`;
   };
 
+  const extractFilePath = (value) => {
+    if (!value) return null;
+    if (typeof value === 'string') return value;
+    // Handle object with various field names
+    return value.fileUrl || value.url || value.path || value.uri || value.filePath || value.imageUrl || value.image || null;
+  };
+
   const loadDetails = async () => {
     if (!requestId) return;
     setIsLoading(true);
@@ -74,7 +89,7 @@ const VerificationReviewPage = () => {
         const roleLabel = user.isAvailable ? 'Volunteer' : 'User';
         const history = Array.isArray(data.reviewHistory)
           ? data.reviewHistory.map((entry, index) => {
-              const actionLabel = mapVerificationStatus(entry.status)
+              const actionLabel = mapActionLabel(entry.action)
               const reviewedAtText = entry.reviewedAt
                 ? new Date(entry.reviewedAt).toLocaleString(undefined, {
                     day: '2-digit',
@@ -90,7 +105,7 @@ const VerificationReviewPage = () => {
                 reviewedBy: entry.reviewedBy?.fullName || '-',
                 reviewedAt: reviewedAtText,
                 failureReasons: mapFailureReasons(entry.failureReasons),
-                adminNote: entry.adminNote || '-',
+                adminNote: entry.adminNote || null,
               };
             })
           : [];
@@ -108,6 +123,10 @@ const VerificationReviewPage = () => {
                 hour: '2-digit',
                 minute: '2-digit',
               });
+        console.log('[Admin] Raw verification data:', data);
+        console.log('[Admin] governmentId:', data.governmentId);
+        console.log('[Admin] selfie:', data.selfie);
+        
         setData({
           userId: String(user._id || data.userId || ''),
           role: roleLabel,
@@ -139,8 +158,8 @@ const VerificationReviewPage = () => {
               : '-',
           adminNote: data.adminNote || '-',
           reviewHistory: history,
-          governmentIdUrl: buildAssetUrl(data.governmentId?.fileUrl),
-          selfieUrl: buildAssetUrl(data.selfie?.fileUrl),
+          governmentIdUrl: buildAssetUrl(extractFilePath(data.governmentId) || extractFilePath(data.government_id)),
+          selfieUrl: buildAssetUrl(extractFilePath(data.selfie) || extractFilePath(data.selfieUrl) || extractFilePath(data.selfie_url)),
         });
       }
     } catch (error) {
@@ -181,8 +200,18 @@ const VerificationReviewPage = () => {
         }
         const res = await api.patch(`/admin/verifications/${data.userId}/approve`);
         const msg = res?.data?.message || 'Verification approved successfully';
-        toast.success(msg);
-        toast.success('Verification approved successfully');
+        
+        // Show success modal with OK button
+        await confirm({
+          title: 'Approved!',
+          text: 'Verification has been approved successfully.',
+          icon: 'success',
+          confirmButtonText: 'OK',
+          confirmButtonColor: 'bg-green-700 hover:bg-green-800 text-white',
+          showCancelButton: false,
+        });
+        
+        // Reload page to show updated status
         await loadDetails();
       } catch (error) {
         const apiMessage =
@@ -230,9 +259,20 @@ const VerificationReviewPage = () => {
           adminNote: adminNote?.trim() || undefined,
         });
         const msg = res?.data?.message || 'Verification rejected';
-        toast.success(msg);
         setRejectReason('');
         setAdminNote('');
+        
+        // Show success modal with OK button
+        await confirm({
+          title: 'Rejected!',
+          text: 'Verification has been rejected successfully.',
+          icon: 'success',
+          confirmButtonText: 'OK',
+          confirmButtonColor: 'bg-red-700 hover:bg-red-800 text-white',
+          showCancelButton: false,
+        });
+        
+        // Reload page to show updated status
         await loadDetails();
       } catch (error) {
         const apiMessage =
@@ -438,8 +478,8 @@ const VerificationReviewPage = () => {
                         <span className="font-semibold">{row.action}</span>
                         <span>{row.reviewedBy}</span>
                         <span>{row.reviewedAt}</span>
-                        <span className="truncate" title={row.adminNote || row.failureReasons}>
-                          {row.adminNote || row.failureReasons || '-'}
+                        <span className="truncate" title={row.failureReasons !== '-' ? row.failureReasons : row.adminNote || ''}>
+                          {row.failureReasons !== '-' ? row.failureReasons : (row.adminNote || '-')}
                         </span>
                       </div>
                     ))}

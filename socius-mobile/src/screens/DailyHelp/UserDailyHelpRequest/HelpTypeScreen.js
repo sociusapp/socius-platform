@@ -105,9 +105,10 @@ const HelpTypeScreen = ({ navigation }) => {
     const selected = helpTypes.find((item) => item.id === selectedHelpType);
     if (!selected) return;
 
-    navigation.navigate('AddDetails', {
+    navigation.navigate('CreateAwareness', {
       helpType: selected,
       category: selected.category,
+      from: 'helpFlow',
     });
   };
 

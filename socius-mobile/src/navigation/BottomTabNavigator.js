@@ -43,6 +43,7 @@ const BottomTabNavigator = () => {
   const [verificationAdminNote, setVerificationAdminNote] = useState(null);
   const [hasLocationPermissionFlag, setHasLocationPermissionFlag] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
+  const [showApprovedModal, setShowApprovedModal] = useState(false);
 
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({
@@ -99,14 +100,20 @@ const BottomTabNavigator = () => {
         setVerificationFailureReasons(data.verificationFailureReasons || []);
         setVerificationAdminNote(data.verificationAdminNote || null);
 
-        // Allow active, pending_review, and limited statuses
-        const allowedStatuses = ['active', 'pending_review', 'limited'];
+        // Only allow active and limited statuses - pending_review should see HomeReviewScreen
+        const allowedStatuses = ['active', 'limited'];
         const isStatusAllowed = allowedStatuses.includes(user.accountStatus || 'active');
 
-        // Allow approved or pending review verification statuses
-        const isVerificationAllowed = status === 'approved' || status === 'pending' || !status;
+        // Only approved verification status is allowed - pending should see HomeReviewScreen
+        const isVerificationAllowed = status === 'approved';
 
         const verified = isStatusAllowed && isVerificationAllowed;
+        
+        // Show approved modal if user was not verified before but is now verified
+        if (checkedVerification && !isVerified && verified) {
+          setShowApprovedModal(true);
+        }
+        
         setIsVerified(!!verified);
 
         let hasLoc = !!user.hasGivenLocationPermission;
@@ -147,22 +154,9 @@ const BottomTabNavigator = () => {
     fetchVerification();
   }, [fetchVerification]);
 
-  useEffect(() => {
-    if (checkedVerification && verificationStatus === 'failed') {
-      navigation.reset({
-        index: 0,
-        routes: [
-          {
-            name: 'VerificationAttention',
-            params: {
-              failureReasons: verificationFailureReasons,
-              adminNote: verificationAdminNote,
-            },
-          },
-        ],
-      });
-    }
-  }, [checkedVerification, verificationStatus, verificationFailureReasons, verificationAdminNote, navigation]);
+  // No longer auto-navigating to DocumentDetails on rejection
+  // User stays on HomeReviewScreen and can manually go to update
+  // This provides better UX - user sees rejection reason first, then chooses to update
 
   const handleAllowLocation = async () => {
     try {
@@ -217,6 +211,45 @@ const BottomTabNavigator = () => {
 
   return (
     <>
+      {/* Approved Success Modal */}
+      <Modal
+        transparent
+        visible={showApprovedModal}
+        animationType="fade"
+        onRequestClose={() => setShowApprovedModal(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={[styles.modalIconWrapper, { backgroundColor: '#D1FAE5' }]}>
+              <Icon name="check-circle" size={32} color="#10B981" />
+            </View>
+            <Text style={styles.modalTitle}>Verification Approved!</Text>
+            <Text style={styles.modalMessage}>
+              Your profile has been verified successfully. You can now access all features.
+            </Text>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => {
+                setShowApprovedModal(false);
+                // Navigate to HomeScreen by reloading the tab
+                navigation.navigate('HomeTab');
+              }}
+              style={styles.modalButtonWrapper}
+            >
+              <LinearGradient
+                colors={['#10B981', '#059669']}
+                start={{ x: 0.1, y: 0.0 }}
+                end={{ x: 0.9, y: 1.0 }}
+                style={styles.modalButton}
+              >
+                <Text style={styles.modalButtonText}>OK</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Profile Under Review Modal */}
       <Modal
         transparent
         visible={showReviewAlert}
@@ -350,10 +383,16 @@ const BottomTabNavigator = () => {
                 </View>
               );
             }
+            // Pass rejection details to HomeReviewScreen if failed
+            const homeReviewProps = verificationStatus === 'failed' ? {
+              failureReasons: verificationFailureReasons,
+              adminNote: verificationAdminNote,
+              fromRejection: true,
+            } : {};
             return isVerified ? (
               <HomeScreen {...props} />
             ) : (
-              <HomeReviewScreen {...props} />
+              <HomeReviewScreen {...props} route={{ params: homeReviewProps }} />
             );
           }}
         </Tab.Screen>

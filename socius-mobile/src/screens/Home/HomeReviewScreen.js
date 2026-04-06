@@ -4,10 +4,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import HomeHeader from '../../components/common/HomeHeader';
 import { useResponsive } from '../../utils/responsive';
 
-const HomeReviewScreen = ({ navigation }) => {
+const HomeReviewScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
   const [callModalVisible, setCallModalVisible] = useState(false);
   const [activeEmergencyContact, setActiveEmergencyContact] = useState(null);
+
+  // Get rejection details from route params if available
+  const failureReasons = route?.params?.failureReasons || [];
+  const adminNote = route?.params?.adminNote || '';
+  const fromRejection = route?.params?.fromRejection || false;
 
   const emergencyContacts = [
     { id: 1, label: 'Police', icon: require('../../assets/home_icons/2.png'), phone: '100' },
@@ -60,11 +65,12 @@ const HomeReviewScreen = ({ navigation }) => {
           <View
             style={[
               styles.underReviewBanner,
+              fromRejection ? styles.rejectedBanner : null,
               {
                 paddingHorizontal: spacing(16),
                 paddingVertical: vscale(12),
                 borderRadius: scale(16),
-                marginBottom: vscale(24),
+                marginBottom: vscale(16),
                 borderWidth: scale(1),
                 shadowOffset: { width: 0, height: vscale(2) },
                 shadowRadius: scale(8),
@@ -75,38 +81,76 @@ const HomeReviewScreen = ({ navigation }) => {
             <Text
               style={[
                 styles.underReviewTitle,
+                fromRejection ? styles.rejectedTitle : null,
                 { fontSize: ms(15), marginBottom: vscale(4) },
               ]}
             >
-              Your profile is under review.
+              {fromRejection ? 'Resubmit Required' : 'Your profile is under review.'}
             </Text>
             <Text
               style={[
                 styles.underReviewSubtitle,
-                { fontSize: ms(13) },
+                { fontSize: ms(13), marginBottom: vscale(10) },
               ]}
             >
-              Some features will be available once verification is complete.
+              {fromRejection 
+                ? 'Your documents need to be updated. Tap below to resubmit.'
+                : 'Some features will be available once verification is complete.'}
             </Text>
 
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => navigation.navigate('DocumentDetails')}
-              style={{
-                marginTop: vscale(12),
-                backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                paddingVertical: vscale(8),
-                paddingHorizontal: spacing(16),
-                borderRadius: scale(8),
-                alignSelf: 'flex-start',
-                borderWidth: 1,
-                borderColor: 'rgba(0,0,0,0.05)',
-              }}
-            >
-              <Text style={{ fontSize: ms(13), fontWeight: '600', color: '#DC5C69' }}>
-                View Application Details
-              </Text>
-            </TouchableOpacity>
+            {/* Show Update button only when rejected */}
+            {fromRejection ? (
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => navigation.navigate('DocumentDetails', { 
+                  fromRejection,
+                  failureReasons,
+                  adminNote 
+                })}
+                style={{
+                  marginTop: vscale(8),
+                  backgroundColor: '#DC5C69',
+                  paddingVertical: vscale(10),
+                  paddingHorizontal: spacing(16),
+                  borderRadius: scale(8),
+                  alignSelf: 'flex-start',
+                  borderWidth: 1,
+                  borderColor: '#DC5C69',
+                }}
+              >
+                <Text style={{ 
+                  fontSize: ms(13), 
+                  fontWeight: '600', 
+                  color: '#FFFFFF' 
+                }}>
+                  Review & Update
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              /* Normal under review state - show View button only */
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => navigation.navigate('DocumentDetails')}
+                style={{
+                  marginTop: vscale(8),
+                  backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                  paddingVertical: vscale(10),
+                  paddingHorizontal: spacing(16),
+                  borderRadius: scale(8),
+                  alignSelf: 'flex-start',
+                  borderWidth: 1,
+                  borderColor: 'rgba(0,0,0,0.05)',
+                }}
+              >
+                <Text style={{ 
+                  fontSize: ms(13), 
+                  fontWeight: '600', 
+                  color: '#DC5C69' 
+                }}>
+                  View Application Details
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           <View style={[styles.presenceSection, { marginBottom: vscale(32) }]}>
@@ -328,9 +372,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF4F4',
     borderColor: '#F5C2C2',
   },
+  rejectedBanner: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FCA5A5',
+  },
   underReviewTitle: {
     fontWeight: '700',
     color: '#D84D42',
+  },
+  rejectedTitle: {
+    color: '#DC2626',
   },
   underReviewSubtitle: {
     fontWeight: '400',
@@ -347,6 +398,22 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: '#6B7280',
     textAlign: 'center',
+  },
+  verificationInfoCard: {
+    backgroundColor: '#FEF3F3',
+    borderColor: '#F5C2C2',
+  },
+  verificationInfoTitle: {
+    fontWeight: '700',
+    color: '#9B2C2C',
+  },
+  verificationInfoText: {
+    fontWeight: '400',
+    color: '#4A5568',
+  },
+  verificationInfoNote: {
+    fontWeight: '600',
+    color: '#742A2A',
   },
 
   callModalBackdrop: {

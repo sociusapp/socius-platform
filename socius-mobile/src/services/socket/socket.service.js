@@ -4,6 +4,39 @@ import { baseURL } from '../api/client';
 
 let socket = null;
 
+// Simple custom EventEmitter for React Native (no Node.js dependencies)
+class SimpleEventEmitter {
+  constructor() {
+    this.listeners = {};
+  }
+
+  on(event, callback) {
+    if (!this.listeners[event]) {
+      this.listeners[event] = [];
+    }
+    this.listeners[event].push(callback);
+  }
+
+  off(event, callback) {
+    if (!this.listeners[event]) return;
+    this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
+  }
+
+  emit(event, data) {
+    if (!this.listeners[event]) return;
+    this.listeners[event].forEach(callback => {
+      try {
+        callback(data);
+      } catch (e) {
+        console.error('EventEmitter error:', e);
+      }
+    });
+  }
+}
+
+// Global event emitter for app-wide events (foreground notifications, etc.)
+export const appEvents = new SimpleEventEmitter();
+
 export const connectSocket = async () => {
   try {
     const auth = await loadAuth();

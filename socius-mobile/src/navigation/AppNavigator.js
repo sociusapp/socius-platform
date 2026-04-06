@@ -6,7 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import StackNavigator from './StackNavigator';
 import { onNotificationOpened, getInitialNotification, onMessageForeground } from '../services/firebase/messaging';
 import { CHANNELS, handleIncomingCallMessage, initNotifeeChannels } from '../services/notifications/SociusNotificationService';
-import { connectSocket, emitStatusUpdate } from '../services/socket/socket.service';
+import { connectSocket, emitStatusUpdate, appEvents } from '../services/socket/socket.service';
 import CustomAlert from '../components/common/CustomAlert';
 import DailyHelpIncomingModal from '../components/DailyHelp/modals/DailyHelpIncomingModal';
 import NeedPresenceIncomingModal from '../components/NeedPresence/modals/NeedPresenceIncomingModal';
@@ -14,7 +14,7 @@ import IncomingPresenceAlarmModal from '../components/notifications/IncomingPres
 import { loadAuth } from '../services/storage/asyncStorage.service';
 import { declineHelpAsVolunteer, declinePresenceAsVolunteer } from '../services/api/volunteer.api';
 import { getMyActiveHelpRequest } from '../services/api/incident.api';
-import { buildClosureInitiatedCopy, buildRequestClosedCopy } from '../utils/closureMessages';
+import { buildClosureInitiatedCopy, buildRequestClosedCopy, buildRequestAcceptedCopy, buildRequestCancelledCopy, buildNewRequestCopy, buildRequestTakenCopy } from '../utils/closureMessages';
 import NativeCallService from '../services/notifications/NativeCallService';
 import { getFcmToken } from '../services/firebase/config';
 import { updateDeviceToken } from '../services/api/auth.api';
@@ -440,14 +440,32 @@ const AppNavigator = () => {
 
       const dataType = String(data.type || '').toLowerCase();
       const status = String(data.status || '').toLowerCase();
+      
+      // Emit foreground notification event for real-time stats updates
+      if (dataType === 'request_status' || data.requestId) {
+        appEvents.emit('foreground:request_update', {
+          requestId: data.requestId,
+          status: data.status,
+          type: dataType,
+          stats: data.stats,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
       if (dataType === 'request_status') {
-        if (status === 'matched') {
+        if (status === 'matched' || status === 'accepted') {
+          // Show role-aware accepted modal
+          const copy = buildRequestAcceptedCopy({
+            requestType: data.requestType || 'Help request',
+            volunteerName: data.volunteerName || data.volunteer?.fullName,
+            userRole: data.userRole || data.role,
+          });
           showAlert(
-            'Match found',
-            'A volunteer accepted your request.',
+            copy.title,
+            copy.message,
             [
               {
-                text: 'Open',
+                text: 'View',
                 onPress: () => {
                   closeAlert();
                   openRequesterMeeting(data.requestId);
@@ -458,6 +476,49 @@ const AppNavigator = () => {
             ],
             'account-heart',
             '#28C76F'
+          );
+          return;
+        }
+        if (status === 'taken' || status === 'already_accepted') {
+          // Show modal when someone else accepted the request
+          const copy = buildRequestTakenCopy({
+            requestType: data.requestType || 'Help request',
+            volunteerName: data.volunteerName || data.volunteer?.fullName,
+          });
+          showAlert(
+            copy.title,
+            copy.message,
+            [
+              {
+                text: 'OK',
+                onPress: closeAlert,
+                style: 'primary',
+              },
+            ],
+            'account-cancel',
+            '#6B7280'
+          );
+          return;
+        }
+        if (status === 'cancelled') {
+          // Show role-aware cancelled modal
+          const copy = buildRequestCancelledCopy({
+            requestType: data.requestType || 'Help request',
+            cancelledBy: data.cancelledBy,
+            userRole: data.userRole || data.role,
+          });
+          showAlert(
+            copy.title,
+            copy.message,
+            [
+              {
+                text: 'OK',
+                onPress: closeAlert,
+                style: 'primary',
+              },
+            ],
+            'close-circle',
+            '#DC5C69'
           );
           return;
         }
@@ -493,6 +554,7 @@ const AppNavigator = () => {
             requestType: data.requestType || 'Help request',
             reason: data.reason,
             occurredAt: data.occurredAt,
+            userRole: data.userRole || data.role,
           });
           showAlert(
             copy.title,
@@ -560,21 +622,14 @@ const AppNavigator = () => {
           (String(data.type || '').toLowerCase() === 'request_status' && String(data.status || '').toLowerCase() === 'matched') ||
           String(data.status || '').toLowerCase() === 'matched';
 
-        if (isMatchedLike) {
+      if (isMatchedLike) {
           icon = 'account-heart';
           iconColor = '#28C76F';
           buttons = [{
             text: 'OK',
             onPress: () => {
-              const t0 = Date.now();
-              const requestId = data.requestId;
-              if (navigationRef.isReady()) {
-                if (requestId) {
-                  navigationRef.navigate('RequesterMatchingMap', { requestId, perf: { t0, source: 'matched_alert_ok' } });
-                } else {
-                  openRequesterMeeting();
-                }
-              }
+              closeAlert();
+              // Screen already redirects, no need to navigate again
             }
           }];
         } else if (
@@ -654,8 +709,10 @@ const AppNavigator = () => {
 
         if (data.type === 'request_status' && data.status) {
           const status = String(data.status || '').toLowerCase();
-          if (status === 'matched') {
+          if (status === 'matched' || status === 'accepted') {
             openRequesterMeeting(data.requestId);
+          } else if (status === 'cancelled') {
+            navigateToActivity(data.requestId, status);
           } else if (status === 'closing') {
             openRequesterMeeting(data.requestId);
           } else if (status === 'closed') {
@@ -685,16 +742,21 @@ const AppNavigator = () => {
     let socket;
     let mounted = true;
 
-    const showUpdate = async (title, message, { requestId, status, requestType, reason, occurredAt, initiatedBy }) => {
+    const showUpdate = async (title, message, { requestId, status, requestType, reason, occurredAt, initiatedBy, userRole, cancelledBy, volunteerName }) => {
       const isActive = appStateRef.current === 'active';
       if (isActive) {
-        if (String(status).toLowerCase() === 'matched') {
+        if (String(status).toLowerCase() === 'matched' || String(status).toLowerCase() === 'accepted') {
+          const copy = buildRequestAcceptedCopy({
+            requestType,
+            volunteerName,
+            userRole,
+          });
           showAlert(
-            'Match found',
-            'A volunteer accepted your request.',
+            copy.title,
+            copy.message,
             [
               {
-                text: 'Open',
+                text: 'View',
                 onPress: () => {
                   closeAlert();
                   openRequesterMeeting(requestId);
@@ -705,6 +767,27 @@ const AppNavigator = () => {
             ],
             'account-heart',
             '#28C76F'
+          );
+          return;
+        }
+        if (String(status).toLowerCase() === 'cancelled') {
+          const copy = buildRequestCancelledCopy({
+            requestType,
+            cancelledBy,
+            userRole,
+          });
+          showAlert(
+            copy.title,
+            copy.message,
+            [
+              {
+                text: 'OK',
+                onPress: closeAlert,
+                style: 'primary',
+              },
+            ],
+            'close-circle',
+            '#DC5C69'
           );
           return;
         }
@@ -729,9 +812,16 @@ const AppNavigator = () => {
           return;
         }
         if (String(status).toLowerCase() === 'closed') {
+          const copy = buildRequestClosedCopy({
+            requestId,
+            requestType,
+            reason,
+            occurredAt,
+            userRole,
+          });
           showAlert(
-            title,
-            message,
+            copy.title,
+            copy.message,
             [
               {
                 text: 'Open activity',
@@ -762,6 +852,8 @@ const AppNavigator = () => {
             reason: reason ? String(reason) : '',
             occurredAt: occurredAt ? String(occurredAt) : '',
             initiatedBy: initiatedBy ? String(initiatedBy) : '',
+            cancelledBy: cancelledBy ? String(cancelledBy) : '',
+            userRole: userRole ? String(userRole) : '',
           },
         });
         return;
@@ -778,6 +870,8 @@ const AppNavigator = () => {
           reason: reason ? String(reason) : '',
           occurredAt: occurredAt ? String(occurredAt) : '',
           initiatedBy: initiatedBy ? String(initiatedBy) : '',
+          cancelledBy: cancelledBy ? String(cancelledBy) : '',
+          userRole: userRole ? String(userRole) : '',
         },
       });
     };
@@ -812,11 +906,34 @@ const AppNavigator = () => {
           requestType: payload?.requestType || 'Help request',
           reason: payload?.reason,
           occurredAt: payload?.occurredAt,
+          userRole: payload?.userRole || payload?.role,
         });
         showUpdate(
           copy.title,
           copy.message,
-          { requestId, status: 'closed', requestType: payload?.requestType, reason: payload?.reason, occurredAt: payload?.occurredAt }
+          { requestId, status: 'closed', requestType: payload?.requestType, reason: payload?.reason, occurredAt: payload?.occurredAt, userRole: payload?.userRole || payload?.role }
+        );
+      });
+
+      socket.on('help:request_taken', (payload) => {
+        const requestId = payload?.requestId;
+        if (!requestId) return;
+        const copy = buildRequestTakenCopy({
+          requestType: payload?.requestType || 'Help request',
+          volunteerName: payload?.volunteerName || payload?.volunteer?.fullName,
+        });
+        showAlert(
+          copy.title,
+          copy.message,
+          [
+            {
+              text: 'OK',
+              onPress: closeAlert,
+              style: 'primary',
+            },
+          ],
+          'account-cancel',
+          '#6B7280'
         );
       });
 
@@ -854,6 +971,7 @@ const AppNavigator = () => {
       if (socket) {
         socket.off('help:closure_initiated');
         socket.off('help:request_closed');
+        socket.off('help:request_taken');
         socket.off('call:signal');
       }
       appStateSub?.remove?.();

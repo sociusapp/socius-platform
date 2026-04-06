@@ -10,7 +10,7 @@ import { SkeletonBox, SkeletonCircle, SkeletonSpacer } from '../../../components
 import { useResponsive } from '../../../utils/responsive';
 import { getMyActiveHelpRequest, cancelHelpRequest } from '../../../services/api/incident.api';
 import { clearActiveHelpRequestId, loadAuth, saveActiveHelpRequestId } from '../../../services/storage/asyncStorage.service';
-import { connectSocket, disconnectSocket } from '../../../services/socket/socket.service';
+import { connectSocket, disconnectSocket, appEvents } from '../../../services/socket/socket.service';
 import CustomAlert from '../../../components/common/CustomAlert';
 
 const RequestSuccessScreen = ({ navigation, route }) => {
@@ -322,6 +322,70 @@ const RequestSuccessScreen = ({ navigation, route }) => {
         });
       }
     };
+    
+    // Listen for foreground notification events (real-time stats update)
+    const handleForegroundUpdate = (data) => {
+      console.log('[RequestActive] Foreground notification event received:', data);
+      const currentId = requestRef.current?.id || requestRef.current?._id;
+      if (currentId && data?.requestId && String(currentId) === String(data.requestId)) {
+        // Directly update stats from notification data first for immediate UI update
+        if (data?.stats) {
+          console.log('[RequestActive] Updating stats directly from notification:', data.stats);
+          setRequest(prev => ({
+            ...prev,
+            stats: {
+              ...prev?.stats,
+              ...data.stats
+            }
+          }));
+        } else {
+          // If no stats in notification, determine which counter to increment based on type/status
+          const dataType = String(data?.type || '').toLowerCase();
+          const status = String(data?.status || '').toLowerCase();
+          
+          console.log('[RequestActive] No stats in notification, determining update type:', { dataType, status });
+          
+          setRequest(prev => {
+            const currentStats = prev?.stats || {};
+            
+            // Handle different notification types
+            if (status === 'declined' || status === 'unavailable' || dataType === 'declined') {
+              // Someone declined/unavailable
+              return {
+                ...prev,
+                stats: {
+                  ...currentStats,
+                  declinedCount: (currentStats?.declinedCount || 0) + 1
+                }
+              };
+            } else if (status === 'viewed' || dataType === 'viewed') {
+              // Someone viewed
+              return {
+                ...prev,
+                stats: {
+                  ...currentStats,
+                  viewedCount: (currentStats?.viewedCount || 0) + 1
+                }
+              };
+            } else {
+              // Default: increment notified count
+              return {
+                ...prev,
+                stats: {
+                  ...currentStats,
+                  notificationSentCount: (currentStats?.notificationSentCount || 0) + 1
+                }
+              };
+            }
+          });
+        }
+        // Then refresh from API to ensure consistency
+        console.log('[RequestActive] Refreshing from API after stats update');
+        loadActiveRequest();
+      }
+    };
+    
+    appEvents.on('foreground:request_update', handleForegroundUpdate);
 
     // Initial load
     loadActiveRequest();
@@ -338,6 +402,8 @@ const RequestSuccessScreen = ({ navigation, route }) => {
         // Better to leave connection open or manage globally.
         // disconnectSocket(); 
       }
+      // Remove foreground event listener
+      appEvents.off('foreground:request_update', handleForegroundUpdate);
     };
   }, [navigation]);
 

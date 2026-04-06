@@ -25,6 +25,7 @@ const MatchingMapScreen = ({ navigation, route }) => {
   const [loading, setLoading] = useState(!prefillRequest);
   const [request, setRequest] = useState(prefillRequest);
   const [chatVisible, setChatVisible] = useState(false);
+  const [prefillMessage, setPrefillMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -230,7 +231,8 @@ const MatchingMapScreen = ({ navigation, route }) => {
     );
   };
 
-  const handleMessage = async () => {
+  const handleMessage = async (message = '') => {
+    setPrefillMessage(message);
     if (sessionId) {
       setChatVisible(true);
     } else {
@@ -291,7 +293,17 @@ const MatchingMapScreen = ({ navigation, route }) => {
 
         if (isMounted && response?.success && response?.data) {
            const requestData = response.data.request || response.data;
-           const volunteerData = response.data.volunteer || requestData.volunteer;
+           // Check multiple possible fields for volunteer data
+           const volunteerData = response.data.volunteer || 
+                                response.data.acceptedBy || 
+                                response.data.helper || 
+                                response.data.responder || 
+                                requestData.volunteer || 
+                                requestData.acceptedBy || 
+                                requestData.helper || 
+                                requestData.responder;
+           
+           console.log('[MatchingMap] Volunteer data:', JSON.stringify(volunteerData, null, 2));
            
            setRequest(prev => ({ 
               ...prev, 
@@ -346,7 +358,18 @@ const MatchingMapScreen = ({ navigation, route }) => {
              if (auth?.accessToken) {
                 const response = await getHelpRequestById(auth.accessToken, requestId);
                 if (response?.success && response?.data?.request) {
-                   const volunteerData = response.data.volunteer || response.data.request.volunteer;
+                   // Check multiple possible fields for volunteer data
+                   const volunteerData = response.data.volunteer || 
+                                        response.data.acceptedBy || 
+                                        response.data.helper || 
+                                        response.data.responder || 
+                                        response.data.request.volunteer || 
+                                        response.data.request.acceptedBy || 
+                                        response.data.request.helper || 
+                                        response.data.request.responder;
+                   
+                   console.log('[MatchingMap] Socket volunteer data:', JSON.stringify(volunteerData, null, 2));
+                   
                    setRequest(prev => ({ 
                       ...prev, 
                       ...response.data.request, 
@@ -390,7 +413,17 @@ const MatchingMapScreen = ({ navigation, route }) => {
              if (auth?.accessToken) {
                 const response = await getHelpRequestById(auth.accessToken, requestId);
                 if (response?.success && response?.data?.request) {
-                   setRequest(prev => ({ ...prev, ...response.data.request, volunteer: response.data.volunteer }));
+                   // Check multiple possible fields for volunteer data
+                   const volunteerData = response.data.volunteer || 
+                                        response.data.acceptedBy || 
+                                        response.data.helper || 
+                                        response.data.responder || 
+                                        response.data.request.volunteer || 
+                                        response.data.request.acceptedBy || 
+                                        response.data.request.helper || 
+                                        response.data.request.responder;
+                   
+                   setRequest(prev => ({ ...prev, ...response.data.request, volunteer: volunteerData }));
                    // Retry fetching session
                    const sessionRes = await getSessionByRequest(auth.accessToken, requestId);
                    if (sessionRes?.success && sessionRes?.data) {
@@ -714,9 +747,9 @@ const MatchingMapScreen = ({ navigation, route }) => {
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ flexGrow: 1 }}
-        alwaysBounceVertical
-        bounces
-        overScrollMode="always"
+        alwaysBounceVertical={false}
+        bounces={false}
+        overScrollMode="never"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -728,6 +761,9 @@ const MatchingMapScreen = ({ navigation, route }) => {
       >
         <View style={styles.contentContainer}>
           
+          {/* Active Request Label */}
+          <Text style={styles.activeRequestLabel}>Active Request</Text>
+
           {/* Map Card */}
           <View style={styles.mapCard}>
             <View style={styles.mapPreviewContainer}>
@@ -760,150 +796,115 @@ const MatchingMapScreen = ({ navigation, route }) => {
                   )}
                 </MapView>
               )}
-              <View style={styles.locationOverlay}>
-                <Icon name="map-marker" size={16} color="#DC5C69" style={{marginRight: 4}} />
-                <Text style={styles.locationText}>
-                  {showInitialLoading ? 'Loading…' : (request?.location?.address || "Current Location")}
-                </Text>
+              {/* Distance Badge */}
+              <View style={styles.distanceBadge}>
+                <Text style={styles.distanceText}>200 m</Text>
               </View>
             </View>
-            <Text style={styles.privacyText}>
-              Location shared with your volunteer.
+            <View style={styles.meetingLocationContainer}>
+              <Text style={styles.meetingLocationText}>
+                Meeting near {request?.location?.address || "Bhopal Main Road"}
+              </Text>
+            </View>
+          </View>
+
+          {/* Profile Card */}
+          <View style={styles.profileSection}>
+            <View style={styles.profileImageWrapper}>
+              {(() => {
+                const v = request?.volunteer || request?.acceptedBy || request?.helper || request?.responder;
+                const img = v?.profileImage || v?.profile?.profileImage || v?.user?.profileImage;
+                return img ? (
+                  <Image 
+                    source={getProfileImage(img)} 
+                    style={styles.profileImageLarge}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <Icon name="account" size={80} color="#9CA3AF" />
+                );
+              })()}
+            </View>
+            <Text style={styles.profileNameLarge}>
+              {(() => {
+                const v = request?.volunteer || request?.acceptedBy || request?.helper || request?.responder;
+                return v?.fullName || v?.firstName || v?.name || "Aman Khan";
+              })()}
+            </Text>
+            <Text style={styles.profileStatus}>Coming to help</Text>
+            <Text style={styles.profileDistance}>200 meters away</Text>
+          </View>
+
+          {/* You Asked Section */}
+          <View style={styles.youAskedCard}>
+            <Text style={styles.youAskedText}>
+              You asked: {request?.description || "Need one print copy."}
             </Text>
           </View>
 
-          {/* Meeting Point Card */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Meeting Point</Text>
-            <View style={styles.cardContentRow}>
-              {showInitialLoading ? (
-                <View style={{ flex: 1 }}>
-                  <View style={{ height: 12, backgroundColor: '#E5E7EB', borderRadius: 8, marginBottom: 8 }} />
-                  <View style={{ height: 12, backgroundColor: '#E5E7EB', borderRadius: 8, width: '70%' }} />
-                </View>
-              ) : (
-                <Text style={styles.cardDescription} numberOfLines={2}>
-                  {request?.description || "Waiting at the specified location."}
-                </Text>
-              )}
-              <View style={styles.illustrationContainer}>
-                 <Icon name="map-marker-radius" size={38} color="#8B6F47" />
-              </View>
-            </View>
-          </View>
+          {/* Quick Message Input */}
+          <TouchableOpacity style={styles.quickMessageInput} onPress={() => handleMessage()}>
+            <Text style={styles.quickMessagePlaceholder}>Send a quick message</Text>
+          </TouchableOpacity>
 
-          {/* Profile Cards */}
-          <View style={styles.profilesContainer}>
-            <View style={styles.profileCard}>
-              <View style={[styles.profileImageContainer, { backgroundColor: '#E0E0E0' }]}>
-                 {request?.requesterId?.profileImage || request?.user?.profileImage ? (
-                    <Image 
-                      source={getProfileImage(request?.requesterId?.profileImage || request?.user?.profileImage)} 
-                      style={styles.profileImage}
-                      resizeMode="cover"
-                      onError={(e) => console.log('Image Load Error (User):', e.nativeEvent.error)}
-                      onLoad={() => console.log('Image Loaded (User)')}
-                    />
-                 ) : (
-                    <Icon name="account" size={60} color="#777" />
-                 )}
-              </View>
-              <View style={styles.profileInfo}>
-                <Text style={styles.profileName} numberOfLines={1}>You</Text>
-                <Text style={styles.profileRole}>Waiting</Text>
-              </View>
-            </View>
-
-            <View style={styles.profileCard}>
-              <View style={[styles.profileImageContainer, { backgroundColor: '#28C76F' }]}>
-                 {request?.volunteer?.profileImage ? (
-                    <Image 
-                      source={getProfileImage(request?.volunteer?.profileImage)} 
-                      style={styles.profileImage}
-                      resizeMode="cover"
-                      onError={(e) => console.log('Image Load Error (Volunteer):', e.nativeEvent.error)}
-                      onLoad={() => console.log('Image Loaded (Volunteer)')}
-                    />
-                 ) : (
-                    <Icon name="account-heart" size={60} color="#FFF" />
-                 )}
-              </View>
-              <View style={styles.profileInfo}>
-            {showInitialLoading && !request?.volunteer ? (
-              <>
-                <View style={{ height: 12, backgroundColor: '#E5E7EB', borderRadius: 8, marginBottom: 8 }} />
-                <View style={{ height: 10, backgroundColor: '#E5E7EB', borderRadius: 8, width: '60%' }} />
-              </>
-            ) : (
-              <>
-                <Text style={styles.profileName} numberOfLines={1}>
-                  {request?.volunteer?.firstName || request?.volunteer?.name || request?.volunteer?.fullName || request?.volunteer?.username || "Volunteer"}
-                </Text>
-                <Text style={styles.profileRole}>Coming to help</Text>
-              </>
-            )}
-          </View>
-            </View>
-          </View>
-
-          <Text style={styles.sharedInfoText}>
-            Names and photos are shared so you can recognize each other.
-          </Text>
-
-          {/* Safety Info Box */}
-          <View style={styles.safetyInfoBox}>
-            <Icon name="shield-check" size={20} color="#8B6F47" style={{marginRight: 10}} />
-            <Text style={styles.safetyInfoText}>
-              You can cancel the request if you no longer need help or feel unsafe.
-            </Text>
-          </View>
-
-          {/* Bottom Buttons */}
-          <View style={styles.bottomContainer}>
-            <TouchableOpacity
-              style={styles.primaryButton}
-              onPress={handleOpenMaps}
-              accessibilityRole="button"
-              accessibilityLabel="Open navigation"
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Icon name="navigation-variant-outline" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
-                <Text style={styles.primaryButtonText}>Open Navigation</Text>
-              </View>
-              <Text style={styles.primaryButtonSubtext}>Opens your maps app</Text>
+          {/* Quick Reply Chips */}
+          <View style={styles.chipsContainer}>
+            <TouchableOpacity style={styles.chip} onPress={() => handleMessage("I'm near the gate")}>
+              <Text style={styles.chipText}>I'm near the gate</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={handleCancelRequest}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel request"
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Icon name="close-circle-outline" size={18} color="#DC5C69" style={{ marginRight: 8 }} />
-                <Text style={styles.cancelButtonText}>Cancel Request</Text>
-              </View>
+            <TouchableOpacity style={styles.chip} onPress={() => handleMessage("Inside building")}>
+              <Text style={styles.chipText}>Inside building</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.secondaryButton}
-              onPress={handleCloseRequest}
-              accessibilityRole="button"
-              accessibilityLabel="Close request"
-            >
-               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                 <Icon name="check-circle-outline" size={18} color="#666" style={{ marginRight: 8 }} />
-                 <Text style={styles.secondaryButtonText}>Close Request</Text>
-               </View>
+            <TouchableOpacity style={styles.chip} onPress={() => handleMessage("2 minutes")}>
+              <Text style={styles.chipText}>2 minutes</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Open Navigation Button */}
+          <TouchableOpacity style={styles.openNavButton} onPress={handleOpenMaps}>
+            <Text style={styles.openNavText}>Open Navigation</Text>
+          </TouchableOpacity>
+
+          {/* Complete Request Button */}
+          <TouchableOpacity 
+            style={styles.completeRequestButton} 
+            onPress={() => navigation.navigate('ThankYouClosing', { requestId })}
+          >
+            <Text style={styles.completeRequestText}>Complete Request</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Bottom Action Bar - Fixed at bottom */}
+      <View style={styles.bottomActionBar}>
+        <TouchableOpacity style={styles.actionBarItem}>
+          <Icon name="briefcase-outline" size={24} color="#DC5C69" />
+          <Text style={styles.actionBarLabel}>Borrow</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionBarItem}>
+          <Icon name="clock-outline" size={24} color="#DC5C69" />
+          <Text style={styles.actionBarLabel}>Extend</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionBarItem}>
+          <Icon name="alert-circle-outline" size={24} color="#DC5C69" />
+          <Text style={styles.actionBarLabel}>Report</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionBarItem}>
+          <Icon name="dots-horizontal" size={24} color="#DC5C69" />
+          <Text style={styles.actionBarLabel}>More</Text>
+        </TouchableOpacity>
+      </View>
+
       <ChatModal
         visible={chatVisible}
-        onClose={() => setChatVisible(false)}
+        onClose={() => {
+          setChatVisible(false);
+          setPrefillMessage('');
+        }}
         requestId={requestId}
         otherUserName={request?.volunteer?.firstName}
+        prefillMessage={prefillMessage}
+        autoFocus={true}
       />
       <CustomAlert
         visible={alertVisible}
@@ -942,6 +943,198 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F5F5F5',
+  },
+  activeRequestLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#DC5C69',
+    marginBottom: 8,
+    marginLeft: 4,
+  },
+  distanceBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: '#DC5C69',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  distanceText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  meetingLocationContainer: {
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F0F0F0',
+  },
+  meetingLocationText: {
+    fontSize: 13,
+    color: '#666',
+    textAlign: 'center',
+  },
+  profileSection: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 10,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  profileImageWrapper: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: '#F0F0F0',
+    overflow: 'hidden',
+    marginBottom: 8,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  profileImageLarge: {
+    width: '100%',
+    height: '100%',
+  },
+  profileNameLarge: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 2,
+  },
+  profileStatus: {
+    fontSize: 13,
+    color: '#28C76F',
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  profileDistance: {
+    fontSize: 12,
+    color: '#888',
+  },
+  youAskedCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#DC5C69',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  youAskedText: {
+    fontSize: 13,
+    color: '#444',
+    lineHeight: 18,
+  },
+  quickMessageInput: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  quickMessagePlaceholder: {
+    fontSize: 14,
+    color: '#999',
+  },
+  chipsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 10,
+  },
+  chip: {
+    backgroundColor: '#F0F0F0',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  chipText: {
+    fontSize: 12,
+    color: '#555',
+    fontWeight: '500',
+  },
+  completeRequestButton: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginBottom: 10,
+    borderWidth: 2,
+    borderColor: '#DC5C69',
+  },
+  completeRequestText: {
+    color: '#DC5C69',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  openNavButton: {
+    backgroundColor: '#DC5C69',
+    borderRadius: 24,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginBottom: 10,
+    shadowColor: '#DC5C69',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  openNavText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  bottomActionBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 16,
+    right: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingVertical: 12,
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 8,
+    zIndex: 10,
+  },
+  actionBarItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  actionBarLabel: {
+    fontSize: 11,
+    color: '#666',
+    marginTop: 4,
+    fontWeight: '500',
   },
   toastContainer: {
     position: 'absolute',
