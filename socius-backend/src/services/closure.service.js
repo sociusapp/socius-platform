@@ -84,8 +84,15 @@ const closeHelpRequest = async (requestId, closedBy, { wasResolved, accountabili
     closedBy: closedBy ? String(closedBy) : null,
     reason: 'closed',
     occurredAt,
+    userRole: 'requester',
   })
-  sendHelpRequestClosedNotification(String(request.requesterId), { requestId, requestType: request?.category || 'help_request', reason: 'closed', occurredAt }).catch(() => {})
+  sendHelpRequestClosedNotification(String(request.requesterId), {
+    requestId,
+    requestType: request?.category || 'help_request',
+    reason: 'closed',
+    occurredAt,
+    recipientRole: 'requester',
+  }).catch(() => {})
   if (match?.helperId) {
     safeEmitToUser(match.helperId, 'help:request_closed', {
       requestId: String(requestId),
@@ -93,8 +100,15 @@ const closeHelpRequest = async (requestId, closedBy, { wasResolved, accountabili
       closedBy: closedBy ? String(closedBy) : null,
       reason: 'closed',
       occurredAt,
+      userRole: 'helper',
     })
-    sendHelpRequestClosedNotification(String(match.helperId), { requestId, requestType: request?.category || 'help_request', reason: 'closed', occurredAt }).catch(() => {})
+    sendHelpRequestClosedNotification(String(match.helperId), {
+      requestId,
+      requestType: request?.category || 'help_request',
+      reason: 'closed',
+      occurredAt,
+      recipientRole: 'helper',
+    }).catch(() => {})
   }
   return request
 }
@@ -157,8 +171,9 @@ const closePresenceRequest = async (presenceRequestId, closedBy, { closureReason
 const autoCloseInactiveHelpRequests = async () => {
   const now = new Date()
 
+  // Only unmatched requests: never auto-cancel an accepted / in-meeting pairing
   const staleRequests = await HelpRequest.find({
-    status: { $in: ['open', 'matching', 'matched', 'active'] },
+    status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING] },
     autoCloseScheduledAt: { $lt: now },
   })
 
@@ -166,17 +181,16 @@ const autoCloseInactiveHelpRequests = async () => {
   for (const request of staleRequests) {
     const activeMatch = await HelpMatch.findOne({
       requestId: request._id,
-      status: { $in: ['notified', 'accepted'] },
+      status: { $in: [HELP_MATCH_STATUS.ACCEPTED] },
     }).select('helperId')
 
     request.status = HELP_REQUEST_STATUS.AUTO_CLOSED
     request.autoClosedAt = now
     await request.save()
 
-    // Pending matches cancel karo
     await HelpMatch.updateMany(
-      { requestId: request._id, status: { $in: ['notified', 'accepted'] } },
-      { status: 'cancelled' }
+      { requestId: request._id, status: { $in: [HELP_MATCH_STATUS.PENDING, HELP_MATCH_STATUS.NOTIFIED] } },
+      { status: HELP_MATCH_STATUS.CANCELLED }
     )
 
     // Chat close karo
@@ -191,8 +205,15 @@ const autoCloseInactiveHelpRequests = async () => {
       closedBy: null,
       reason: 'auto_closed',
       occurredAt,
+      userRole: 'requester',
     })
-    sendHelpRequestClosedNotification(String(request.requesterId), { requestId: request._id, requestType: request?.category || 'help_request', reason: 'auto_closed', occurredAt }).catch(() => {})
+    sendHelpRequestClosedNotification(String(request.requesterId), {
+      requestId: request._id,
+      requestType: request?.category || 'help_request',
+      reason: 'auto_closed',
+      occurredAt,
+      recipientRole: 'requester',
+    }).catch(() => {})
     if (activeMatch?.helperId) {
       safeEmitToUser(activeMatch.helperId, 'help:request_closed', {
         requestId: String(request._id),
@@ -200,8 +221,15 @@ const autoCloseInactiveHelpRequests = async () => {
         closedBy: null,
         reason: 'auto_closed',
         occurredAt,
+        userRole: 'helper',
       })
-      sendHelpRequestClosedNotification(String(activeMatch.helperId), { requestId: request._id, requestType: request?.category || 'help_request', reason: 'auto_closed', occurredAt }).catch(() => {})
+      sendHelpRequestClosedNotification(String(activeMatch.helperId), {
+        requestId: request._id,
+        requestType: request?.category || 'help_request',
+        reason: 'auto_closed',
+        occurredAt,
+        recipientRole: 'helper',
+      }).catch(() => {})
     }
 
     count++

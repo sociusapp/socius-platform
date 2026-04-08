@@ -37,6 +37,8 @@ import PublicLocationsPage from './pages/PublicLocationsPage';
 import PublicLocationProfilePage from './pages/PublicLocationProfilePage';
 import TrackingLinksPage from './pages/TrackingLinksPage';
 import GallerySettingsPage from './pages/GallerySettingsPage';
+import BlogTypesPage from './pages/BlogTypesPage';
+import BlogsPage from './pages/BlogsPage';
 
 const PublicRoute = ({ children }) => {
   const { user } = useAuth();
@@ -149,6 +151,8 @@ function App() {
             <Route path="/risk-tiers" element={<RiskTiersPage />} />
             <Route path="/subscriptions" element={<SubscriptionSettingsPage />} />
             <Route path="/content/scenario-config" element={<ScenarioConfigPage />} />
+            <Route path="/blog-types" element={<BlogTypesPage />} />
+            <Route path="/blogs" element={<BlogsPage />} />
             <Route path="/account-settings" element={<AccountSettingsPage />} />
           </Route>
 

@@ -56,7 +56,10 @@ const ThankYouClosingScreen = ({ navigation, route }) => {
 
     // If no requestId is provided, just navigate home (legacy behavior or preview)
     if (!requestId) {
-      navigation.navigate('HomeScreen');
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+      });
       return;
     }
 
@@ -94,9 +97,12 @@ const ThankYouClosingScreen = ({ navigation, route }) => {
           routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
         });
       } else {
-        // Even if it fails (e.g. already closed), we should probably let them go home
         console.log('Close request response:', response);
-        navigation.navigate('HomeScreen'); 
+        showAlert(
+          'Could not save',
+          response?.message || 'Something went wrong. You can try again from the meeting screen.',
+          [{ text: 'OK', onPress: closeAlert }]
+        );
       }
     } catch (error) {
       console.error('Error closing request:', error);

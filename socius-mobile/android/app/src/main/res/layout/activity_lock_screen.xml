@@ -3,133 +3,139 @@
     android:id="@+id/root_layout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#121212">
+    android:background="@drawable/bg_lock_screen_gradient">
 
-    <View
-        android:id="@+id/bg_overlay"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="#000000"
-        android:alpha="0.35" />
-
-    <!-- Top Content -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_centerInParent="true"
-        android:gravity="center"
+        android:layout_height="match_parent"
         android:orientation="vertical"
-        android:padding="28dp">
+        android:paddingHorizontal="20dp"
+        android:paddingTop="28dp"
+        android:paddingBottom="110dp">
 
-        <TextView
-            android:id="@+id/tv_type"
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="14dp"
-            android:text="Socius"
-            android:textColor="#BDBDBD"
-            android:textSize="14sp"
-            android:letterSpacing="0.05"
-            android:textStyle="bold" />
+            android:layout_gravity="center_horizontal"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="14dp">
+
+            <FrameLayout
+                android:layout_width="34dp"
+                android:layout_height="34dp">
+                <View
+                    android:id="@+id/pulse_outer"
+                    android:layout_width="34dp"
+                    android:layout_height="34dp"
+                    android:background="@drawable/bg_pulse_dot"
+                    android:alpha="0.16" />
+                <View
+                    android:id="@+id/pulse_inner"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_gravity="center"
+                    android:background="@drawable/bg_pulse_dot"
+                    android:alpha="0.24" />
+                <ImageView
+                    android:id="@+id/iv_app_icon"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_gravity="center"
+                    android:src="@mipmap/ic_launcher_round"
+                    android:contentDescription="App icon" />
+            </FrameLayout>
+
+            <TextView
+                android:id="@+id/tv_type"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:text="Socius"
+                android:textColor="#0F172A"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/tv_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
             android:text="Help Request"
-            android:textColor="#FFFFFF"
-            android:textSize="26sp"
-            android:textStyle="bold"
-            android:gravity="center" />
+            android:textColor="#111827"
+            android:textSize="42sp"
+            android:textStyle="bold" />
 
         <TextView
             android:id="@+id/tv_body"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="4dp"
             android:text="Someone nearby needs help"
-            android:textColor="#C7C7C7"
-            android:textSize="16sp"
-            android:gravity="center"
-            android:lineSpacingExtra="4dp" />
+            android:textColor="#334155"
+            android:textSize="19sp" />
 
         <LinearLayout
             android:id="@+id/card_container"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:background="@drawable/bg_lock_card"
+            android:layout_marginTop="20dp"
+            android:background="@drawable/bg_lock_card_premium"
             android:orientation="vertical"
-            android:padding="16dp">
+            android:padding="18dp"
+            android:elevation="8dp">
+
+            <TextView
+                android:id="@+id/tv_label_request"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Your request"
+                android:textColor="#6B7280"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="10dp"
+                android:layout_marginBottom="12dp"
+                android:background="#E2E8F0" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:gravity="center_vertical">
+                android:gravity="center_vertical"
+                android:layout_marginBottom="10dp">
 
-                <FrameLayout
-                    android:layout_width="44dp"
-                    android:layout_height="44dp"
-                    android:background="@drawable/bg_lock_icon_circle">
+                <ImageView
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:src="@drawable/notif_help_icon"
+                    android:tint="#64748B" />
 
-                    <ImageView
-                        android:id="@+id/iv_icon"
-                        android:layout_width="44dp"
-                        android:layout_height="44dp"
-                        android:scaleType="centerCrop"
-                        android:src="@drawable/notif_help_icon" />
-                </FrameLayout>
+                <TextView
+                    android:layout_width="110dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:text="Category"
+                    android:textColor="#475569"
+                    android:textStyle="bold"
+                    android:textSize="16sp" />
 
-                <LinearLayout
+                <TextView
+                    android:id="@+id/tv_category"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:layout_marginStart="12dp"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:id="@+id/tv_category"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="CATEGORY"
-                        android:textColor="#0F172A"
-                        android:textStyle="bold"
-                        android:textSize="18sp"
-                        android:maxLines="1"
-                        android:ellipsize="end" />
-
-                    <TextView
-                        android:id="@+id/tv_meta"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:text="0.0 km away"
-                        android:textColor="#64748B"
-                        android:textSize="13sp"
-                        android:maxLines="1"
-                        android:ellipsize="end" />
-                </LinearLayout>
-
-                <TextView
-                    android:id="@+id/tv_status"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:background="@drawable/bg_lock_status_open"
-                    android:paddingHorizontal="10dp"
-                    android:paddingVertical="6dp"
-                    android:text="OPEN"
-                    android:textColor="#DC5C69"
-                    android:textStyle="bold"
-                    android:textSize="12sp" />
+                    android:text="Print / Document"
+                    android:textColor="#111827"
+                    android:textSize="16sp"
+                    android:maxLines="2"
+                    android:ellipsize="end" />
             </LinearLayout>
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:layout_marginTop="14dp"
-                android:layout_marginBottom="14dp"
-                android:background="#E2E8F0" />
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -145,23 +151,90 @@
                     android:tint="#64748B" />
 
                 <TextView
-                    android:layout_width="wrap_content"
+                    android:layout_width="110dp"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="10dp"
-                    android:text="DESCRIPTION"
-                    android:textColor="#334155"
+                    android:text="Description"
+                    android:textColor="#475569"
                     android:textStyle="bold"
-                    android:textSize="12sp" />
+                    android:textSize="16sp" />
 
                 <TextView
                     android:id="@+id/tv_description"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:layout_marginStart="10dp"
                     android:text="—"
-                    android:textColor="#0F172A"
-                    android:textSize="14sp"
+                    android:textColor="#111827"
+                    android:textSize="16sp"
+                    android:maxLines="3"
+                    android:ellipsize="end" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="10dp">
+
+                <ImageView
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:src="@drawable/ic_pin"
+                    android:tint="#64748B" />
+
+                <TextView
+                    android:layout_width="110dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:text="Location"
+                    android:textColor="#475569"
+                    android:textStyle="bold"
+                    android:textSize="16sp" />
+
+                <TextView
+                    android:id="@+id/tv_location"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="—"
+                    android:textColor="#111827"
+                    android:textSize="16sp"
+                    android:maxLines="2"
+                    android:ellipsize="end" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="10dp">
+
+                <ImageView
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:src="@android:drawable/ic_menu_recent_history"
+                    android:tint="#64748B" />
+
+                <TextView
+                    android:layout_width="110dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:text="Time needed"
+                    android:textColor="#475569"
+                    android:textStyle="bold"
+                    android:textSize="16sp" />
+
+                <TextView
+                    android:id="@+id/tv_time_needed"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="About 30 minutes"
+                    android:textColor="#111827"
+                    android:textSize="16sp"
                     android:maxLines="1"
                     android:ellipsize="end" />
             </LinearLayout>
@@ -175,42 +248,41 @@
                 <ImageView
                     android:layout_width="18dp"
                     android:layout_height="18dp"
-                    android:src="@drawable/ic_pin"
+                    android:src="@android:drawable/ic_menu_my_calendar"
                     android:tint="#64748B" />
 
                 <TextView
-                    android:layout_width="wrap_content"
+                    android:layout_width="110dp"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="10dp"
-                    android:text="LOCATION"
-                    android:textColor="#334155"
+                    android:text="Return by"
+                    android:textColor="#475569"
                     android:textStyle="bold"
-                    android:textSize="12sp" />
+                    android:textSize="16sp" />
 
                 <TextView
-                    android:id="@+id/tv_location"
+                    android:id="@+id/tv_return_by"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:layout_marginStart="10dp"
-                    android:text="—"
-                    android:textColor="#0F172A"
-                    android:textSize="14sp"
+                    android:text="Today"
+                    android:textColor="#111827"
+                    android:textSize="16sp"
                     android:maxLines="1"
                     android:ellipsize="end" />
             </LinearLayout>
-
         </LinearLayout>
-
     </LinearLayout>
 
-    <!-- Bottom Buttons -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_alignParentBottom="true"
         android:orientation="horizontal"
-        android:padding="24dp"
+        android:paddingHorizontal="20dp"
+        android:paddingBottom="24dp"
+        android:paddingTop="12dp"
+            android:background="@drawable/bg_lock_screen_gradient"
         android:weightSum="2">
 
         <!-- Decline Button -->
@@ -223,15 +295,16 @@
             android:orientation="horizontal"
             android:clickable="true"
             android:focusable="true"
-            android:layout_marginEnd="12dp"
-            android:background="@drawable/bg_btn_decline"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/bg_btn_decline_premium"
             android:paddingHorizontal="16dp"
             android:paddingVertical="14dp">
 
             <ImageView
                 android:layout_width="20dp"
                 android:layout_height="20dp"
-                android:src="@drawable/ic_call_decline"
+                android:src="@android:drawable/ic_menu_close_clear_cancel"
+                android:tint="#B91C1C"
                 android:layout_marginEnd="10dp" />
 
             <TextView
@@ -239,7 +312,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Not available"
-                android:textColor="#FFFFFF"
+                android:textColor="#9F1239"
                 android:textStyle="bold"
                 android:textSize="14sp"
                 android:letterSpacing="0.05" />
@@ -255,15 +328,16 @@
             android:orientation="horizontal"
             android:clickable="true"
             android:focusable="true"
-            android:layout_marginStart="12dp"
-            android:background="@drawable/bg_btn_answer"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/bg_btn_view_premium"
             android:paddingHorizontal="16dp"
             android:paddingVertical="14dp">
 
             <ImageView
                 android:layout_width="20dp"
                 android:layout_height="20dp"
-                android:src="@drawable/ic_call_answer"
+                android:src="@android:drawable/ic_menu_view"
+                android:tint="#FFFFFF"
                 android:layout_marginEnd="10dp" />
 
             <TextView

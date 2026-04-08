@@ -13,7 +13,8 @@ const AUTH_ERROR_CODES = {
   ACCOUNT_SUSPENDED: 'ACCOUNT_SUSPENDED',
   ACCOUNT_PENDING: 'ACCOUNT_PENDING',
   VERIFICATION_REQUIRED: 'VERIFICATION_REQUIRED',
-  ACCOUNT_INACTIVE: 'ACCOUNT_INACTIVE'
+  ACCOUNT_INACTIVE: 'ACCOUNT_INACTIVE',
+  FORBIDDEN: 'FORBIDDEN'
 }
 
 // Custom error creator for authentication
@@ -126,10 +127,18 @@ const requireVerified = (req, res, next) => {
   next()
 }
 
+const requireAdmin = (req, res, next) => {
+  if (!req.user || !req.user.isAdmin) {
+    return forbidden(res, 'Admin access required', AUTH_ERROR_CODES.FORBIDDEN)
+  }
+  next()
+}
+
 module.exports = {
   authenticate,
   requireActive,
   requireVerified,
+  requireAdmin,
   AUTH_ERROR_CODES,
   createAuthError
 }

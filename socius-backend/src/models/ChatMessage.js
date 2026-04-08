@@ -18,12 +18,31 @@ const chatMessageSchema = new mongoose.Schema(
       required: true,
     },
 
-    // Message content (text only — no media for safety)
+    /** Primary label shown in the list (caption, or auto summary for media) */
     text: {
       type: String,
       required: true,
       trim: true,
-      maxlength: 1000,
+      maxlength: 4000,
+      default: '',
+    },
+
+    messageType: {
+      type: String,
+      enum: ['text', 'image', 'location', 'audio', 'file'],
+      default: 'text',
+    },
+
+    /** Server paths under /uploads/chat-media or lat/lng for location */
+    attachment: {
+      url: { type: String, default: null },
+      mimeType: { type: String, default: null },
+      fileName: { type: String, default: null },
+      size: { type: Number, default: null },
+      durationSec: { type: Number, default: null },
+      lat: { type: Number, default: null },
+      lng: { type: Number, default: null },
+      address: { type: String, default: null },
     },
 
     // Delivered status

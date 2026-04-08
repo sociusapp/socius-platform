@@ -14,6 +14,8 @@ const { notFoundHandler, errorHandler } = require('./src/middlewares/errorHandle
 const User = require('./src/models/User')
 const cron = require('node-cron')
 const { runAutoCloseJobs } = require('./src/jobs/autoClose.job')
+const { runHelpRequestExpiryWarnings } = require('./src/jobs/helpRequestExpiryWarnings.job')
+const { runHelpSessionCompletionPrompts } = require('./src/jobs/helpSessionCompletion.job')
 const { cleanupOldChats } = require('./src/jobs/cleanup.job')
 const { runSubscriptionCheck } = require('./src/jobs/subscriptionCheck.job')
 
@@ -35,8 +37,13 @@ app.use('/uploads/selfies', express.static(path.join(__dirname, 'uploads/selfies
 app.use('/uploads/help-categories', express.static(path.join(__dirname, 'uploads/help-categories')))
 app.use('/uploads/issue-screenshots', express.static(path.join(__dirname, 'uploads/issue-screenshots')))
 app.use('/uploads/gallery', express.static(path.join(__dirname, 'uploads/gallery')))
+app.use('/uploads/blog-types', express.static(path.join(__dirname, 'uploads/blog-types')))
+app.use('/uploads/blogs', express.static(path.join(__dirname, 'uploads/blogs')))
+app.use('/uploads/chat-media', express.static(path.join(__dirname, 'uploads/chat-media')))
 
 app.use('/public', require('./src/routes/public.routes'))
+app.use('/api/blog-types', require('./src/routes/blogType.routes'))
+app.use('/api/blogs', require('./src/routes/blog.routes'))
 app.use('/api/tracking-links', require('./src/routes/trackingLink.routes'))
 app.use('/api/gallery', require('./src/routes/galleryImage.routes'))
 
@@ -162,9 +169,23 @@ const start = async () => {
     // Auto-close jobs every 5 minutes
     cron.schedule('*/5 * * * *', async () => {
       try {
+        await runHelpRequestExpiryWarnings()
+      } catch (err) {
+        console.error('Expiry warning job failed:', err)
+      }
+      try {
         await runAutoCloseJobs()
       } catch (err) {
         console.error('Auto-close job failed:', err)
+      }
+    })
+
+    // Session end prompts + alarms: run every minute so requester/helper get timely FCM (not only every 5 min).
+    cron.schedule('* * * * *', async () => {
+      try {
+        await runHelpSessionCompletionPrompts()
+      } catch (err) {
+        console.error('Help session completion prompt job failed:', err)
       }
     })
     

@@ -1,5 +1,7 @@
 import { api as client } from './client';
 
+const authHeaders = (token) => (token ? { Authorization: `Bearer ${token}` } : {});
+
 export const getSessionByRequest = async (token, requestId) => {
   const response = await client.get(`/chat/request/${requestId}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -20,6 +22,36 @@ export const sendMessage = async (token, sessionId, text, replyToId = null) => {
     { text, replyToId },
     { headers: { Authorization: `Bearer ${token}` } }
   );
+  return response.data;
+};
+
+/** Rich message (location / media URLs from prior upload) */
+export const sendRichMessage = async (token, sessionId, payload) => {
+  const response = await client.post(`/chat/session/${sessionId}/messages`, payload, {
+    headers: { Authorization: `Bearer ${token}` },
+    timeout: 30000,
+  });
+  return response.data;
+};
+
+/**
+ * Upload chat attachment (image, audio, pdf, doc). `file` is React Native FormData shape: { uri, name, type }.
+ */
+export const uploadChatMedia = async (token, sessionId, file, onProgress) => {
+  const form = new FormData();
+  form.append('file', file);
+  const response = await client.post(`/chat/session/${sessionId}/media`, form, {
+    headers: {
+      ...authHeaders(token),
+      'Content-Type': 'multipart/form-data',
+    },
+    timeout: 120000,
+    onUploadProgress: (e) => {
+      if (typeof onProgress === 'function' && e.total > 0) {
+        onProgress(e.loaded / e.total);
+      }
+    },
+  });
   return response.data;
 };
 

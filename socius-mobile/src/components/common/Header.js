@@ -66,6 +66,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#E0E0E0',
+    overflow: 'visible',
+    zIndex: 2,
   },
   leftSection: {
     flex: 1,
@@ -82,6 +84,8 @@ const styles = StyleSheet.create({
   rightSection: {
     flex: 1,
     alignItems: 'flex-end',
+    justifyContent: 'center',
+    overflow: 'visible',
   },
   backButton: {
     padding: 8,

@@ -1,6 +1,7 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform, Linking, Alert, Dimensions, ScrollView, Image, Animated, NativeModules } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import Header from '../../../components/common/Header';
@@ -12,11 +13,37 @@ import { baseURL } from '../../../services/api/client';
 
 const { width, height } = Dimensions.get('window');
 
-import { getSocket, connectSocket } from '../../../services/socket/socket.service';
+import { getSocket, connectSocket, appEvents } from '../../../services/socket/socket.service';
 import { getSessionByRequest, getMessages, markMessagesRead } from '../../../services/api/chat.api';
 import ChatModal from '../../../components/common/ChatModal';
 import CustomAlert from '../../../components/common/CustomAlert';
 import { buildClosureInitiatedCopy, buildRequestClosedCopy } from '../../../utils/closureMessages';
+import {
+  ROUTES,
+  canStayOnMeetingMap,
+  isChatAllowedForStatus,
+  isClosingStatus,
+  isMeetingActive,
+  isTerminalHelpStatus,
+  normalizeHelpStatus,
+} from '../../../utils/helpRequestFlow';
+
+const getMessageSenderId = (m) => {
+  const s = m?.senderId;
+  if (s == null) return '';
+  if (typeof s === 'object' && s._id != null) return String(s._id);
+  return String(s);
+};
+
+const countUnreadMessages = (messages, userId) => {
+  if (!Array.isArray(messages) || userId == null) return 0;
+  const uid = String(userId);
+  return messages.filter((m) => {
+    const sid = getMessageSenderId(m);
+    if (!sid || sid === uid) return false;
+    return m.isRead !== true;
+  }).length;
+};
 
 const MatchingMapScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
@@ -86,6 +113,61 @@ const MatchingMapScreen = ({ navigation, route }) => {
   const mapRef = useRef(null);
   const chatVisibleRef = useRef(chatVisible);
   const requestId = route?.params?.requestId;
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const refreshRequestDetails = useCallback(async () => {
+    if (!requestId) return false;
+    try {
+      const auth = await loadAuth();
+      const token = auth?.accessToken;
+      if (!token) return false;
+      const response = await getHelpRequestById(token, requestId);
+      if (!mountedRef.current) return false;
+      if (response?.success && response?.data?.request) {
+        const reqData = response.data.request;
+        if (response.data.volunteer) {
+          reqData.volunteer = response.data.volunteer;
+        }
+        setRequest(reqData);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }, [requestId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!requestId) return undefined;
+      refreshRequestDetails();
+      return undefined;
+    }, [requestId, refreshRequestDetails])
+  );
+
+  useEffect(() => {
+    if (route?.params?.openChat) {
+      setChatVisible(true);
+      navigation.setParams({ openChat: undefined });
+    }
+  }, [route?.params?.openChat, navigation]);
+
+  useEffect(() => {
+    const handler = (payload) => {
+      if (payload?.requestId && String(payload.requestId) === String(requestId)) {
+        setChatVisible(true);
+      }
+    };
+    appEvents.on('open_chat', handler);
+    return () => appEvents.off('open_chat', handler);
+  }, [requestId]);
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -115,11 +197,6 @@ const MatchingMapScreen = ({ navigation, route }) => {
       });
       Linking.openURL(url);
     }
-  };
-
-  const handleCompleteHelp = async () => {
-    // Navigate to a closure screen for feedback and completion
-    navigation.navigate('ThankYouClosing', { requestId });
   };
 
   const handleOpenChat = (message = '') => {
@@ -169,20 +246,43 @@ const MatchingMapScreen = ({ navigation, route }) => {
 
   useEffect(() => {
     if (request && !loading) {
-      const status = String(request.status || '').toLowerCase();
-      const activeStatuses = ['accepted', 'in_progress', 'matched', 'en_route', 'arrived', 'active'];
-      if (!activeStatuses.includes(status)) {
+      const status = normalizeHelpStatus(request.status);
+      if (isClosingStatus(status)) return;
+
+      if (isTerminalHelpStatus(status)) {
         showAlert(
-          'Request Unavailable',
+          'Request ended',
           'This request is no longer active.',
           [
             {
               text: 'OK',
               onPress: () => {
                 closeAlert();
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+                });
+              },
+            },
+          ],
+          'alert-circle-outline',
+          '#DC5C69'
+        );
+        return;
+      }
+
+      if (!isMeetingActive(status)) {
+        showAlert(
+          'Request unavailable',
+          'This meeting is not active anymore.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                closeAlert();
                 navigation.goBack();
-              }
-            }
+              },
+            },
           ],
           'alert-circle-outline',
           '#DC5C69'
@@ -208,17 +308,7 @@ const MatchingMapScreen = ({ navigation, route }) => {
 
             const msgsRes = await getMessages(token, session._id);
             if (msgsRes?.success && Array.isArray(msgsRes.data)) {
-              // Count unread messages from the other user
-              const unread = msgsRes.data.filter(
-                m => String(m.senderId) !== String(userId) && !m.isRead && !m.read
-              ).length;
-              console.log('Unread count calculation:', {
-                total: msgsRes.data.length,
-                userId,
-                unread,
-                sample: msgsRes.data.slice(0, 3).map(m => ({ id: m._id, sender: m.senderId, read: m.isRead }))
-              });
-              setUnreadCount(unread);
+              setUnreadCount(countUnreadMessages(msgsRes.data, userId));
             }
           }
         }
@@ -245,10 +335,9 @@ const MatchingMapScreen = ({ navigation, route }) => {
       
       if (String(data.sessionId) === String(sessionId)) {
         const message = data.message || {};
-        const senderId = String(message.senderId || '');
+        const senderId = getMessageSenderId(message);
         const myId = String(currentUserId || '');
-        
-        // Only increment if message is NOT from current user
+
         if (myId && senderId && senderId !== myId) {
             if (!chatVisibleRef.current) {
                setUnreadCount(prev => prev + 1);
@@ -306,36 +395,38 @@ const MatchingMapScreen = ({ navigation, route }) => {
     let isMounted = true;
     let socket;
 
-    const handleClosureInitiated = (data) => {
+    const handleClosureInitiated = async (data) => {
       if (!isMounted) return;
       if (String(data?.requestId) !== String(requestId)) return;
 
       const initiatedBy = String(data?.initiatedBy || '');
-      if (initiatedBy === 'requester') {
-        const copy = buildClosureInitiatedCopy({
-          requestId,
-          requestType: data?.requestType || 'Help request',
-          initiatedBy: data?.initiatedBy,
-          occurredAt: data?.occurredAt,
-        });
-        showAlert(
-          copy.title,
-          copy.message,
-          [
-            {
-              text: 'Complete closure',
-              onPress: () => {
-                closeAlert();
-                navigation.navigate('ThankYouClosing', { requestId });
-              },
-              style: 'primary',
+      if (initiatedBy !== 'requester') return;
+
+      await refreshRequestDetails();
+
+      const copy = buildClosureInitiatedCopy({
+        requestId,
+        requestType: data?.requestType || 'Help request',
+        initiatedBy: data?.initiatedBy,
+        occurredAt: data?.occurredAt,
+      });
+      showAlert(
+        copy.title,
+        copy.message,
+        [
+          {
+            text: 'Complete closure',
+            onPress: () => {
+              closeAlert();
+              navigation.navigate(ROUTES.helperClosure, { requestId });
             },
-            { text: 'Later', onPress: closeAlert, style: 'cancel' },
-          ],
-          'alert-circle-outline',
-          '#DC5C69'
-        );
-      }
+            style: 'primary',
+          },
+          { text: 'Not now', onPress: closeAlert, style: 'cancel' },
+        ],
+        'alert-circle-outline',
+        '#DC5C69'
+      );
     };
 
     const handleRequestClosed = (data) => {
@@ -346,6 +437,7 @@ const MatchingMapScreen = ({ navigation, route }) => {
         requestType: data?.requestType || 'Help request',
         reason: data?.reason,
         occurredAt: data?.occurredAt,
+        userRole: 'helper',
       });
       showAlert(
         copy.title,
@@ -388,7 +480,7 @@ const MatchingMapScreen = ({ navigation, route }) => {
         socket.off('help:request_closed', handleRequestClosed);
       }
     };
-  }, [requestId, navigation]);
+  }, [requestId, navigation, refreshRequestDetails]);
 
   const showInitialLoading = loading && !request;
 
@@ -404,9 +496,10 @@ const MatchingMapScreen = ({ navigation, route }) => {
     longitudeDelta: 0.0421,
   };
 
-  // Render Screen
-  const statusForChat = String(request?.status || '').toLowerCase();
-  const isChatAllowed = ['accepted', 'in_progress', 'matched', 'en_route', 'arrived', 'active'].includes(statusForChat);
+  const statusForChat = normalizeHelpStatus(request?.status);
+  const isChatAllowed = isChatAllowedForStatus(statusForChat);
+  const showMeetingActions = canStayOnMeetingMap(statusForChat);
+  const inClosure = isClosingStatus(statusForChat);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -444,13 +537,23 @@ const MatchingMapScreen = ({ navigation, route }) => {
       />
       <ScrollView 
         style={{flex: 1}} 
-        contentContainerStyle={{flexGrow: 1}}
-        alwaysBounceVertical={false}
-        bounces={false}
-        overScrollMode="never"
+        contentContainerStyle={{flexGrow: 1, paddingBottom: scale(24)}}
+        alwaysBounceVertical={true}
+        bounces={true}
+        overScrollMode="always"
+        showsVerticalScrollIndicator={true}
       >
         <View style={styles.contentContainer}>
- 
+
+        {inClosure && (
+          <View style={styles.closureBanner}>
+            <Icon name="file-document-edit-outline" size={scale(20)} color="#92400E" style={{ marginRight: scale(8) }} />
+            <Text style={styles.closureBannerText}>
+              The requester started closure. Use the button below to submit your part so the request can finish.
+            </Text>
+          </View>
+        )}
+
         {/* Map Card */}
         <View style={styles.mapCard}>
           <View style={styles.mapPreviewContainer}>
@@ -541,19 +644,37 @@ const MatchingMapScreen = ({ navigation, route }) => {
         <Text style={styles.trustSignalInfo}>Signals help you understand past participation.</Text>
 
         {/* Quick Message Input */}
-        <TouchableOpacity style={styles.quickMessageInput} onPress={() => handleOpenChat()}>
-          <Text style={styles.quickMessagePlaceholder}>Send quick message</Text>
+        <TouchableOpacity
+          style={[styles.quickMessageInput, !isChatAllowed && styles.quickMessageDisabled]}
+          onPress={() => isChatAllowed && handleOpenChat()}
+          disabled={!isChatAllowed}
+        >
+          <Text style={styles.quickMessagePlaceholder}>
+            {isChatAllowed ? 'Send quick message' : 'Chat unavailable during closure'}
+          </Text>
         </TouchableOpacity>
 
         {/* Quick Reply Chips */}
         <View style={styles.chipsContainer}>
-          <TouchableOpacity style={styles.chip} onPress={() => handleOpenChat("I'm nearby")}>
+          <TouchableOpacity
+            style={[styles.chip, !isChatAllowed && styles.chipDisabled]}
+            onPress={() => isChatAllowed && handleOpenChat("I'm nearby")}
+            disabled={!isChatAllowed}
+          >
             <Text style={styles.chipText}>I'm nearby</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.chip} onPress={() => handleOpenChat("Coming now")}>
+          <TouchableOpacity
+            style={[styles.chip, !isChatAllowed && styles.chipDisabled]}
+            onPress={() => isChatAllowed && handleOpenChat('Coming now')}
+            disabled={!isChatAllowed}
+          >
             <Text style={styles.chipText}>Coming now</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.chip} onPress={() => handleOpenChat("Where exactly are you?")}>
+          <TouchableOpacity
+            style={[styles.chip, !isChatAllowed && styles.chipDisabled]}
+            onPress={() => isChatAllowed && handleOpenChat('Where exactly are you?')}
+            disabled={!isChatAllowed}
+          >
             <Text style={styles.chipText}>Where exactly are you?</Text>
           </TouchableOpacity>
         </View>
@@ -567,35 +688,18 @@ const MatchingMapScreen = ({ navigation, route }) => {
           </View>
         </View>
 
-        {/* Close Request Button */}
-        <TouchableOpacity 
-          style={styles.closeRequestButton} 
-          onPress={() => navigation.navigate('ClosingRequest', { requestId })}
+        {/* Close Request — helper uses ThankYouClosing (helper closure payload). */}
+        <TouchableOpacity
+          style={[styles.closeRequestButton, !showMeetingActions && styles.closeRequestButtonDisabled]}
+          onPress={() => navigation.navigate(ROUTES.helperClosure, { requestId })}
+          disabled={!showMeetingActions}
         >
-          <Text style={styles.closeRequestText}>Close Request</Text>
+          <Text style={styles.closeRequestText}>
+            {inClosure ? 'Complete closure' : 'Close Request'}
+          </Text>
         </TouchableOpacity>
       </View>
       </ScrollView>
-
-      {/* Bottom Action Bar - Fixed at bottom */}
-      <View style={styles.bottomActionBar}>
-        <TouchableOpacity style={styles.actionBarItem}>
-          <Icon name="briefcase-outline" size={24} color="#DC5C69" />
-          <Text style={styles.actionBarLabel}>Offer Item</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBarItem}>
-          <Icon name="clock-outline" size={24} color="#DC5C69" />
-          <Text style={styles.actionBarLabel}>Delay</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBarItem}>
-          <Icon name="alert-circle-outline" size={24} color="#DC5C69" />
-          <Text style={styles.actionBarLabel}>Report</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBarItem}>
-          <Icon name="dots-horizontal" size={24} color="#DC5C69" />
-          <Text style={styles.actionBarLabel}>More</Text>
-        </TouchableOpacity>
-      </View>
 
       <ChatModal
         visible={chatVisible}
@@ -646,6 +750,23 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F5F5F5',
   },
+  closureBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+  },
+  closureBannerText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#92400E',
+    lineHeight: 18,
+    fontWeight: '500',
+  },
   nearbyTitle: {
     fontSize: 16,
     fontWeight: '600',
@@ -676,8 +797,8 @@ const styles = StyleSheet.create({
   profileSection: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 12,
-    marginBottom: 8,
+    padding: 14,
+    marginBottom: 10,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -686,12 +807,12 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   profileImageWrapper: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
+    width: 75,
+    height: 75,
+    borderRadius: 37.5,
     backgroundColor: '#F0F0F0',
     overflow: 'hidden',
-    marginBottom: 6,
+    marginBottom: 8,
     borderWidth: 2,
     borderColor: '#FFFFFF',
     shadowColor: '#000',
@@ -718,8 +839,8 @@ const styles = StyleSheet.create({
   requestDescriptionCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    padding: 10,
-    marginBottom: 8,
+    padding: 12,
+    marginBottom: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
@@ -735,8 +856,8 @@ const styles = StyleSheet.create({
   trustSignalsContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 20,
-    marginBottom: 4,
+    gap: 24,
+    marginBottom: 8,
   },
   trustSignalItem: {
     alignItems: 'center',
@@ -756,8 +877,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
     paddingHorizontal: 14,
-    paddingVertical: 9,
-    marginBottom: 6,
+    paddingVertical: 11,
+    marginBottom: 8,
     borderWidth: 1,
     borderColor: '#E0E0E0',
   },
@@ -765,16 +886,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#999',
   },
+  quickMessageDisabled: {
+    opacity: 0.5,
+  },
   chipsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: 8,
+    gap: 8,
+    marginBottom: 10,
   },
   chip: {
     backgroundColor: '#F0F0F0',
-    paddingHorizontal: 12,
-    paddingVertical: 5,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
     borderRadius: 16,
   },
   chipText: {
@@ -782,11 +906,14 @@ const styles = StyleSheet.create({
     color: '#555',
     fontWeight: '500',
   },
+  chipDisabled: {
+    opacity: 0.45,
+  },
   safetyCard: {
     backgroundColor: '#F8F9FA',
     borderRadius: 12,
-    padding: 10,
-    marginBottom: 8,
+    padding: 12,
+    marginBottom: 10,
     flexDirection: 'row',
     alignItems: 'flex-start',
     borderWidth: 1,
@@ -810,9 +937,9 @@ const styles = StyleSheet.create({
   openNavButton: {
     backgroundColor: '#DC5C69',
     borderRadius: 24,
-    paddingVertical: 12,
+    paddingVertical: 14,
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
     shadowColor: '#DC5C69',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -827,9 +954,9 @@ const styles = StyleSheet.create({
   closeRequestButton: {
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
-    paddingVertical: 12,
+    paddingVertical: 14,
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
     borderWidth: 2,
     borderColor: '#DC5C69',
   },
@@ -838,33 +965,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
-  bottomActionBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 16,
-    right: 16,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    paddingVertical: 10,
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 8,
-    zIndex: 10,
-  },
-  actionBarItem: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  actionBarLabel: {
-    fontSize: 10,
-    color: '#666',
-    marginTop: 3,
-    fontWeight: '500',
+  closeRequestButtonDisabled: {
+    opacity: 0.45,
   },
   toastContainer: {
     position: 'absolute',
@@ -917,7 +1019,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   mapPreviewContainer: {
-    height: 120,
+    height: 135,
     width: '100%',
     position: 'relative',
   },

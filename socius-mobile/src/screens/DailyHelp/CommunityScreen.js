@@ -11,6 +11,7 @@ import { getMyActiveHelpRequest, getNearbyHelpRequests } from '../../services/ap
 import { getHistory } from '../../services/api/user.api';
 import { api } from '../../services/api/client';
 import { getHelpCategories } from '../../services/api/helpCategories.api';
+import { getBlogTypes } from '../../services/api/blog.api';
 import { loadAuth, loadLastKnownLocation } from '../../services/storage/asyncStorage.service';
 import CustomAlert from '../../components/common/CustomAlert';
 import DailyHelpRequestCard from '../../components/DailyHelp/cards/DailyHelpRequestCard';
@@ -32,6 +33,8 @@ const CommunityScreen = ({ navigation }) => {
   const [activeRequest, setActiveRequest] = useState(null);
   const [activeHelp, setActiveHelp] = useState(null);
   const [categoriesBySlug, setCategoriesBySlug] = useState({});
+  const [blogTypes, setBlogTypes] = useState([]);
+  const [loadingBlogTypes, setLoadingBlogTypes] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [nearbyRequests, setNearbyRequests] = useState([]);
   const [loadingNearby, setLoadingNearby] = useState(false);
@@ -193,21 +196,23 @@ const CommunityScreen = ({ navigation }) => {
   useEffect(() => {
     if (isFocused) {
       fetchCategoriesIndex();
+      fetchBlogTypes();
       fetchActiveRequests();
       if (activeTab === 'requests') fetchNearbyRequests();
       else if (activeTab === 'history') fetchHistory();
     }
-  }, [isFocused, activeTab, fetchNearbyRequests, fetchHistory, fetchActiveRequests]);
+  }, [isFocused, activeTab, fetchNearbyRequests, fetchHistory, fetchActiveRequests, fetchBlogTypes]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await Promise.all([
       fetchActiveRequests(),
+      fetchBlogTypes(),
       activeTab === 'requests' ? fetchNearbyRequests() : null,
       activeTab === 'history' ? fetchHistory() : null
     ]);
     setRefreshing(false);
-  }, [activeTab, fetchActiveRequests, fetchNearbyRequests, fetchHistory]);
+  }, [activeTab, fetchActiveRequests, fetchNearbyRequests, fetchHistory, fetchBlogTypes]);
 
   const handleViewAndAcceptRequest = (req) => {
     if (!req?._id) return;
@@ -264,22 +269,37 @@ const CommunityScreen = ({ navigation }) => {
     />
   );
 
-  const translateX = scrollX.interpolate({
-    inputRange: [0, Math.max(1, SCREEN_WIDTH), Math.max(2, SCREEN_WIDTH * 2)],
-    outputRange: [0, SCREEN_WIDTH / 3, (SCREEN_WIDTH / 3) * 2],
-  });
+  const fetchBlogTypes = useCallback(async () => {
+    try {
+      setLoadingBlogTypes(true);
+      const response = await getBlogTypes();
+      setBlogTypes(response.items || []);
+    } catch (err) {
+      console.log('Error fetching blog types:', err);
+    } finally {
+      setLoadingBlogTypes(false);
+    }
+  }, []);
 
   const handleSettings = () => navigation.navigate('Settings');
   const handleRequestHelp = () => navigation.navigate('HelpType');
 
-  const presenceTypes = [
-    { id: 'calm', name: 'Calm presence', image: require('../../assets/images/community/Screenshot 2026-02-16 at 2.57.36 PM.png') },
-    { id: 'care', name: 'Care & support', image: require('../../assets/images/community/5.png') },
-    { id: 'medical', name: 'Medical awareness', image: require('../../assets/images/community/4.png') },
-    { id: 'language', name: 'Language support', image: require('../../assets/images/community/3.png') },
-    { id: 'elder', name: 'Elder assistance', image: require('../../assets/images/community/Screenshot 2026-02-16 at 2.58.04 PM.png') },
-    { id: 'community', name: 'Community upkeep', image: require('../../assets/images/community/1.png') },
-  ];
+  const presenceTypes = blogTypes.length > 0 
+    ? blogTypes.map(type => ({
+        id: type._id,
+        name: type.name,
+        slug: type.slug,
+        iconUrl: type.iconUrl,
+        color: type.color,
+      }))
+    : [
+        { id: '1', name: 'Calm presence', icon: 'spa', color: '#E57373' },
+        { id: '2', name: 'Care & support', icon: 'hand-heart', color: '#BA68C8' },
+        { id: '3', name: 'Medical awareness', icon: 'medical-bag', color: '#64B5F6' },
+        { id: '4', name: 'Language support', icon: 'translate', color: '#4DB6AC' },
+        { id: '5', name: 'Elder assistance', icon: 'account-heart', color: '#FFB74D' },
+        { id: '6', name: 'Community upkeep', icon: 'home-group', color: '#81C784' },
+      ];
 
   const communityPoints = [
     'Voluntary participation',
@@ -401,10 +421,25 @@ const CommunityScreen = ({ navigation }) => {
             <Text style={[styles.sectionTitle, { fontSize: ms(15), marginBottom: vscale(10) }]}>Types of presence nearby</Text>
             <View style={[styles.grid, { marginBottom: vscale(20) }]}>
               {presenceTypes.map((it) => (
-                <View key={it.id} style={[styles.gridItem, { width: cardWidth }]}>
-                  <View style={styles.iconCard}><Image source={it.image} style={styles.iconImage} /></View>
+                <TouchableOpacity 
+                  key={it.id} 
+                  style={[styles.gridItem, { width: cardWidth }]}
+                  onPress={() => navigation.navigate('BlogList', { typeId: it.id, typeName: it.name, typeSlug: it.slug })}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.iconCard}>
+                    {it.iconUrl ? (
+                      <Image 
+                        source={{ uri: `${baseRoot}${it.iconUrl}` }} 
+                        style={styles.iconImage} 
+                        resizeMode="contain"
+                      />
+                    ) : (
+                      <Image source={it.image} style={styles.iconImage} />
+                    )}
+                  </View>
                   <Text style={[styles.gridLabel, { fontSize: ms(9) }]} numberOfLines={2}>{it.name}</Text>
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
 

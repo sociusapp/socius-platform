@@ -1,6 +1,6 @@
 package com.socius.app
 
-import android.app.Application
+import androidx.multidex.MultiDexApplication
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.ContentResolver
@@ -23,7 +23,7 @@ import com.facebook.react.defaults.DefaultReactNativeHost
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ReactNativeHostWrapper
 
-class MainApplication : Application(), ReactApplication {
+class MainApplication : MultiDexApplication(), ReactApplication {
 
   override val reactNativeHost: ReactNativeHost = ReactNativeHostWrapper(
       this,
@@ -75,6 +75,10 @@ class MainApplication : Application(), ReactApplication {
       val helpRequestSoundUri = Uri.parse("${ContentResolver.SCHEME_ANDROID_RESOURCE}://${packageName}/raw/help_request")
       val presenceAlarmSoundUri = Uri.parse("${ContentResolver.SCHEME_ANDROID_RESOURCE}://${packageName}/raw/presence_alarm")
 
+      manager.getNotificationChannel("socius_presence_alarm")?.let { manager.deleteNotificationChannel("socius_presence_alarm") }
+      manager.getNotificationChannel("socius_help_alarm")?.let { manager.deleteNotificationChannel("socius_help_alarm") }
+      manager.getNotificationChannel("socius_updates")?.let { manager.deleteNotificationChannel("socius_updates") }
+
       val presenceAlarmChannel = NotificationChannel(
         "socius_presence_alarm",
         "Presence Alerts",
@@ -96,9 +100,9 @@ class MainApplication : Application(), ReactApplication {
       }
 
       val statusUpdateChannel = NotificationChannel(
-        "socius_status_update",
+        "socius_updates",
         "Status Updates",
-        NotificationManager.IMPORTANCE_DEFAULT
+        NotificationManager.IMPORTANCE_HIGH
       ).apply {
         setSound(generalSoundUri, attributes)
         enableVibration(true)

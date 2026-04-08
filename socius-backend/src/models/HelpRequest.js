@@ -78,6 +78,11 @@ const helpRequestSchema = new mongoose.Schema(
     autoClosedAt: { type: Date, default: null },
     autoCloseScheduledAt: { type: Date, default: null },
 
+    /** When the requester–helper meeting window should end (used for progress + completion prompt) */
+    sessionEndsAt: { type: Date, default: null },
+    /** Set when we send the “Has your request been completed?” FCM (once per window unless extended) */
+    completionPromptSentAt: { type: Date, default: null },
+
     // Community balance nudge shown?
     nudgeShown: {
       type: Boolean,

@@ -5,9 +5,10 @@ const logger = require('./logger')
 
 /**
  * 6-digit OTP generate karo
+ * Note: crypto.randomInt(min, max) — max is exclusive, so use 1_000_000 to include 999999
  */
 const generateOtp = () => {
-  return crypto.randomInt(100000, 999999).toString()
+  return crypto.randomInt(100000, 1_000_000).toString()
 }
 
 /**
@@ -43,37 +44,72 @@ const saveOtp = async (phone, ipAddress = null) => {
  * OTP verify karo
  * Returns: { valid: true } ya { valid: false, reason: '...' }
  */
+const normalizeOtpInput = (inputOtp) => {
+  const s = String(inputOtp ?? '').trim()
+  if (!/^\d+$/.test(s) || s.length !== OTP.LENGTH) {
+    return null
+  }
+  return s
+}
+
 const verifyOtp = async (phone, inputOtp) => {
   try {
-    const otpLog = await OtpLog.findOne({
+    const code = normalizeOtpInput(inputOtp)
+    if (!code) {
+      return { valid: false, reason: `OTP must be ${OTP.LENGTH} digits` }
+    }
+
+    const now = new Date()
+
+    // Single atomic success path — stops double-redemption / replay if two devices verify at once
+    const consumed = await OtpLog.findOneAndUpdate(
+      {
+        phone,
+        isUsed: false,
+        expiresAt: { $gt: now },
+        attempts: { $lt: OTP.MAX_ATTEMPTS },
+        otp: code,
+      },
+      { $set: { isUsed: true, usedAt: now } },
+      { new: true }
+    )
+
+    if (consumed) {
+      logger.info(`OTP verified for ${phone}`)
+      return { valid: true }
+    }
+
+    const latest = await OtpLog.findOne({
       phone,
       isUsed: false,
-      expiresAt: { $gt: new Date() },
+      expiresAt: { $gt: now },
     }).sort({ createdAt: -1 })
 
-    if (!otpLog) {
+    if (!latest) {
       return { valid: false, reason: 'OTP expired or not found' }
     }
 
-    // Max attempts check
-    if (otpLog.attempts >= OTP.MAX_ATTEMPTS) {
+    if (latest.attempts >= OTP.MAX_ATTEMPTS) {
       return { valid: false, reason: 'Too many attempts. Please request a new OTP.' }
     }
 
-    if (otpLog.otp !== inputOtp) {
-      // Wrong attempt — increment
-      await OtpLog.findByIdAndUpdate(otpLog._id, { $inc: { attempts: 1 } })
-      return { valid: false, reason: 'Invalid OTP' }
+    // Count a failed guess only if this row can still accept attempts (avoids useless increments when already locked)
+    const bumped = await OtpLog.findOneAndUpdate(
+      {
+        _id: latest._id,
+        isUsed: false,
+        expiresAt: { $gt: now },
+        attempts: { $lt: OTP.MAX_ATTEMPTS },
+      },
+      { $inc: { attempts: 1 } },
+      { new: true }
+    )
+
+    if (!bumped) {
+      return { valid: false, reason: 'Too many attempts. Please request a new OTP.' }
     }
 
-    // ✅ Correct — mark as used
-    await OtpLog.findByIdAndUpdate(otpLog._id, {
-      isUsed: true,
-      usedAt: new Date(),
-    })
-
-    logger.info(`OTP verified for ${phone}`)
-    return { valid: true }
+    return { valid: false, reason: 'Invalid OTP' }
   } catch (err) {
     logger.error('verifyOtp error:', err)
     throw err
@@ -103,4 +139,5 @@ module.exports = {
   saveOtp,
   verifyOtp,
   canResendOtp,
+  normalizeOtpInput,
 }

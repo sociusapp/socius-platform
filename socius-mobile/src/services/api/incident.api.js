@@ -15,9 +15,11 @@ const getMyActiveHelpRequest = (token) => {
     .then((response) => response.data);
 };
 
-const getHelpRequestById = (token, id) => {
+const getHelpRequestById = (token, id, options = {}) => {
+  const cacheTtlMs =
+    typeof options?.cacheTtlMs === 'number' ? options.cacheTtlMs : 15000;
   return api
-    .get(`/help-request/${encodeURIComponent(id)}`, { ...authConfig(token), cacheTtlMs: 15000 })
+    .get(`/help-request/${encodeURIComponent(id)}`, { ...authConfig(token), cacheTtlMs })
     .then((response) => response.data);
 };
 
@@ -54,6 +56,13 @@ const cancelHelpRequest = (token, id, payload) => {
 const closeHelpRequest = (token, id, payload) => {
   return api
     .patch(`/help-request/${encodeURIComponent(id)}/close`, payload, authConfig(token))
+    .then((response) => response.data);
+};
+
+/** Requester: extend session window or quick-complete (from completion prompt) */
+const patchHelpSession = (token, id, body) => {
+  return api
+    .patch(`/help-request/${encodeURIComponent(id)}/session`, body, authConfig(token))
     .then((response) => response.data);
 };
 
@@ -182,6 +191,7 @@ export {
   declineHelpRequest,
   cancelHelpRequest,
   closeHelpRequest,
+  patchHelpSession,
   markRequestDelivered,
   submitClosure,
   getClosureFeedback,

@@ -6,9 +6,11 @@ const {
   sendMessage,
   markRead,
   reactToMessage,
+  uploadChatMedia,
 } = require('../controllers/chat.controller')
 const { authenticate } = require('../middlewares/auth')
 const { validate, schemas } = require('../middlewares/validate')
+const { uploadChatMedia: uploadChatMulter } = require('../middlewares/upload')
 
 // GET /api/chat/session/:sessionId
 router.get('/session/:sessionId', authenticate, getSession)
@@ -18,6 +20,14 @@ router.get('/request/:requestId', authenticate, getSessionByRequest)
 
 // GET /api/chat/session/:sessionId/messages
 router.get('/session/:sessionId/messages', authenticate, getMessages)
+
+// POST /api/chat/session/:sessionId/media (multipart file → URL for chat:send)
+router.post(
+  '/session/:sessionId/media',
+  authenticate,
+  uploadChatMulter,
+  uploadChatMedia
+)
 
 // POST /api/chat/session/:sessionId/messages
 router.post(

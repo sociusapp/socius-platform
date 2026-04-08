@@ -47,17 +47,6 @@ const App = () => {
     };
   }, []);
 
-  useEffect(() => {
-    // Fail-safe to hide native splash in case JS initialization takes too long or fails
-    const timer = setTimeout(async () => {
-      try {
-        await SplashScreen.hideAsync();
-      } catch (e) { }
-    }, 2000);
-
-    return () => clearTimeout(timer);
-  }, []);
-
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>

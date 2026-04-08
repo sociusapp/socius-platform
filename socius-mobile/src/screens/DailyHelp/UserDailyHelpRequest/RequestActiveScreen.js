@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, BackHandler, Modal } from 'react-native';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, BackHandler, Modal, Animated, Easing } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -19,11 +19,54 @@ const RequestSuccessScreen = ({ navigation, route }) => {
   const [loading, setLoading] = useState(!initialRequest);
   const [request, setRequest] = useState(initialRequest || null);
   
+  // Wave animation values
+  const wave1 = useRef(new Animated.Value(0)).current;
+  const wave2 = useRef(new Animated.Value(0)).current;
+  const wave3 = useRef(new Animated.Value(0)).current;
+  
   // No Helpers Modal State
   const [noHelpersModalVisible, setNoHelpersModalVisible] = useState(initialNoHelpers || false);
   const [cancelling, setCancelling] = useState(false);
   const requestRef = React.useRef(null);
 
+  // Wave animation effect
+  useEffect(() => {
+    const animateWave = (animation, delay) => {
+      return Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(animation, {
+            toValue: 1,
+            duration: 1500,
+            easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+            useNativeDriver: true,
+            isInteraction: false,
+          }),
+          Animated.timing(animation, {
+            toValue: 0,
+            duration: 0,
+            useNativeDriver: true,
+            isInteraction: false,
+          }),
+        ])
+      );
+    };
+
+    const anim1 = animateWave(wave1, 0);
+    const anim2 = animateWave(wave2, 500);
+    const anim3 = animateWave(wave3, 1000);
+
+    anim1.start();
+    anim2.start();
+    anim3.start();
+
+    return () => {
+      anim1.stop();
+      anim2.stop();
+      anim3.stop();
+    };
+  }, []);
+  
   useEffect(() => {
     requestRef.current = request;
     if (request?.id || request?._id) {
@@ -318,6 +361,15 @@ const RequestSuccessScreen = ({ navigation, route }) => {
         // Listen for stats updates (viewed, declined, etc.)
         socket.on('help:request_updated', (data) => {
           console.log('Socket event: help:request_updated', data);
+          if (data?.stats) {
+            setRequest((prev) => ({
+              ...prev,
+              stats: {
+                ...(prev?.stats || {}),
+                ...data.stats,
+              },
+            }));
+          }
           loadActiveRequest();
         });
       }
@@ -328,58 +380,17 @@ const RequestSuccessScreen = ({ navigation, route }) => {
       console.log('[RequestActive] Foreground notification event received:', data);
       const currentId = requestRef.current?.id || requestRef.current?._id;
       if (currentId && data?.requestId && String(currentId) === String(data.requestId)) {
-        // Directly update stats from notification data first for immediate UI update
         if (data?.stats) {
           console.log('[RequestActive] Updating stats directly from notification:', data.stats);
-          setRequest(prev => ({
+          setRequest((prev) => ({
             ...prev,
             stats: {
-              ...prev?.stats,
-              ...data.stats
-            }
+              ...(prev?.stats || {}),
+              ...data.stats,
+            },
           }));
-        } else {
-          // If no stats in notification, determine which counter to increment based on type/status
-          const dataType = String(data?.type || '').toLowerCase();
-          const status = String(data?.status || '').toLowerCase();
-          
-          console.log('[RequestActive] No stats in notification, determining update type:', { dataType, status });
-          
-          setRequest(prev => {
-            const currentStats = prev?.stats || {};
-            
-            // Handle different notification types
-            if (status === 'declined' || status === 'unavailable' || dataType === 'declined') {
-              // Someone declined/unavailable
-              return {
-                ...prev,
-                stats: {
-                  ...currentStats,
-                  declinedCount: (currentStats?.declinedCount || 0) + 1
-                }
-              };
-            } else if (status === 'viewed' || dataType === 'viewed') {
-              // Someone viewed
-              return {
-                ...prev,
-                stats: {
-                  ...currentStats,
-                  viewedCount: (currentStats?.viewedCount || 0) + 1
-                }
-              };
-            } else {
-              // Default: increment notified count
-              return {
-                ...prev,
-                stats: {
-                  ...currentStats,
-                  notificationSentCount: (currentStats?.notificationSentCount || 0) + 1
-                }
-              };
-            }
-          });
         }
-        // Then refresh from API to ensure consistency
+        // Always refresh from API to guarantee canonical state.
         console.log('[RequestActive] Refreshing from API after stats update');
         loadActiveRequest();
       }
@@ -504,10 +515,75 @@ const RequestSuccessScreen = ({ navigation, route }) => {
 
     return (
         <View style={{ width: contentWidth }}>
-          {/* Success Animation Circle */}
+          {/* Success Animation Circle with Wave Effect */}
           <View style={[styles.successContainer, { height: vscale(120), marginBottom: vscale(18) }]}>
-            <View style={[styles.pulseRing1, { width: scale(90), height: scale(90), borderRadius: scale(45), shadowRadius: scale(14), elevation: scale(5) }]} />
-            <View style={[styles.pulseRing2, { width: scale(68), height: scale(68), borderRadius: scale(34), shadowRadius: scale(8), elevation: scale(4) }]} />
+            {/* Animated Wave Rings */}
+            <Animated.View
+              style={[
+                styles.waveRing,
+                {
+                  width: scale(90),
+                  height: scale(90),
+                  borderRadius: scale(45),
+                  transform: [
+                    {
+                      scale: wave1.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.5, 1.2],
+                      }),
+                    },
+                  ],
+                  opacity: wave1.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [0.6, 0.3, 0],
+                  }),
+                },
+              ]}
+            />
+            <Animated.View
+              style={[
+                styles.waveRing,
+                {
+                  width: scale(90),
+                  height: scale(90),
+                  borderRadius: scale(45),
+                  transform: [
+                    {
+                      scale: wave2.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.5, 1.2],
+                      }),
+                    },
+                  ],
+                  opacity: wave2.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [0.6, 0.3, 0],
+                  }),
+                },
+              ]}
+            />
+            <Animated.View
+              style={[
+                styles.waveRing,
+                {
+                  width: scale(90),
+                  height: scale(90),
+                  borderRadius: scale(45),
+                  transform: [
+                    {
+                      scale: wave3.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.5, 1.2],
+                      }),
+                    },
+                  ],
+                  opacity: wave3.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [0.6, 0.3, 0],
+                  }),
+                },
+              ]}
+            />
             <LinearGradient
               colors={['#FF8A7A', '#D84D42']}
               start={{ x: 0, y: 0 }}
@@ -852,13 +928,9 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
 
-  pulseRing1: {
+  waveRing: {
     position: 'absolute',
-    backgroundColor: '#FFF0F2',
-    opacity: 0.45,
-    shadowColor: '#DC5C69',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.16,
+    backgroundColor: '#FF8A7A',
   },
 
   pulseRing2: {

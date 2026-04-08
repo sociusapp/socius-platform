@@ -141,6 +141,22 @@ const sendToDevice = async ({ token, title, body, data = {}, priority = 'high' }
     const isHigh = String(priority).toLowerCase() === 'high'
     const hasNotification = title || body
 
+    const resolveAndroidNotifConfig = () => {
+      const t = String(data?.type || '').toLowerCase()
+      // IDs must match channels created on mobile side (SociusNotificationService).
+      if (
+        t.includes('help_request') ||
+        t.includes('request_rematched') ||
+        t === 'request_completion_prompt'
+      ) {
+        return { channelId: 'socius_help_alarm', sound: 'help_request' }
+      }
+      if (t.includes('presence_alarm') || t.includes('presence')) {
+        return { channelId: 'socius_presence_alarm', sound: 'presence_alarm' }
+      }
+      return { channelId: 'socius_updates', sound: null }
+    }
+
     const bodyPayload = {
       message: {
         token,
@@ -154,10 +170,12 @@ const sendToDevice = async ({ token, title, body, data = {}, priority = 'high' }
     }
 
     if (hasNotification) {
+      const androidCfg = resolveAndroidNotifConfig()
       bodyPayload.message.notification = { title, body }
       bodyPayload.message.android.notification = {
-        channel_id: isHigh ? 'presence_alarm' : 'default_channel',
-        sound: isHigh ? 'presence_alarm' : undefined,
+        channel_id: androidCfg.channelId,
+        ...(androidCfg.sound ? { sound: androidCfg.sound } : {}),
+        notification_priority: isHigh ? 'PRIORITY_MAX' : 'PRIORITY_DEFAULT',
       }
     }
 
@@ -180,16 +198,37 @@ const sendToDevice = async ({ token, title, body, data = {}, priority = 'high' }
         json?.error?.message ||
         json?.error ||
         `HTTP ${res.status} from FCM`
-      logger.error('sendToDevice HTTP v1 error:', errMsg)
-      return { success: false, error: errMsg }
+      const retryable =
+        res.status >= 500 ||
+        /UNAVAILABLE|INTERNAL|RESOURCE_EXHAUSTED|DEADLINE_EXCEEDED/i.test(String(errMsg))
+      return { success: false, error: errMsg, retryable }
     }
 
     logger.info(`FCM HTTP v1 sent to device: ${JSON.stringify(json)}`)
     return { success: true, messageId: json?.name || null }
   } catch (err) {
     logger.error('sendToDevice error:', err)
-    return { success: false, error: err.message }
+    return { success: false, error: err.message, retryable: true }
   }
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+/**
+ * FCM send with limited retries (transient errors only)
+ */
+const sendToDeviceWithRetry = async (payload, maxAttempts = 3) => {
+  const delays = [0, 500, 2000]
+  let last = null
+  for (let i = 0; i < maxAttempts; i++) {
+    // eslint-disable-next-line no-await-in-loop
+    if (delays[i]) await sleep(delays[i])
+    // eslint-disable-next-line no-await-in-loop
+    last = await sendToDevice(payload)
+    if (last.success) return last
+    if (!last.retryable) return last
+  }
+  return last
 }
 
 /**
@@ -201,9 +240,8 @@ const sendToMultipleDevices = async ({ tokens, title, body, data = {}, priority 
   try {
     const results = []
     for (const token of tokens) {
-      // single-device sender already logs and handles errors
       // eslint-disable-next-line no-await-in-loop
-      const r = await sendToDevice({ token, title, body, data, priority })
+      const r = await sendToDeviceWithRetry({ token, title, body, data, priority })
       results.push(r)
     }
 
@@ -234,5 +272,6 @@ module.exports = {
   initFirebase,
   ensureFirebaseApp,
   sendToDevice,
+  sendToDeviceWithRetry,
   sendToMultipleDevices,
 }

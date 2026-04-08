@@ -22,8 +22,11 @@ const findNearbyAvailableUsers = async ({
   requireAvailability = true, // Default to requiring available status
 }) => {
   try {
+    logger.info(`[findNearbyAvailableUsers] START: lng=${lng}, lat=${lat}, radius=${radiusMeters}m, requireAvailability=${requireAvailability}`)
+    
     // 1. Try REDIS first (Fastest)
     let redisUserIds = await getNearbyUserIds(lng, lat, radiusMeters);
+    logger.info(`[findNearbyAvailableUsers] Redis returned ${redisUserIds?.length || 0} user IDs: ${JSON.stringify(redisUserIds)}`)
 
     if (redisUserIds && redisUserIds.length > 0) {
       logger.info(`Redis found ${redisUserIds.length} potential users nearby.`)
@@ -42,13 +45,19 @@ const findNearbyAvailableUsers = async ({
         query.notificationPreferences = { $in: notificationPrefs }
       }
 
+      logger.info(`[findNearbyAvailableUsers] Redis query: ${JSON.stringify(query)}`)
+      
       const users = await User.find(query).limit(limit)
+      logger.info(`[findNearbyAvailableUsers] Redis query returned ${users.length} users`)
+      
       if (users.length > 0) {
         return users
       }
     }
 
     // 2. Fallback to MongoDB (Reliable)
+    logger.info(`[findNearbyAvailableUsers] Falling back to MongoDB...`)
+    
     const query = {
       accountStatus: { $in: ['active', 'pending_review', 'limited'] },
       isDeleted: false,
@@ -81,6 +90,77 @@ const findNearbyAvailableUsers = async ({
       .limit(limit)
 
     logger.info(`findNearbyAvailableUsers: Found ${users.length} users within ${radiusMeters}m of [${lat}, ${lng}]`)
+    
+    // Debug: Show all users' locations to verify distance
+    if (users.length === 0) {
+      logger.info(`[findNearbyAvailableUsers] DEBUG: No users found with $near query. Checking all users with locations...`)
+      
+      const allNearbyUsers = await User.find({
+        accountStatus: { $in: ['active', 'pending_review', 'limited'] },
+        isDeleted: false,
+        location: { $exists: true, $ne: null }
+      }).select('_id location fullName isAvailable accountStatus').limit(20)
+      
+      logger.info(`[findNearbyAvailableUsers] DEBUG: Found ${allNearbyUsers.length} total users with locations`)
+      
+      if (allNearbyUsers.length > 0) {
+        logger.info(`[findNearbyAvailableUsers] DEBUG: All users with locations:`, 
+          allNearbyUsers.map(u => ({
+            id: u._id,
+            name: u.fullName,
+            loc: u.location?.coordinates,
+            available: u.isAvailable,
+            status: u.accountStatus
+          }))
+        )
+        
+        // Calculate actual distance for each user
+        logger.info(`[findNearbyAvailableUsers] DEBUG: Distance calculation from [${lat}, ${lng}]:`)
+        allNearbyUsers.forEach(u => {
+          if (u.location?.coordinates) {
+            const [userLng, userLat] = u.location.coordinates
+            const dist = calculateDistance(lng, lat, userLng, userLat)
+            const withinRadius = dist <= radiusMeters
+            logger.info(`  - ${u.fullName} (${u._id}): ${dist}m ${withinRadius ? '✓' : '✗'} | available: ${u.isAvailable} | status: ${u.accountStatus}`)
+          }
+        })
+        
+        // Check without isAvailable filter
+        if (requireAvailability) {
+          const queryWithoutAvailability = {
+            accountStatus: { $in: ['active', 'pending_review', 'limited'] },
+            isDeleted: false,
+            _id: { $nin: excludeIds || [] },
+            location: {
+              $near: {
+                $geometry: {
+                  type: 'Point',
+                  coordinates: [lng, lat],
+                },
+                $maxDistance: radiusMeters,
+              },
+            },
+          }
+          const usersWithoutAvailabilityCheck = await User.find(queryWithoutAvailability)
+            .select('fullName profileImage location notificationPreferences isAvailable accountStatus role')
+            .limit(limit)
+          
+          logger.info(`[findNearbyAvailableUsers] DEBUG: Users found WITHOUT isAvailable filter: ${usersWithoutAvailabilityCheck.length}`)
+          if (usersWithoutAvailabilityCheck.length > 0) {
+            logger.info(`[findNearbyAvailableUsers] DEBUG: Users without availability filter:`,
+              usersWithoutAvailabilityCheck.map(u => ({
+                id: u._id,
+                name: u.fullName,
+                available: u.isAvailable
+              }))
+            )
+          }
+        }
+      } else {
+        logger.info(`[findNearbyAvailableUsers] DEBUG: No users have location data at all!`)
+      }
+    }
+    
     return users
   } catch (err) {
     logger.error('findNearbyAvailableUsers error:', err)

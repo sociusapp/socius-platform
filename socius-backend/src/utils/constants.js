@@ -195,12 +195,27 @@ const OTP = {
 // ─── NOTIFICATIONS ───────────────────────────────────────
 const NOTIFICATION_TYPE = {
   HELP_REQUEST_ALERT: 'help_request_alert',     // High alarm
+  HELP_REQUEST_DATA: 'help_request',           // Data payload (call-style UI)
   PRESENCE_ALARM: 'presence_alarm',             // High alarm
   ACCOUNT_UPDATE: 'account_update',
   SUBSCRIPTION: 'subscription',
   REQUEST_STATUS: 'request_status',
   REVIEW_DECISION: 'review_decision',
   CHAT_MESSAGE: 'chat_message',
+  CANCEL_ALARM: 'cancel_alarm',
+  REQUEST_ACKNOWLEDGED: 'request_acknowledged',
+  NO_HELPERS_NEARBY: 'no_helpers_nearby',
+  REQUEST_EXPIRING_WARNING: 'request_expiring_warning',
+  HELPER_ARRIVED: 'helper_arrived',
+  HELPER_DISTANCE_UPDATE: 'helper_distance_update',
+  COMMUNITY_BALANCE_NUDGE: 'community_balance_nudge',
+  BADGE_EARNED: 'badge_earned',
+  REQUEST_REMATCHED: 'request_rematched',
+  REQUEST_COMPLETION_PROMPT: 'request_completion_prompt',
+  /** Helper: scheduled meeting window ended (allotted time complete) */
+  HELP_SESSION_TIME_ENDED_HELPER: 'help_session_time_ended_helper',
+  /** Helper: requester extended the session — new end time in payload */
+  HELP_SESSION_EXTENDED_HELPER: 'help_session_extended_helper',
 }
 
 const NOTIFICATION_PRIORITY = {
@@ -217,7 +232,9 @@ const GEO = {
 
 // ─── AUTO CLOSE ──────────────────────────────────────────
 const AUTO_CLOSE = {
-  HELP_REQUEST_MINUTES: 60,         // 1 hour inactivity
+  HELP_REQUEST_MINUTES: 60,         // 1 hour inactivity (unmatched open/matching only)
+  /** After a helper accepts, extend SLA so the meeting is not killed by the original timer */
+  HELP_MATCHED_EXTENSION_MINUTES: 24 * 60,
   PRESENCE_REQUEST_MINUTES: 30,     // 30 min inactivity
   CHAT_DELETE_AFTER_HOURS: 24,      // messages delete 24hr after close
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -20,6 +20,7 @@ const LocalRequestScreen = ({ navigation, route }) => {
   const [request, setRequest] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const requestId = route?.params?.requestId;
+  const viewedMarkedRef = useRef(false);
   const baseRoot = useMemo(() => String(baseURL || '').replace(/\/api\/?$/, ''), []);
 
   // Custom Alert State
@@ -212,16 +213,23 @@ const LocalRequestScreen = ({ navigation, route }) => {
         return;
       }
 
-      // Attempt to notify backend, but navigate regardless of outcome
-      await declineHelpAsVolunteer(token, requestId).catch(err => {
-        console.log('Decline API failed, but proceeding to StayAway:', err);
-      });
-      
+      console.log('[LocalRequest] Not Available clicked', { requestId });
+      const declineResponse = await declineHelpAsVolunteer(token, requestId);
+      if (!declineResponse?.success) {
+        throw new Error(declineResponse?.message || 'Unable to mark Not Available');
+      }
+      console.log('[LocalRequest] Not Available API success', { requestId });
       navigation.navigate('StayAway', { requestId });
-
     } catch (error) {
-      console.error('Error in handleStayAway:', error);
-      navigation.navigate('StayAway', { requestId });
+      console.error('[LocalRequest] Not Available API failed', error);
+      showAlert(
+        'Unable to update status',
+        error?.response?.data?.message || error?.message || 'Please try again.',
+        [
+          { text: 'Retry', onPress: () => { closeAlert(); handleStayAway(); }, style: 'primary' },
+          { text: 'Cancel', onPress: closeAlert, style: 'cancel' },
+        ]
+      );
     } finally {
       setSubmitting(false);
     }
@@ -243,7 +251,8 @@ const LocalRequestScreen = ({ navigation, route }) => {
         return;
       }
 
-      const response = await getHelpRequestById(token, requestId);
+      const response = await getHelpRequestById(token, requestId, { cacheTtlMs: 0 });
+      console.log('[LocalRequest] Screen opened / request fetched', { requestId });
 
       if (response?.success && response?.data?.request) {
         const req = response.data.request;
@@ -316,8 +325,11 @@ const LocalRequestScreen = ({ navigation, route }) => {
   };
 
   useEffect(() => {
+    if (!requestId || viewedMarkedRef.current) return;
+    viewedMarkedRef.current = true;
+    // Force a network read once so backend can mark viewedAt immediately.
     loadRequest();
-  }, [navigation, requestId]);
+  }, [requestId]);
 
   return (
     <SafeAreaView style={styles.container}>

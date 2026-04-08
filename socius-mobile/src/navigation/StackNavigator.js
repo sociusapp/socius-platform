@@ -73,6 +73,10 @@ import P2PCallScreen from '../screens/Call/P2PCallScreen';
 import SafetyTipsScreen from '../screens/Prepare/SafetyTipsScreen';
 import WhenToAskPresenceScreen from '../screens/Prepare/WhenToAskPresenceScreen';
 
+// ==================== BLOG SCREENS ====================
+import BlogListScreen from '../screens/Blogs/BlogListScreen';
+import BlogDetailScreen from '../screens/Blogs/BlogDetailScreen';
+
 // ==================== COMMUNITY SCREENS (20) ====================
 import CommunityAroundScreen from '../screens/DailyHelp/CommunityAroundScreen';
 import HelpTypeScreen from '../screens/DailyHelp/UserDailyHelpRequest/HelpTypeScreen';
@@ -141,7 +145,11 @@ const StackNavigator = () => {
       }}
     >
       {/* ==================== ONBOARDING ==================== */}
-      <Stack.Screen name="Splash" component={SplashScreen} />
+      <Stack.Screen
+        name="Splash"
+        component={SplashScreen}
+        options={{ animation: 'none' }}
+      />
       <Stack.Screen name="WhatSociusIs" component={WhatSociusIsScreen} />
       <Stack.Screen name="WhatSociusIsNot" component={WhatSociusIsNotScreen} />
       <Stack.Screen name="Principles" component={PrinciplesScreen} />
@@ -236,6 +244,10 @@ const StackNavigator = () => {
       <Stack.Screen name="SteppedAway" component={SteppedAwayScreen} />
       <Stack.Screen name="StatusShared" component={StatusSharedScreen} />
       <Stack.Screen name="NearbyShared" component={NearbySharedScreen} />
+
+      {/* ==================== BLOG SCREENS ==================== */}
+      <Stack.Screen name="BlogList" component={BlogListScreen} />
+      <Stack.Screen name="BlogDetail" component={BlogDetailScreen} />
 
       {/* ==================== AWARENESS/PRESENCE FLOW SCREENS ==================== */}
       <Stack.Screen name="WhatsHappening" component={WhatsHappeningScreen} />

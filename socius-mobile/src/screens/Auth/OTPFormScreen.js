@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Keyboard, Platform, Animated, KeyboardAvoidingView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Device from 'expo-device';
@@ -16,8 +16,27 @@ import { getFcmToken } from '../../services/firebase/config';
 import { requestLocationPermission, getCurrentPosition } from '../../services/location/geolocation.service';
 import { updateAvailabilityLocation } from '../../services/api/incident.api';
 
+// ==================== DEV OTP FEATURES CONFIG ====================
+// Set to true to enable auto-fill, auto-verify, and OTP display
+// Works in both development and production builds
+// IMPORTANT: Set to false before Play Store release
+const ENABLE_DEV_OTP_FEATURES = true;
+// Set to true to auto-trigger verification after OTP is filled
+const AUTO_VERIFY_IN_DEV = false; // Change to true for instant login
+// ===============================================================
+
+const buildOtpDigits = (raw) => {
+  const digitsOnly = String(raw ?? '').replace(/\D/g, '').slice(0, 6);
+  const next = [];
+  for (let i = 0; i < 6; i += 1) {
+    next.push(digitsOnly[i] || '');
+  }
+  return next;
+};
+
 const OTPVerificationScreen = ({ navigation, route }) => {
-  const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  const { phone, countryCode, otp: serverOtpParam } = route?.params || {};
+  const [otp, setOtp] = useState(() => buildOtpDigits(serverOtpParam));
   const [timer, setTimer] = useState(30);
   const [canResend, setCanResend] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -50,14 +69,27 @@ const OTPVerificationScreen = ({ navigation, route }) => {
     setAlertVisible(false);
   };
 
-  const { phone, countryCode, otp: devOtp } = route?.params || {};
-
   // Animation value for the OTP overlay
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(-20)).current;
 
+  const fillOtpBoxes = (raw) => {
+    setOtp(buildOtpDigits(raw));
+  };
+
+  // DEV MODE: Auto-fill OTP from API/DB response
+  // Runs when ENABLE_DEV_OTP_FEATURES is true (works in all builds)
+  useLayoutEffect(() => {
+    if (!ENABLE_DEV_OTP_FEATURES) return;
+    if (!serverOtpParam) return;
+    setOtp(buildOtpDigits(serverOtpParam));
+    Keyboard.dismiss();
+  }, [serverOtpParam]);
+
+  // DEV MODE: Animate OTP banner when server returns OTP
   useEffect(() => {
-    if (devOtp) {
+    if (!ENABLE_DEV_OTP_FEATURES) return;
+    if (serverOtpParam) {
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1,
@@ -71,40 +103,32 @@ const OTPVerificationScreen = ({ navigation, route }) => {
         })
       ]).start();
     }
-  }, [devOtp]);
+  }, [serverOtpParam]);
 
-  // If in DEV mode and we have the OTP from previous screen, show it in a persistent overlay
-  const renderDevOtpOverlay = () => {
-    if (devOtp) {
-      return (
-        <Animated.View
-          style={[
-            styles.devOtpContainer,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }]
-            }
-          ]}
-        >
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => {
-              try {
-                const code = String(devOtp).replace(/\D/g, '').slice(0, 6).padEnd(6, '0');
-                const digits = code.split('');
-                setOtp(digits);
-                Keyboard.dismiss();
-              } catch { }
-            }}
-          >
-            <Text style={styles.devOtpText}>OTP: {devOtp}</Text>
-          </TouchableOpacity>
-        </Animated.View>
-      );
-    }
-    return null;
+  // DEV MODE: Show OTP banner for debugging
+  const renderDevOtpBanner = () => {
+    if (!ENABLE_DEV_OTP_FEATURES || !serverOtpParam) return null;
+    return (
+      <Animated.View
+        style={[
+          styles.devOtpBanner,
+          {
+            opacity: fadeAnim,
+            transform: [{ translateY: slideAnim }]
+          }
+        ]}
+      >
+        <View style={styles.devOtpBannerContent}>
+          <Text style={styles.devOtpBannerLabel}>🔧 TEST MODE</Text>
+          <Text style={styles.devOtpBannerCode}>{serverOtpParam}</Text>
+          <Text style={styles.devOtpBannerHint}>Tap Verify to continue</Text>
+          {AUTO_VERIFY_IN_DEV && (
+            <Text style={styles.devOtpBannerAuto}>Auto-verify enabled</Text>
+          )}
+        </View>
+      </Animated.View>
+    );
   };
-
   useEffect(() => {
     let interval;
     if (timer > 0 && !canResend) {
@@ -121,15 +145,24 @@ const OTPVerificationScreen = ({ navigation, route }) => {
     return () => clearInterval(interval);
   }, [canResend]);
 
+  // Focus first input or dismiss keyboard in dev mode
   useEffect(() => {
     const timeout = setTimeout(() => {
-      if (otpInputs.current[0]) {
-        otpInputs.current[0].focus();
+      // DEV MODE: Don't focus if OTP was auto-filled
+      if (ENABLE_DEV_OTP_FEATURES && serverOtpParam) {
+        Keyboard.dismiss();
+        // Optional: Auto-verify after short delay
+        if (AUTO_VERIFY_IN_DEV) {
+          setTimeout(() => {
+            handleVerify();
+          }, 800);
+        }
+        return;
       }
-    }, 400);
-
+      otpInputs.current[0]?.focus();
+    }, 280);
     return () => clearTimeout(timeout);
-  }, []);
+  }, [serverOtpParam]);
 
   const syncLocationAfterOtp = async (accessToken) => {
     try {
@@ -347,7 +380,7 @@ const OTPVerificationScreen = ({ navigation, route }) => {
       setOtpError('');
 
       const response = await sendOtpApi(phone, countryCode);
-      const { success, message } = response || {};
+      const { success, message, data } = response || {};
 
       if (!success) {
         const errorMessage =
@@ -357,7 +390,11 @@ const OTPVerificationScreen = ({ navigation, route }) => {
         return;
       }
 
-      setOtp(['', '', '', '', '', '']);
+      if (data?.otp) {
+        fillOtpBoxes(data.otp);
+      } else {
+        setOtp(['', '', '', '', '', '']);
+      }
       setTimer(30);
       setCanResend(false);
       otpInputs.current[0]?.focus();
@@ -381,7 +418,7 @@ const OTPVerificationScreen = ({ navigation, route }) => {
 
   return (
     <View style={{ flex: 1 }}>
-      {renderDevOtpOverlay()}
+      {renderDevOtpBanner()}
       <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
         <Header
           title=""
@@ -581,6 +618,55 @@ const styles = StyleSheet.create({
 
   buttonStyle: {
   },
+  // ===== DEV MODE: OTP Banner Styles =====
+  devOtpBanner: {
+    position: 'absolute',
+    top: 100,
+    left: 20,
+    right: 20,
+    backgroundColor: '#DC5C69', // Red color for visibility
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    zIndex: 99999,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 10,
+  },
+  devOtpBannerContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  devOtpBannerLabel: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 14,
+    marginBottom: 8,
+    letterSpacing: 1,
+  },
+  devOtpBannerCode: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 32,
+    letterSpacing: 4,
+  },
+  devOtpBannerHint: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontWeight: '500',
+    fontSize: 12,
+    marginTop: 4,
+  },
+  devOtpBannerAuto: {
+    color: '#FFD700',
+    fontWeight: '600',
+    fontSize: 11,
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+  // ===== END DEV MODE =====
+
   devOtpContainer: {
     position: 'absolute',
     top: 110,

@@ -10,14 +10,44 @@ import { useResponsive } from '../../../utils/responsive';
 import { getHelpRequestById, closeHelpRequest } from '../../../services/api/incident.api';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
 import { baseURL } from '../../../services/api/client';
-
-const { width, height } = Dimensions.get('window');
-
-import { getSocket, connectSocket } from '../../../services/socket/socket.service';
+import { getSocket, connectSocket, appEvents } from '../../../services/socket/socket.service';
 import { getSessionByRequest, getMessages, markMessagesRead } from '../../../services/api/chat.api';
 import ChatModal from '../../../components/common/ChatModal';
 import CustomAlert from '../../../components/common/CustomAlert';
 import { buildClosureInitiatedCopy, buildRequestClosedCopy } from '../../../utils/closureMessages';
+import {
+  ROUTES,
+  canStayOnMeetingMap,
+  isChatAllowedForStatus,
+  isClosingStatus,
+  isMeetingActive,
+  isTerminalHelpStatus,
+  normalizeHelpStatus,
+} from '../../../utils/helpRequestFlow';
+import {
+  syncActiveHelpSessionNotification,
+  stopActiveHelpSessionNotification,
+} from '../../../services/notifications/activeHelpSessionNotification';
+
+const { width, height } = Dimensions.get('window');
+
+const getMessageSenderId = (m) => {
+  const s = m?.senderId;
+  if (s == null) return '';
+  if (typeof s === 'object' && s._id != null) return String(s._id);
+  return String(s);
+};
+
+/** Unread = from other participant and not explicitly read (API uses isRead). */
+const countUnreadMessages = (messages, userId) => {
+  if (!Array.isArray(messages) || userId == null) return 0;
+  const uid = String(userId);
+  return messages.filter((m) => {
+    const sid = getMessageSenderId(m);
+    if (!sid || sid === uid) return false;
+    return m.isRead !== true;
+  }).length;
+};
 
 const MatchingMapScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
@@ -25,6 +55,24 @@ const MatchingMapScreen = ({ navigation, route }) => {
   const [loading, setLoading] = useState(!prefillRequest);
   const [request, setRequest] = useState(prefillRequest);
   const [chatVisible, setChatVisible] = useState(false);
+
+  useEffect(() => {
+    if (route?.params?.openChat) {
+      setChatVisible(true);
+      navigation.setParams({ openChat: undefined });
+    }
+  }, [route?.params?.openChat, navigation]);
+
+  useEffect(() => {
+    const requestIdParam = route?.params?.requestId;
+    const handler = (payload) => {
+      if (payload?.requestId && String(payload.requestId) === String(requestIdParam)) {
+        setChatVisible(true);
+      }
+    };
+    appEvents.on('open_chat', handler);
+    return () => appEvents.off('open_chat', handler);
+  }, [route?.params?.requestId]);
   const [prefillMessage, setPrefillMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -156,7 +204,7 @@ const MatchingMapScreen = ({ navigation, route }) => {
   };
 
   const handleCloseRequest = async () => {
-    navigation.navigate('ClosingRequest', {
+    navigation.navigate(ROUTES.requesterClosure, {
       requestId: request?.id || request?._id || requestId,
     });
   };
@@ -205,6 +253,14 @@ const MatchingMapScreen = ({ navigation, route }) => {
     await refreshRequestDetails();
     if (mountedRef.current) setRefreshing(false);
   }, [refreshRequestDetails, refreshing]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!requestId) return undefined;
+      refreshRequestDetails();
+      return undefined;
+    }, [requestId, refreshRequestDetails])
+  );
 
   const handleCancelRequest = () => {
     const rid = request?.id || request?._id || requestId;
@@ -370,11 +426,17 @@ const MatchingMapScreen = ({ navigation, route }) => {
                    
                    console.log('[MatchingMap] Socket volunteer data:', JSON.stringify(volunteerData, null, 2));
                    
-                   setRequest(prev => ({ 
-                      ...prev, 
+                   const merged = { 
                       ...response.data.request, 
                       volunteer: volunteerData,
-                      status: response.data.request.status // Ensure status is updated
+                      status: response.data.request.status,
+                   };
+                   if (data.sessionEndsAt) {
+                     merged.sessionEndsAt = data.sessionEndsAt;
+                   }
+                   setRequest(prev => ({ 
+                      ...prev, 
+                      ...merged,
                    }));
                    // Retry fetching session
                    const sessionRes = await getSessionByRequest(auth.accessToken, requestId);
@@ -383,6 +445,12 @@ const MatchingMapScreen = ({ navigation, route }) => {
                    }
                 }
              }
+          }
+        });
+
+        socket.on('help:session_updated', async (data) => {
+          if (data.requestId === requestId && data.sessionEndsAt) {
+            setRequest(prev => (prev ? { ...prev, sessionEndsAt: data.sessionEndsAt } : prev));
           }
         });
 
@@ -438,6 +506,8 @@ const MatchingMapScreen = ({ navigation, route }) => {
     setupSocket();
     return () => {
       if (socket) {
+        socket.off('help:accepted');
+        socket.off('help:session_updated');
         socket.off('help:request_updated');
         socket.off('help:request_taken');
       }
@@ -445,30 +515,91 @@ const MatchingMapScreen = ({ navigation, route }) => {
   }, [requestId, sessionId]);
 
   useEffect(() => {
-    if (request && !loading) {
-       const status = String(request.status || '').toLowerCase();
-       const activeStatuses = ['accepted', 'in_progress', 'matched', 'en_route', 'arrived', 'active'];
-       if (!activeStatuses.includes(status)) {
-          // If request is not accepted, redirect to RequestActive
-           showAlert(
-             'Request Pending',
-             'Your request has not been accepted yet. Please wait on the active request screen.',
-             [
-               { 
-                 text: 'OK', 
-                 onPress: () => {
-                   closeAlert();
-                   navigation.navigate('RequestActive');
-                 },
-                 style: 'primary'
-               }
-             ],
-             'clock-alert-outline',
-             '#DC5C69'
-           );
-       }
+    if (!request || !requestId) {
+      stopActiveHelpSessionNotification().catch(() => {});
+      return undefined;
     }
-  }, [request, loading]);
+    const status = String(request.status || '').toLowerCase();
+    const active = ['matched', 'active'].includes(status);
+    const reqRid = request.requesterId;
+    const requesterIdStr = reqRid?._id ? String(reqRid._id) : String(reqRid || '');
+    const isRequester =
+      currentUserId && requesterIdStr && String(currentUserId) === requesterIdStr;
+
+    if (!active || !isRequester || !request.sessionEndsAt) {
+      stopActiveHelpSessionNotification().catch(() => {});
+      return undefined;
+    }
+
+    const startAt = request.activeAt || request.matchedAt || request.updatedAt || Date.now();
+    syncActiveHelpSessionNotification({
+      requestId,
+      sessionEndsAt: request.sessionEndsAt,
+      sessionStartAt: startAt,
+    });
+
+    return () => {
+      stopActiveHelpSessionNotification().catch(() => {});
+    };
+  }, [
+    requestId,
+    request?.status,
+    request?.sessionEndsAt,
+    request?.requesterId,
+    request?.activeAt,
+    request?.matchedAt,
+    currentUserId,
+    request,
+  ]);
+
+  useEffect(() => {
+    if (request && !loading) {
+      const status = normalizeHelpStatus(request.status);
+      if (isClosingStatus(status)) return;
+
+      if (isTerminalHelpStatus(status)) {
+        showAlert(
+          'Request ended',
+          'This request is no longer active.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                closeAlert();
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+                });
+              },
+              style: 'primary',
+            },
+          ],
+          'alert-circle-outline',
+          '#DC5C69'
+        );
+        return;
+      }
+
+      if (!isMeetingActive(status)) {
+        showAlert(
+          'Request pending',
+          'Your request is not in a meeting yet. Please wait on the active request screen.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                closeAlert();
+                navigation.navigate('RequestActive');
+              },
+              style: 'primary',
+            },
+          ],
+          'clock-alert-outline',
+          '#DC5C69'
+        );
+      }
+    }
+  }, [request, loading, navigation]);
 
   useEffect(() => {
     const initChat = async () => {
@@ -487,16 +618,7 @@ const MatchingMapScreen = ({ navigation, route }) => {
 
             const msgsRes = await getMessages(token, session._id);
             if (msgsRes?.success && Array.isArray(msgsRes.data)) {
-              // Count unread messages from the other user
-              const unread = msgsRes.data.filter(
-                m => String(m.senderId) !== String(userId) && !m.isRead && !m.read
-              ).length;
-              console.log('Unread count calculation:', {
-                total: msgsRes.data.length,
-                userId,
-                unread,
-                sample: msgsRes.data.slice(0, 3).map(m => ({ id: m._id, sender: m.senderId, read: m.isRead }))
-              });
+              const unread = countUnreadMessages(msgsRes.data, userId);
               setUnreadCount(unread);
             }
           }
@@ -508,6 +630,32 @@ const MatchingMapScreen = ({ navigation, route }) => {
 
     initChat();
   }, [requestId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!sessionId) return undefined;
+      let alive = true;
+      const refreshBadge = async () => {
+        if (chatVisibleRef.current) return;
+        try {
+          const auth = await loadAuth();
+          const token = auth?.accessToken;
+          const uid = auth?.userId;
+          if (!token || !uid) return;
+          const res = await getMessages(token, sessionId);
+          if (alive && res?.success && Array.isArray(res.data)) {
+            setUnreadCount(countUnreadMessages(res.data, uid));
+          }
+        } catch (e) {
+          /* ignore */
+        }
+      };
+      refreshBadge();
+      return () => {
+        alive = false;
+      };
+    }, [sessionId])
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -524,16 +672,16 @@ const MatchingMapScreen = ({ navigation, route }) => {
       
       if (String(data.sessionId) === String(sessionId)) {
         const message = data.message || {};
-        const senderId = String(message.senderId || '');
         const myId = String(currentUserId || '');
-        
-        // Only increment if message is NOT from current user
-        if (myId && senderId && senderId !== myId) {
-            if (!chatVisibleRef.current) {
-               setUnreadCount(prev => prev + 1);
-               // Show toast with message content
-               showToast(message.content || message.text || 'New message');
-            }
+        const incomingSid =
+          typeof message.senderId === 'object' && message.senderId?._id != null
+            ? String(message.senderId._id)
+            : String(message.senderId || '');
+        if (myId && incomingSid && incomingSid !== myId) {
+          if (!chatVisibleRef.current) {
+            setUnreadCount((prev) => prev + 1);
+            showToast(message.content || message.text || 'New message');
+          }
         }
       }
     };
@@ -562,9 +710,11 @@ const MatchingMapScreen = ({ navigation, route }) => {
     let isMounted = true;
     let socket;
 
-    const handleClosureInitiated = (data) => {
+    const handleClosureInitiated = async (data) => {
       if (!isMounted) return;
       if (String(data?.requestId) !== String(requestId)) return;
+      stopActiveHelpSessionNotification().catch(() => {});
+      await refreshRequestDetails();
 
       const copy = buildClosureInitiatedCopy({
         requestId,
@@ -580,18 +730,11 @@ const MatchingMapScreen = ({ navigation, route }) => {
             text: 'Complete closure',
             onPress: () => {
               closeAlert();
-              navigation.navigate('ClosingRequest', { requestId });
+              navigation.navigate(ROUTES.requesterClosure, { requestId });
             },
             style: 'primary',
           },
-          {
-            text: 'Request again',
-            onPress: () => {
-              closeAlert();
-              navigation.navigate('HelpType');
-            },
-          },
-          { text: 'Later', onPress: closeAlert, style: 'cancel' },
+          { text: 'Not now', onPress: closeAlert, style: 'cancel' },
         ],
         'alert-circle-outline',
         '#DC5C69'
@@ -601,11 +744,13 @@ const MatchingMapScreen = ({ navigation, route }) => {
     const handleRequestClosed = (data) => {
       if (!isMounted) return;
       if (String(data?.requestId) !== String(requestId)) return;
+      stopActiveHelpSessionNotification().catch(() => {});
       const copy = buildRequestClosedCopy({
         requestId,
         requestType: data?.requestType || 'Help request',
         reason: data?.reason,
         occurredAt: data?.occurredAt,
+        userRole: 'requester',
       });
       showAlert(
         copy.title,
@@ -648,7 +793,7 @@ const MatchingMapScreen = ({ navigation, route }) => {
         socket.off('help:request_closed', handleRequestClosed);
       }
     };
-  }, [requestId, navigation]);
+  }, [requestId, navigation, refreshRequestDetails]);
 
   const showInitialLoading = loading && !request;
 
@@ -664,8 +809,10 @@ const MatchingMapScreen = ({ navigation, route }) => {
     longitudeDelta: 0.0421,
   };
 
-  const statusForChat = String(request?.status || '').toLowerCase();
-  const isChatAllowed = ['accepted', 'in_progress', 'matched', 'en_route', 'arrived', 'active'].includes(statusForChat);
+  const statusForChat = normalizeHelpStatus(request?.status);
+  const isChatAllowed = isChatAllowedForStatus(statusForChat);
+  const showMeetingActions = canStayOnMeetingMap(statusForChat);
+  const inClosure = isClosingStatus(statusForChat);
 
   const openCancelRequestScreen = useCallback(() => {
     const rid = request?.id || request?._id || requestId;
@@ -730,7 +877,7 @@ const MatchingMapScreen = ({ navigation, route }) => {
         style={{ borderBottomWidth: 1, borderBottomColor: '#E8EAED', backgroundColor: '#fff', zIndex: 10 }}
         rightComponent={
            isChatAllowed && (
-           <TouchableOpacity style={styles.messageButton} onPress={handleMessage}>
+           <TouchableOpacity style={styles.messageButton} onPress={() => handleMessage()}>
              <Icon name="message-text-outline" size={24} color="#DC5C69" />
              {unreadCount > 0 && (
                <View style={styles.badge}>
@@ -764,6 +911,15 @@ const MatchingMapScreen = ({ navigation, route }) => {
           {/* Active Request Label */}
           <Text style={styles.activeRequestLabel}>Active Request</Text>
 
+          {inClosure && (
+            <View style={styles.closureBanner}>
+              <Icon name="file-document-edit-outline" size={20} color="#92400E" style={{ marginRight: 8 }} />
+              <Text style={styles.closureBannerText}>
+                Closure is in progress. Use the button below to submit your part; the helper must complete theirs as well.
+              </Text>
+            </View>
+          )}
+
           {/* Map Card */}
           <View style={styles.mapCard}>
             <View style={styles.mapPreviewContainer}>
@@ -772,7 +928,7 @@ const MatchingMapScreen = ({ navigation, route }) => {
               ) : (
                 <MapView
                   ref={mapRef}
-                  style={styles.mapPreview}
+                  style={[styles.mapPreview, { backgroundColor: '#e8eaed' }]}
                   provider={PROVIDER_GOOGLE}
                   initialRegion={initialRegion}
                   showsUserLocation={true}
@@ -780,6 +936,8 @@ const MatchingMapScreen = ({ navigation, route }) => {
                   zoomEnabled={false}
                   rotateEnabled={false}
                   pitchEnabled={false}
+                  toolbarEnabled={false}
+                  mapPadding={{ top: 0, right: 0, bottom: 0, left: 0 }}
                 >
                   {request?.location?.coordinates && (
                     <Marker
@@ -843,19 +1001,37 @@ const MatchingMapScreen = ({ navigation, route }) => {
           </View>
 
           {/* Quick Message Input */}
-          <TouchableOpacity style={styles.quickMessageInput} onPress={() => handleMessage()}>
-            <Text style={styles.quickMessagePlaceholder}>Send a quick message</Text>
+          <TouchableOpacity
+            style={[styles.quickMessageInput, !isChatAllowed && styles.quickMessageDisabled]}
+            onPress={() => isChatAllowed && handleMessage()}
+            disabled={!isChatAllowed}
+          >
+            <Text style={styles.quickMessagePlaceholder}>
+              {isChatAllowed ? 'Send a quick message' : 'Chat unavailable during closure'}
+            </Text>
           </TouchableOpacity>
 
           {/* Quick Reply Chips */}
           <View style={styles.chipsContainer}>
-            <TouchableOpacity style={styles.chip} onPress={() => handleMessage("I'm near the gate")}>
+            <TouchableOpacity
+              style={[styles.chip, !isChatAllowed && styles.chipDisabled]}
+              onPress={() => isChatAllowed && handleMessage("I'm near the gate")}
+              disabled={!isChatAllowed}
+            >
               <Text style={styles.chipText}>I'm near the gate</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.chip} onPress={() => handleMessage("Inside building")}>
+            <TouchableOpacity
+              style={[styles.chip, !isChatAllowed && styles.chipDisabled]}
+              onPress={() => isChatAllowed && handleMessage('Inside building')}
+              disabled={!isChatAllowed}
+            >
               <Text style={styles.chipText}>Inside building</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.chip} onPress={() => handleMessage("2 minutes")}>
+            <TouchableOpacity
+              style={[styles.chip, !isChatAllowed && styles.chipDisabled]}
+              onPress={() => isChatAllowed && handleMessage('2 minutes')}
+              disabled={!isChatAllowed}
+            >
               <Text style={styles.chipText}>2 minutes</Text>
             </TouchableOpacity>
           </View>
@@ -865,41 +1041,42 @@ const MatchingMapScreen = ({ navigation, route }) => {
             <Text style={styles.openNavText}>Open Navigation</Text>
           </TouchableOpacity>
 
-          {/* Complete Request Button */}
-          <TouchableOpacity 
-            style={styles.completeRequestButton} 
-            onPress={() => navigation.navigate('ThankYouClosing', { requestId })}
+          {/* Complete Request — requester uses ClosingRequest (correct closure payload). */}
+          <TouchableOpacity
+            style={[
+              styles.completeRequestButton,
+              !showMeetingActions && styles.completeRequestButtonDisabled,
+            ]}
+            onPress={() => navigation.navigate(ROUTES.requesterClosure, { requestId })}
+            disabled={!showMeetingActions}
           >
-            <Text style={styles.completeRequestText}>Complete Request</Text>
+            <Text style={styles.completeRequestText}>
+              {inClosure ? 'Complete closure' : 'Complete Request'}
+            </Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
 
-      {/* Bottom Action Bar - Fixed at bottom */}
-      <View style={styles.bottomActionBar}>
-        <TouchableOpacity style={styles.actionBarItem}>
-          <Icon name="briefcase-outline" size={24} color="#DC5C69" />
-          <Text style={styles.actionBarLabel}>Borrow</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBarItem}>
-          <Icon name="clock-outline" size={24} color="#DC5C69" />
-          <Text style={styles.actionBarLabel}>Extend</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBarItem}>
-          <Icon name="alert-circle-outline" size={24} color="#DC5C69" />
-          <Text style={styles.actionBarLabel}>Report</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBarItem}>
-          <Icon name="dots-horizontal" size={24} color="#DC5C69" />
-          <Text style={styles.actionBarLabel}>More</Text>
-        </TouchableOpacity>
-      </View>
-
       <ChatModal
         visible={chatVisible}
-        onClose={() => {
+        onClose={async () => {
           setChatVisible(false);
           setPrefillMessage('');
+          if (sessionId) {
+            try {
+              const auth = await loadAuth();
+              const token = auth?.accessToken;
+              const uid = auth?.userId;
+              if (token && uid) {
+                const res = await getMessages(token, sessionId);
+                if (res?.success && Array.isArray(res.data)) {
+                  setUnreadCount(countUnreadMessages(res.data, uid));
+                }
+              }
+            } catch (e) {
+              /* keep prior count */
+            }
+          }
         }}
         requestId={requestId}
         otherUserName={request?.volunteer?.firstName}
@@ -950,6 +1127,23 @@ const styles = StyleSheet.create({
     color: '#DC5C69',
     marginBottom: 8,
     marginLeft: 4,
+  },
+  closureBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+  },
+  closureBannerText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#92400E',
+    lineHeight: 18,
+    fontWeight: '500',
   },
   distanceBadge: {
     position: 'absolute',
@@ -1060,6 +1254,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#999',
   },
+  quickMessageDisabled: {
+    opacity: 0.5,
+  },
   chipsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1077,6 +1274,9 @@ const styles = StyleSheet.create({
     color: '#555',
     fontWeight: '500',
   },
+  chipDisabled: {
+    opacity: 0.45,
+  },
   completeRequestButton: {
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
@@ -1090,6 +1290,9 @@ const styles = StyleSheet.create({
     color: '#DC5C69',
     fontSize: 16,
     fontWeight: '700',
+  },
+  completeRequestButtonDisabled: {
+    opacity: 0.45,
   },
   openNavButton: {
     backgroundColor: '#DC5C69',
@@ -1107,34 +1310,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
-  },
-  bottomActionBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 16,
-    right: 16,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    paddingVertical: 12,
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 8,
-    zIndex: 10,
-  },
-  actionBarItem: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  actionBarLabel: {
-    fontSize: 11,
-    color: '#666',
-    marginTop: 4,
-    fontWeight: '500',
   },
   toastContainer: {
     position: 'absolute',
@@ -1187,13 +1362,14 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   mapPreviewContainer: {
-    height: 150,
+    height: 180,
     width: '100%',
     position: 'relative',
   },
   mapPreview: {
     width: '100%',
     height: '100%',
+    borderRadius: 12,
   },
   locationOverlay: {
     position: 'absolute',
@@ -1396,20 +1572,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
+    overflow: 'visible',
+    zIndex: 3,
   },
   badge: {
     position: 'absolute',
-    top: -5,
-    right: -5,
+    top: -4,
+    right: -6,
     backgroundColor: '#FF3B30',
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
+    borderRadius: 11,
+    minWidth: 22,
+    height: 22,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 4,
-    borderWidth: 1.5,
+    paddingHorizontal: 5,
+    borderWidth: 2,
     borderColor: '#FFFFFF',
+    zIndex: 4,
   },
   badgeText: {
     color: '#FFFFFF',

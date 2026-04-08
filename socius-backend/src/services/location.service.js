@@ -62,6 +62,8 @@ const getBusyRequesterIdSet = async (candidateIds) => {
   const ids = (candidateIds || []).map((id) => String(id))
   if (ids.length === 0) return new Set()
 
+  logger.info(`[getBusyRequesterIdSet] Checking ${ids.length} candidates: ${ids.join(', ')}`)
+
   const [busyHelp, busyPresence] = await Promise.all([
     HelpRequest.distinct('requesterId', {
       requesterId: { $in: ids },
@@ -73,7 +75,23 @@ const getBusyRequesterIdSet = async (candidateIds) => {
     }),
   ])
 
-  return new Set([...busyHelp.map(String), ...busyPresence.map(String)])
+  const busySet = new Set([...busyHelp.map(String), ...busyPresence.map(String)])
+  
+  logger.info(`[getBusyRequesterIdSet] Busy from HelpRequest: ${busyHelp.length} [${busyHelp.join(', ')}]`)
+  logger.info(`[getBusyRequesterIdSet] Busy from PresenceRequest: ${busyPresence.length} [${busyPresence.join(', ')}]`)
+  logger.info(`[getBusyRequesterIdSet] Total busy users: ${busySet.size} [${[...busySet].join(', ')}]`)
+
+  // Check all requests for each busy user to understand why they're busy
+  for (const userId of busySet) {
+    const userRequests = await HelpRequest.find({ 
+      requesterId: userId,
+      status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING, HELP_REQUEST_STATUS.MATCHED, HELP_REQUEST_STATUS.ACTIVE] }
+    }).select('_id status category').lean()
+    
+    logger.info(`[getBusyRequesterIdSet] User ${userId} busy requests:`, userRequests.map(r => ({ id: r._id, status: r.status, category: r.category })))
+  }
+
+  return busySet
 }
 
 /**
@@ -86,15 +104,13 @@ const findHelpersForRequest = async ({
   excludeIds = [],
 }) => {
   try {
+    logger.info(`[findHelpersForRequest] START: lng=${lng}, lat=${lat}, excludeIds=${excludeIds.join(',')}`)
+    
     // Enhanced validation
     const validatedCoords = validateCoordinates(lng, lat)
     const validatedRadius = validateRadius(GEO.DEFAULT_RADIUS_METERS)
     
-    // Logic: 
-    // 1. Find nearby users (MUST BE AVAILABLE) - As per user request "ab jo isAvailable ho tabhi us ko HELP_REQUEST jaye"
-    // 2. Filter by category if needed (but currently we want all nearby)
-    
-    // TODO: Add category-based filtering later if needed
+    logger.info(`[findHelpersForRequest] Using radius: ${validatedRadius}m`)
     
     let helpers = await findNearbyAvailableUsers({
       lng: validatedCoords.lng,
@@ -102,8 +118,11 @@ const findHelpersForRequest = async ({
       radiusMeters: validatedRadius,
       excludeIds,
       limit: 50,
-      requireAvailability: true, // Only available users should receive the request
+      requireAvailability: true,
     })
+
+    logger.info(`[findHelpersForRequest] Found ${helpers.length} nearby users BEFORE busy filter`)
+    logger.info(`[findHelpersForRequest] Helper IDs before filter: ${helpers.map(h => String(h._id)).join(', ')}`)
 
     // Add distance to each helper
     helpers = helpers.map((h) => {
@@ -118,26 +137,22 @@ const findHelpersForRequest = async ({
 
     try {
       const busySet = await getBusyRequesterIdSet(helpers.map((h) => h._id))
+      logger.info(`[findHelpersForRequest] Busy users found: ${[...busySet].join(', ')}`)
+      
       if (busySet.size > 0) {
+        const beforeCount = helpers.length
         helpers = helpers.filter((h) => !busySet.has(String(h._id)))
+        logger.info(`[findHelpersForRequest] Filtered out ${beforeCount - helpers.length} busy helpers, ${helpers.length} remaining`)
       }
     } catch (e) {
       logger.error('Failed to filter busy helpers', e)
-      // Continue with unfiltered helpers - don't fail the request
     }
 
+    logger.info(`[findHelpersForRequest] RETURNING ${helpers.length} helpers`)
     return helpers
   } catch (error) {
-    if (error.code && error.code.startsWith('INVALID_')) {
-      throw error // Re-throw validation errors
-    }
-    
-    logger.error('Error in findHelpersForRequest:', error)
-    throw createLocationError(
-      'Failed to find helpers due to server error',
-      LOCATION_ERROR_CODES.DATABASE_ERROR,
-      500
-    )
+    logger.error('[findHelpersForRequest] ERROR:', error)
+    throw error
   }
 }
 

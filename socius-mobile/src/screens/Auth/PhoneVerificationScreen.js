@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Keyboard, Platform, ToastAndroid, KeyboardAvoidingView, PermissionsAndroid, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Keyboard, Platform, KeyboardAvoidingView, PermissionsAndroid, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useResponsive } from '../../utils/responsive';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -80,7 +80,9 @@ const PhoneVerificationScreen = ({ navigation }) => {
 
       // Send both phone and country code for validation
       const response = await sendOtp(phoneNumber, selectedCountry.dial);
-      console.log('Send OTP Response:', response);
+      if (__DEV__) {
+        console.log('Send OTP Response:', response);
+      }
       const { success, message, data, errorCode } = response || {};
       
       // Handle specific error case where country doesn't match registered number
@@ -93,17 +95,10 @@ const PhoneVerificationScreen = ({ navigation }) => {
         return;
       }
 
-      const otp = data?.otp;
-
-      if (otp) {
-        // Show toast for quick feedback (Android only)
-        if (Platform.OS === 'android') {
-          ToastAndroid.show(`OTP: ${otp}`, ToastAndroid.LONG);
-        } else {
-          // Fallback for iOS since ToastAndroid doesn't work there
-          showAlert('Development OTP', `Your OTP is: ${otp}`, [{ text: 'OK', onPress: closeAlert }]);
-        }
-      }
+      const sentOtp =
+        data?.otp != null && String(data.otp).trim() !== ''
+          ? String(data.otp).trim()
+          : null;
 
       if (!success) {
         const errorMessage = message || 'Failed to send OTP. Please try again.';
@@ -114,7 +109,7 @@ const PhoneVerificationScreen = ({ navigation }) => {
       navigation.navigate('OTPForm', {
         phone: phoneNumber,
         countryCode: selectedCountry.dial,
-        otp: otp // Pass OTP for development display
+        ...(sentOtp ? { otp: sentOtp } : {}),
       });
     } catch (error) {
       const apiMessage =

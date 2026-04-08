@@ -74,6 +74,13 @@ const submitDocuments = async (userId, files) => {
     throw err
   }
 
+  if (verification.status === 'failed') {
+    const err = new Error('Please use the retry flow to resubmit verification')
+    err.statusCode = 409
+    err.code = 'VERIFICATION_USE_RETRY'
+    throw err
+  }
+
   const updates = { submittedAt: new Date(), status: 'pending' }
 
   if (files?.government_id?.[0]) {

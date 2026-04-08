@@ -2,6 +2,7 @@ const Badge = require('../models/Badge')
 const HelpMatch = require('../models/HelpMatch')
 const { BADGE_TYPE } = require('../utils/constants')
 const logger = require('../utils/logger')
+const { sendBadgeEarnedNotification } = require('./notification.service')
 
 /**
  * User ke badges get karo
@@ -34,6 +35,9 @@ const awardBadge = async (userId, type, awardedBy = 'system', adminId = null) =>
   })
 
   logger.info(`Badge awarded: ${type} to ${userId}`)
+  sendBadgeEarnedNotification(userId, { badgeType: type }).catch((e) =>
+    logger.error('sendBadgeEarnedNotification failed', e)
+  )
   return badge
 }
 

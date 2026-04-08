@@ -3,6 +3,7 @@ import { loadAuth } from '../storage/asyncStorage.service';
 import { baseURL } from '../api/client';
 
 let socket = null;
+let socketAuthToken = null;
 
 // Simple custom EventEmitter for React Native (no Node.js dependencies)
 class SimpleEventEmitter {
@@ -47,9 +48,18 @@ export const connectSocket = async () => {
       return null;
     }
 
-    if (socket && socket.connected) {
+    if (socket && socket.connected && socketAuthToken === token) {
       console.log('Socket already connected');
       return socket;
+    }
+
+    // Auth changed (new login / refresh): recreate socket with latest token.
+    if (socket && socketAuthToken !== token) {
+      try {
+        socket.removeAllListeners();
+        socket.disconnect();
+      } catch (e) {}
+      socket = null;
     }
 
     // Initialize
@@ -76,6 +86,8 @@ export const connectSocket = async () => {
     socket.on('disconnect', (reason) => {
       console.log('Socket disconnected:', reason);
     });
+
+    socketAuthToken = token;
 
     return socket;
   } catch (error) {
@@ -106,6 +118,7 @@ export const disconnectSocket = () => {
   if (socket) {
     socket.disconnect();
     socket = null;
+    socketAuthToken = null;
     console.log('Socket disconnected manually');
   }
 };

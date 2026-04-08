@@ -4,8 +4,17 @@ const Verification = require('../models/Verification')
 const PresenceRequest = require('../models/PresenceRequest')
 const HelpCategory = require('../models/HelpCategory')
 const { findHelpersForRequest } = require('./location.service')
-const { sendHelpRequestAlert, sendMatchedNotification, sendCancelAlert } = require('./notification.service')
+const {
+  sendHelpRequestAlert,
+  sendMatchedNotification,
+  sendCancelAlert,
+  sendRequestAcknowledgedNotification,
+  sendNoHelpersNearbyNotification,
+  sendHelperArrivedNotification,
+  sendHelperSessionExtendedNotification,
+} = require('./notification.service')
 const { findNearbyAvailableUsers } = require('../utils/geoQuery')
+const { parseRequestedDurationMinutes } = require('../utils/helpDuration')
 const {
   updateHelpRequestLocation,
   getNearbyHelpRequestIds,
@@ -48,6 +57,38 @@ const { emitToUser } = require('../config/socket')
 const { HELP_REQUEST_STATUS, HELP_MATCH_STATUS, PRESENCE_STATUS, GEO, AUTO_CLOSE } = require('../utils/constants')
 const logger = require('../utils/logger')
 const { logRequestAttempt } = require('./requestAttempt.service')
+
+const computeHelpRequestStats = async (requestId) => {
+  const matches = await HelpMatch.find({ requestId }).select('status viewedAt markedDeliveredAt').lean()
+  return {
+    totalCandidates: matches.length,
+    notificationSentCount: matches.filter(
+      (m) => String(m.status || '').toLowerCase() !== HELP_MATCH_STATUS.PENDING || !!m.markedDeliveredAt
+    ).length,
+    viewedCount: matches.filter((m) => !!m.viewedAt).length,
+    declinedCount: matches.filter((m) =>
+      [HELP_MATCH_STATUS.DECLINED, HELP_MATCH_STATUS.NOT_AVAILABLE].includes(
+        String(m.status || '').toLowerCase()
+      )
+    ).length,
+    acceptedCount: matches.filter((m) => String(m.status || '').toLowerCase() === HELP_MATCH_STATUS.ACCEPTED)
+      .length,
+  }
+}
+
+const emitHelpRequestStatsUpdate = async ({ requestId, requesterId, type, extra = {} }) => {
+  try {
+    const stats = await computeHelpRequestStats(requestId)
+    emitToUser(String(requesterId), 'help:request_updated', {
+      requestId: String(requestId),
+      type,
+      stats,
+      ...extra,
+    })
+  } catch (e) {
+    logger.error('help:request_updated emit failed', e)
+  }
+}
 
 const updateRequest = async (requesterId, requestId, { category, description, time, location, itemReturnRequired }) => {
   const allowedStatuses = [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING]
@@ -103,6 +144,13 @@ const updateRequest = async (requesterId, requestId, { category, description, ti
  */
 const createRequest = async (requesterId, { category, description, time, location, itemReturnRequired }, meta = null) => {
   logger.info(`[HelpRequest] createRequest by=${requesterId} cat=${category} loc=(${location?.lng},${location?.lat})`)
+  
+  // Check ALL requests for this user (not just active ones) for debugging
+  const allUserRequests = await HelpRequest.find({
+    requesterId,
+  }).select('_id status category').lean()
+  logger.info(`[HelpRequest] All requests for user ${requesterId}:`, allUserRequests.map(r => ({ id: r._id, status: r.status, category: r.category })))
+  
   // Active request check — ek time pe ek hi request
   const activeRequest = await HelpRequest.findOne({
     requesterId,
@@ -184,13 +232,14 @@ const createRequest = async (requesterId, { category, description, time, locatio
   let attemptId = null
   if (helpers.length === 0) {
     try {
-      const candidatesExcludingSelf = await findNearbyAvailableUsers({
+      // Check ALL nearby users (not just available ones) to determine if they're busy or just not available
+      const allNearbyUsersExcludingSelf = await findNearbyAvailableUsers({
         lng: location.lng,
         lat: location.lat,
         radiusMeters: GEO.DEFAULT_RADIUS_METERS,
         excludeIds: [requesterId],
         limit: 50,
-        requireAvailability: true,
+        requireAvailability: false, // Get ALL users, not just available ones
       })
       const candidatesIncludingSelf = await findNearbyAvailableUsers({
         lng: location.lng,
@@ -201,10 +250,17 @@ const createRequest = async (requesterId, { category, description, time, locatio
         requireAvailability: true,
       })
 
-      if (candidatesIncludingSelf.length > 0 && candidatesExcludingSelf.length === 0) {
+      // Check which nearby users are actually busy (have active requests)
+      const busyUserIds = await getBusyRequesterIdSet(allNearbyUsersExcludingSelf.map(u => u._id))
+      const busyUsersCount = allNearbyUsersExcludingSelf.filter(u => busyUserIds.has(String(u._id))).length
+
+      if (candidatesIncludingSelf.length > 0 && allNearbyUsersExcludingSelf.length === 0) {
         helperAvailabilityHint = 'only_self_available'
-      } else if (candidatesExcludingSelf.length > 0) {
+      } else if (busyUsersCount > 0) {
         helperAvailabilityHint = 'helpers_busy_or_ineligible'
+      } else if (allNearbyUsersExcludingSelf.length > 0) {
+        // Users nearby but none are available (not busy, just unavailable)
+        helperAvailabilityHint = 'no_helpers_in_radius'
       } else {
         helperAvailabilityHint = 'no_helpers_in_radius'
       }
@@ -269,8 +325,48 @@ const createRequest = async (requesterId, { category, description, time, locatio
     }))
     await HelpMatch.insertMany(matchDocs)
 
-    // HIGH ALARM notification bhejo
-    await sendHelpRequestAlert(helpers, request)
+    // HIGH ALARM notification bhejo (track exact successful deliveries)
+    const alertResult = await sendHelpRequestAlert(helpers, request)
+    const deliveredHelperIds = Array.isArray(alertResult?.deliveredHelperIds)
+      ? alertResult.deliveredHelperIds.map((id) => String(id))
+      : []
+    if (deliveredHelperIds.length > 0) {
+      await HelpMatch.updateMany(
+        {
+          requestId: request._id,
+          helperId: { $in: deliveredHelperIds },
+          status: HELP_MATCH_STATUS.PENDING,
+        },
+        {
+          $set: {
+            status: HELP_MATCH_STATUS.NOTIFIED,
+            markedDeliveredAt: new Date(),
+          },
+        }
+      )
+      await emitHelpRequestStatsUpdate({
+        requestId: request._id,
+        requesterId,
+        type: 'notified',
+        extra: { deliveredCount: deliveredHelperIds.length },
+      })
+    }
+
+    for (const h of helpers) {
+      try {
+        emitToUser(String(h._id), 'help:incoming_request', {
+          requestId: String(request._id),
+          category: request.category || '',
+          categoryName: request.categoryName || '',
+          categoryIcon: request.categoryIcon || '',
+          description: request.description || '',
+          distanceMeters: String(h.distanceMeters != null ? Math.round(h.distanceMeters) : ''),
+          area: request.location?.address || '',
+        })
+      } catch (e) {
+        logger.error('help:incoming_request emit failed', e)
+      }
+    }
 
     await HelpRequest.findByIdAndUpdate(request._id, {
       status: HELP_REQUEST_STATUS.OPEN,
@@ -278,6 +374,22 @@ const createRequest = async (requesterId, { category, description, time, locatio
   }
 
   logger.info(`Help request created: ${request._id} by ${requesterId}`)
+
+  const receivedAt = new Date().toISOString()
+  sendRequestAcknowledgedNotification(requesterId, {
+    requestId: request._id,
+    correlationId: attemptId || String(request._id),
+    serverReceivedAt: receivedAt,
+  }).catch((e) => logger.error('sendRequestAcknowledgedNotification failed', e))
+
+  if (helpers.length === 0) {
+    sendNoHelpersNearbyNotification(requesterId, {
+      requestId: request._id,
+      hint: helperAvailabilityHint || '',
+      attemptId: attemptId || '',
+    }).catch((e) => logger.error('sendNoHelpersNearbyNotification failed', e))
+  }
+
   return {
     request,
     noHelpersFound: helpers.length === 0,
@@ -287,7 +399,7 @@ const createRequest = async (requesterId, { category, description, time, locatio
 }
 
 /**
- * Helper ne accept kiya
+ * Helper ne accept kiya (atomic: partial unique index on HelpMatch + conditional HelpRequest update)
  */
 const acceptRequest = async (helperId, requestId) => {
   const busyRequester = await HelpRequest.findOne({
@@ -312,7 +424,7 @@ const acceptRequest = async (helperId, requestId) => {
     throw err
   }
 
-  const request = await HelpRequest.findById(requestId)
+  let request = await HelpRequest.findById(requestId)
   if (!request || !['open', 'matching', 'matched', 'active'].includes(request.status)) {
     const err = new Error('Request is no longer available')
     err.statusCode = 409
@@ -325,68 +437,133 @@ const acceptRequest = async (helperId, requestId) => {
     throw err
   }
 
-  const existingAccepted = await HelpMatch.findOne({
+  const taken = await HelpMatch.findOne({
     requestId,
     status: HELP_MATCH_STATUS.ACCEPTED,
-  }).select('helperId status')
-
-  if (existingAccepted && String(existingAccepted.helperId) !== String(helperId)) {
+    helperId: { $ne: helperId },
+  }).select('helperId')
+  if (taken) {
     const err = new Error('Request is no longer available')
     err.statusCode = 409
     throw err
   }
 
   let match = await HelpMatch.findOne({ requestId, helperId })
-
-  if (match && [HELP_MATCH_STATUS.COMPLETED].includes(match.status)) {
+  if (match && match.status === HELP_MATCH_STATUS.COMPLETED) {
     const err = new Error('Request not found or already responded')
     err.statusCode = 409
     throw err
   }
-
-  if (!match) {
-    match = await HelpMatch.create({
-      requestId,
-      helperId,
-      status: HELP_MATCH_STATUS.PENDING,
-      notifiedAt: new Date(),
-    })
-  }
-
-  if (match.status === HELP_MATCH_STATUS.ACCEPTED) {
+  if (match && match.status === HELP_MATCH_STATUS.ACCEPTED) {
     return { request, match }
   }
 
-  // REDIS REMOVE
-  removeHelpRequestLocation(requestId).catch(e => logger.error('Redis remove on accept failed', e))
-
-  // Match accept karo
-  match.status = HELP_MATCH_STATUS.ACCEPTED
-  match.acceptedAt = new Date()
-  match.respondedAt = new Date()
-
-  // Ensure helperClosure is initialized if missing
-  if (!match.helperClosure) {
-    match.helperClosure = {
-      wasResolved: null,
-      accountability: null,
-      rating: null,
-      closedAt: null
-    };
+  if (!match) {
+    try {
+      match = await HelpMatch.create({
+        requestId,
+        helperId,
+        status: HELP_MATCH_STATUS.PENDING,
+        notifiedAt: new Date(),
+      })
+    } catch (e) {
+      if (e && e.code === 11000) {
+        match = await HelpMatch.findOne({ requestId, helperId })
+      } else {
+        throw e
+      }
+    }
   }
 
-  await match.save()
+  const extendUntil = new Date(Date.now() + AUTO_CLOSE.HELP_MATCHED_EXTENSION_MINUTES * 60 * 1000)
+  let promoted
+  try {
+    promoted = await HelpMatch.findOneAndUpdate(
+      {
+        _id: match._id,
+        status: { $in: [HELP_MATCH_STATUS.PENDING, HELP_MATCH_STATUS.NOTIFIED] },
+      },
+      {
+        $set: {
+          status: HELP_MATCH_STATUS.ACCEPTED,
+          acceptedAt: new Date(),
+          respondedAt: new Date(),
+          'helperClosure.wasResolved': null,
+          'helperClosure.accountability': null,
+          'helperClosure.rating': null,
+          'helperClosure.closedAt': null,
+        },
+      },
+      { new: true }
+    )
+  } catch (e) {
+    if (e && e.code === 11000) {
+      const err = new Error('Request is no longer available')
+      err.statusCode = 409
+      throw err
+    }
+    throw e
+  }
 
-  // Request matched mark karo
-  await HelpRequest.findByIdAndUpdate(requestId, {
-    status: HELP_REQUEST_STATUS.MATCHED,
-    matchedAt: new Date(),
-  })
+  if (!promoted) {
+    const selfAccepted = await HelpMatch.findOne({ requestId, helperId, status: HELP_MATCH_STATUS.ACCEPTED })
+    if (selfAccepted) {
+      request = await HelpRequest.findById(requestId)
+      return { request, match: selfAccepted }
+    }
+    const err = new Error('Request is no longer available')
+    err.statusCode = 409
+    throw err
+  }
+
+  const sessionEndsAt = new Date(
+    Date.now() + parseRequestedDurationMinutes(request.requestedDurationLabel) * 60 * 1000
+  )
+
+  const reqUpdated = await HelpRequest.findOneAndUpdate(
+    {
+      _id: requestId,
+      status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING] },
+    },
+    {
+      $set: {
+        status: HELP_REQUEST_STATUS.MATCHED,
+        matchedAt: new Date(),
+        activeAt: new Date(),
+        autoCloseScheduledAt: extendUntil,
+        sessionEndsAt,
+        completionPromptSentAt: null,
+      },
+    },
+    { new: true }
+  )
+
+  if (!reqUpdated) {
+    await HelpMatch.findOneAndUpdate(
+      { _id: promoted._id },
+      {
+        $set: { status: HELP_MATCH_STATUS.PENDING },
+        $unset: { acceptedAt: 1, respondedAt: 1 },
+      }
+    )
+    const err = new Error('Request is no longer available')
+    err.statusCode = 409
+    throw err
+  }
+
+  request = reqUpdated
+  match = promoted
+
+  removeHelpRequestLocation(requestId).catch(e => logger.error('Redis remove on accept failed', e))
 
   try {
     emitToUser(String(request.requesterId), 'help:accepted', {
       requestId: String(requestId),
       helperId: String(helperId),
+      sessionEndsAt:
+        request.sessionEndsAt != null
+          ? new Date(request.sessionEndsAt).toISOString()
+          : sessionEndsAt.toISOString(),
     })
   } catch (e) {
     logger.error('Failed to emit help:accepted', e)
@@ -395,17 +572,16 @@ const acceptRequest = async (helperId, requestId) => {
   const otherHelpers = await HelpMatch.find({
     requestId,
     helperId: { $ne: helperId },
-    status: { $in: [HELP_MATCH_STATUS.PENDING, HELP_MATCH_STATUS.NOTIFIED] }
+    status: { $in: [HELP_MATCH_STATUS.PENDING, HELP_MATCH_STATUS.NOTIFIED] },
   })
 
   for (const h of otherHelpers) {
     emitToUser(h.helperId, 'help:request_taken', { requestId })
   }
 
-  // Send Cancel Push Notification (Data only) to stop ringing on killed apps
-  const otherHelperIds = otherHelpers.map(h => h.helperId);
+  const otherHelperIds = otherHelpers.map(h => h.helperId)
   if (otherHelperIds.length > 0) {
-    sendCancelAlert(otherHelperIds, requestId).catch(err => logger.error('Failed to send cancel alert', err));
+    sendCancelAlert(otherHelperIds, requestId).catch(err => logger.error('Failed to send cancel alert', err))
   }
 
   await HelpMatch.updateMany(
@@ -413,17 +589,8 @@ const acceptRequest = async (helperId, requestId) => {
     { status: HELP_MATCH_STATUS.CANCELLED }
   )
 
-  // Requester ko notification
   const helper = await require('../models/User').findById(helperId).select('fullName')
   await sendMatchedNotification(request.requesterId, helper?.fullName || 'Someone', requestId)
-
-  // Chat session create karo
-  console.log('[HelpRequestService] Creating chat session with params:', {
-    requestId,
-    requestType: 'HelpRequest',
-    requesterId: request.requesterId,
-    helperId,
-  })
 
   try {
     await chatService.createSession({
@@ -433,10 +600,7 @@ const acceptRequest = async (helperId, requestId) => {
       helperId,
     })
   } catch (error) {
-    console.error('[HelpRequestService] Error creating chat session:', error)
-    // We don't throw here to avoid failing the accept flow if chat creation fails?
-    // Or maybe we should throw? The original code didn't catch it specifically, so it would propagate.
-    // Let's re-throw to be safe and consistent with original behavior.
+    logger.error('[HelpRequestService] Error creating chat session', error)
     throw error
   }
 
@@ -457,10 +621,11 @@ const declineRequest = async (helperId, requestId) => {
     // Notify requester about decline
     const request = await HelpRequest.findById(requestId).select('requesterId')
     if (request) {
-      emitToUser(request.requesterId.toString(), 'help:request_updated', {
+      await emitHelpRequestStatsUpdate({
         requestId,
+        requesterId: request.requesterId,
         type: 'declined',
-        helperId
+        extra: { helperId },
       })
     }
   }
@@ -494,7 +659,11 @@ const cancelRequest = async (requesterId, requestId) => {
   request.cancelledAt = new Date()
   await request.save()
 
-  // All pending matches cancel karo
+  const matchesBeforeCancel = await HelpMatch.find({ requestId })
+    .select('helperId status')
+    .lean()
+
+  // All pending/notified/accepted matches cancel karo
   await HelpMatch.updateMany(
     { requestId, status: { $in: [HELP_MATCH_STATUS.PENDING, HELP_MATCH_STATUS.NOTIFIED, HELP_MATCH_STATUS.ACCEPTED] } },
     { status: HELP_MATCH_STATUS.CANCELLED }
@@ -502,10 +671,13 @@ const cancelRequest = async (requesterId, requestId) => {
 
   const occurredAt = new Date().toISOString()
   try {
-    const matches = await HelpMatch.find({ requestId })
-      .select('helperId status')
-      .lean()
-    const helperIds = [...new Set(matches.map((m) => String(m.helperId)).filter(Boolean))]
+    const helperIds = [...new Set(matchesBeforeCancel.map((m) => String(m.helperId)).filter(Boolean))]
+    const acceptedHelperIds = [...new Set(
+      matchesBeforeCancel
+        .filter((m) => String(m.status || '').toLowerCase() === HELP_MATCH_STATUS.ACCEPTED)
+        .map((m) => String(m.helperId))
+        .filter(Boolean)
+    )]
 
     emitToUser(String(requesterId), 'help:request_closed', {
       requestId: String(requestId),
@@ -513,15 +685,17 @@ const cancelRequest = async (requesterId, requestId) => {
       closedBy: String(requesterId),
       reason: 'cancelled',
       occurredAt,
+      userRole: 'requester',
     })
 
-    for (const hid of helperIds) {
+    for (const hid of acceptedHelperIds) {
       emitToUser(hid, 'help:request_closed', {
         requestId: String(requestId),
         requestType: request?.category || 'help_request',
         closedBy: String(requesterId),
         reason: 'cancelled',
         occurredAt,
+        userRole: 'helper',
       })
     }
 
@@ -587,10 +761,11 @@ const getRequestById = async (requestId, userId) => {
 
     // Notify requester that stats have changed
     const requesterId = request.requesterId._id || request.requesterId
-    emitToUser(requesterId.toString(), 'help:request_updated', {
+    await emitHelpRequestStatsUpdate({
       requestId,
+      requesterId,
       type: 'viewed',
-      viewerId: userId
+      extra: { viewerId: userId },
     })
   }
 
@@ -645,16 +820,9 @@ const getMyActiveRequest = async (userId) => {
   let requesterData = null
   if (request) {
     logger.info(`[HelpRequest] Active as requester id=${request._id} status=${request.status}`)
-    // Calculate stats
+    // Canonical stats source for requester live counters.
+    const stats = await computeHelpRequestStats(request._id)
     const matches = await HelpMatch.find({ requestId: request._id })
-
-    const stats = {
-      totalCandidates: matches.length,
-      notificationSentCount: matches.filter(m => m.status !== 'pending').length,
-      viewedCount: matches.filter(m => m.viewedAt).length,
-      declinedCount: matches.filter(m => ['declined', 'not_available'].includes(m.status)).length,
-      acceptedCount: matches.filter(m => m.status === 'accepted').length
-    }
 
     // Helper details if matched
     let volunteer = null
@@ -731,29 +899,66 @@ const getMyActiveRequest = async (userId) => {
  * Mark request as delivered/received by helper
  */
 const markAsDelivered = async (helperId, requestId) => {
-  const match = await HelpMatch.findOne({
-    requestId,
-    helperId,
-    status: HELP_MATCH_STATUS.PENDING,
-  })
+  const now = new Date()
+  let match = await HelpMatch.findOneAndUpdate(
+    {
+      requestId,
+      helperId,
+      status: HELP_MATCH_STATUS.PENDING,
+      markedDeliveredAt: null,
+    },
+    {
+      $set: {
+        markedDeliveredAt: now,
+        status: HELP_MATCH_STATUS.NOTIFIED,
+      },
+    },
+    { new: true }
+  )
+  if (!match) {
+    match = await HelpMatch.findOneAndUpdate(
+      {
+        requestId,
+        helperId,
+        status: { $in: [HELP_MATCH_STATUS.NOTIFIED, HELP_MATCH_STATUS.ACCEPTED] },
+        markedDeliveredAt: null,
+      },
+      { $set: { markedDeliveredAt: now } },
+      { new: true }
+    )
+  }
 
   if (match) {
-    match.status = HELP_MATCH_STATUS.NOTIFIED
-    // notifiedAt is already set at creation (as "sent at"), so we don't need to change it.
-    // Ideally we would have deliveredAt, but updating status is enough for the count.
-    await match.save()
-
-    // Notify requester about stat update
     const request = await HelpRequest.findById(requestId).select('requesterId')
     if (request) {
-      emitToUser(request.requesterId.toString(), 'help:request_updated', {
+      await emitHelpRequestStatsUpdate({
         requestId,
+        requesterId: request.requesterId,
         type: 'delivered',
-        helperId
+        extra: { helperId },
       })
+      if (String(match.status || '').toLowerCase() === HELP_MATCH_STATUS.ACCEPTED) {
+        sendHelperArrivedNotification(String(request.requesterId), {
+          requestId,
+          helperId,
+          distanceMeters: match.distanceMeters,
+        }).catch((e) => logger.error('sendHelperArrivedNotification failed', e))
+      }
     }
     return { success: true }
   }
+
+  const already = await HelpMatch.findOne({
+    requestId,
+    helperId,
+    status: { $in: [HELP_MATCH_STATUS.NOTIFIED, HELP_MATCH_STATUS.ACCEPTED] },
+    markedDeliveredAt: { $ne: null },
+  }).select('_id')
+
+  if (already) {
+    return { success: true, message: 'Already marked' }
+  }
+
   return { success: false, message: 'Already processed or not found' }
 }
 
@@ -877,6 +1082,74 @@ const getNearbyHelpRequests = async (userId, coords = null) => {
   return filtered
 }
 
+const extendHelpSession = async (requesterId, requestId, additionalMinutes) => {
+  const minutes = Number(additionalMinutes)
+  if (!Number.isFinite(minutes) || minutes < 5 || minutes > 120) {
+    const err = new Error('additionalMinutes must be between 5 and 120')
+    err.statusCode = 400
+    throw err
+  }
+
+  const rid = String(requestId)
+  const request = await HelpRequest.findById(rid)
+  if (!request) {
+    const err = new Error('Request not found')
+    err.statusCode = 404
+    throw err
+  }
+  if (String(request.requesterId) !== String(requesterId)) {
+    const err = new Error('Forbidden')
+    err.statusCode = 403
+    throw err
+  }
+  if (![HELP_REQUEST_STATUS.MATCHED, HELP_REQUEST_STATUS.ACTIVE].includes(request.status)) {
+    const err = new Error('Request is not active')
+    err.statusCode = 409
+    throw err
+  }
+
+  const match = await HelpMatch.findOne({ requestId: rid, status: HELP_MATCH_STATUS.ACCEPTED })
+  if (!match) {
+    const err = new Error('No accepted helper for this request')
+    err.statusCode = 409
+    throw err
+  }
+
+  const now = new Date()
+  const prevEnd = request.sessionEndsAt ? new Date(request.sessionEndsAt) : now
+  const base = prevEnd > now ? prevEnd : now
+  const sessionEndsAt = new Date(base.getTime() + minutes * 60 * 1000)
+
+  const updated = await HelpRequest.findByIdAndUpdate(
+    rid,
+    { $set: { sessionEndsAt, completionPromptSentAt: null } },
+    { new: true }
+  )
+
+  const payload = {
+    requestId: rid,
+    sessionEndsAt: sessionEndsAt.toISOString(),
+  }
+  try {
+    emitToUser(String(requesterId), 'help:session_updated', payload)
+    emitToUser(String(match.helperId), 'help:session_updated', payload)
+  } catch (e) {
+    logger.error('help:session_updated emit failed', e)
+  }
+
+  try {
+    await sendHelperSessionExtendedNotification(match.helperId, {
+      requestId: rid,
+      additionalMinutes: minutes,
+      sessionEndsAt,
+    })
+  } catch (e) {
+    logger.error('sendHelperSessionExtendedNotification failed', e)
+  }
+
+  return { request: updated }
+}
+
 module.exports = {
   createRequest,
   updateRequest,
@@ -887,4 +1160,5 @@ module.exports = {
   getMyActiveRequest,
   markAsDelivered,
   getNearbyHelpRequests,
+  extendHelpSession,
 }

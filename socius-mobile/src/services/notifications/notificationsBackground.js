@@ -2,16 +2,35 @@ import { getMessaging, setBackgroundMessageHandler } from '@react-native-firebas
 import notifee, { AndroidStyle, EventType } from '@notifee/react-native';
 import { CHANNELS, handleIncomingCallMessage, initNotifeeChannels } from './SociusNotificationService';
 import { buildClosureInitiatedCopy, buildRequestClosedCopy } from '../../utils/closureMessages';
+import {
+  displayRequestCompletionPrompt,
+  handleCompletionPromptNotifeeAction,
+} from './requestCompletionPrompt';
+import { handleChatMessageFcm } from '../chat/chatNotificationSync';
+import { loadAuth } from '../storage/asyncStorage.service';
+import { declineHelpAsVolunteer, declinePresenceAsVolunteer } from '../api/volunteer.api';
 
 const messaging = getMessaging();
 
 setBackgroundMessageHandler(messaging, async remoteMessage => {
   console.log('[FCM] background message', remoteMessage?.data || remoteMessage);
+  const data = remoteMessage?.data || {};
+  const type = String(data.type || '').toLowerCase();
+
+  // Handle requester completion prompt first so it never gets short-circuited.
+  if (type === 'request_completion_prompt' && data.requestId) {
+    await initNotifeeChannels();
+    await displayRequestCompletionPrompt(data);
+    return;
+  }
+
   const handledByCallKeep = await handleIncomingCallMessage(remoteMessage);
   if (handledByCallKeep) return;
 
-  const data = remoteMessage?.data || {};
-  const type = String(data.type || '').toLowerCase();
+  if (await handleChatMessageFcm(remoteMessage)) {
+    return;
+  }
+
   if (type !== 'request_status') return;
 
   const status = String(data.status || '').toLowerCase();
@@ -41,6 +60,7 @@ setBackgroundMessageHandler(messaging, async remoteMessage => {
       requestType: data.requestType || 'Help request',
       reason: data.reason,
       occurredAt: data.occurredAt,
+      userRole: data.recipientRole || data.userRole,
     });
     title = copy.title
     body = copy.message
@@ -59,7 +79,22 @@ setBackgroundMessageHandler(messaging, async remoteMessage => {
         pressAction: { id: 'default' },
         style: { type: AndroidStyle.BIGTEXT, text: body },
       },
-      data: { ...data, type: 'request_status', status, requestId },
+      data: {
+        ...data,
+        type: 'request_status',
+        status,
+        requestId,
+        recipientRole:
+          data.recipientRole ||
+          data.userRole ||
+          (String(data.initiatedBy || '') === 'requester'
+            ? 'helper'
+            : String(data.initiatedBy || '') === 'helper'
+              ? 'requester'
+              : status === 'matched'
+                ? 'requester'
+                : ''),
+      },
     });
   } catch (e) {}
 });
@@ -71,6 +106,24 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
   }
 
   if (type === EventType.ACTION_PRESS || type === EventType.PRESS) {
+    const handled = await handleCompletionPromptNotifeeAction(detail);
+    if (handled) return;
+    const actionId = String(pressAction?.id || 'default').toLowerCase();
+    const data = notification?.data || {};
+    if ((actionId === 'decline_help' || actionId === 'decline_presence') && data?.requestId) {
+      try {
+        const auth = await loadAuth();
+        if (auth?.accessToken) {
+          if (actionId === 'decline_help') {
+            await declineHelpAsVolunteer(auth.accessToken, data.requestId);
+          } else {
+            await declinePresenceAsVolunteer(auth.accessToken, data.requestId);
+          }
+        }
+      } catch (e) {
+        console.log('[Notifee] background decline action failed', e);
+      }
+    }
     await notifee.cancelNotification(notification.id);
   }
 });

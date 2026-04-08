@@ -14,6 +14,12 @@
     },
     "plugins": [
       [
+        "expo-av",
+        {
+          "microphonePermission": "Allow Socius to record voice messages in chat."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./src/assets/icons/icon-03.png",
@@ -25,6 +31,11 @@
     ],
     "android": {
       "package": "com.socius.app",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./src/assets/icons/icon-03.png",
         "backgroundColor": "#FFFFFF"
@@ -41,16 +52,17 @@
       "translucent": true
     },
     "ios": {
-      "bundleIdentifier": "com.socius.app"
+      "bundleIdentifier": "com.socius.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Socius records short voice messages to send in chat.",
+        "NSLocationWhenInUseUsageDescription": "Socius uses your location when you choose to share it in chat."
+      }
     },
     "extra": {
       "eas": {
-        "projectId": "cf150863-4fd3-40ea-acda-319b5a4ec2b9"
+        "projectId": "2c92264d-4bc5-4719-a333-d0001f386d3d"
       }
     },
-    "runtimeVersion": "1.0.0",
-    "updates": {
-      "url": "https://u.expo.dev/cf150863-4fd3-40ea-acda-319b5a4ec2b9"
-    }
+    "runtimeVersion": "1.0.0"
   }
 }

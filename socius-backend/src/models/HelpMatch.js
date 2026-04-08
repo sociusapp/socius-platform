@@ -40,6 +40,7 @@ const helpMatchSchema = new mongoose.Schema(
     respondedAt: { type: Date, default: null },
     acceptedAt: { type: Date, default: null },
     completedAt: { type: Date, default: null },
+    markedDeliveredAt: { type: Date, default: null },
 
     // Helper felt unsafe?
     helperFeltUnsafe: {
@@ -69,5 +70,10 @@ const helpMatchSchema = new mongoose.Schema(
 helpMatchSchema.index({ requestId: 1 })
 helpMatchSchema.index({ helperId: 1 })
 helpMatchSchema.index({ status: 1 })
+// At most one accepted match per help request (prevents double-accept races)
+helpMatchSchema.index(
+  { requestId: 1 },
+  { unique: true, partialFilterExpression: { status: 'accepted' } }
+)
 
 module.exports = mongoose.model('HelpMatch', helpMatchSchema)

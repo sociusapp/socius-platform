@@ -5,6 +5,9 @@ const logger = require('../utils/logger')
 const { HELP_REQUEST_STATUS, HELP_MATCH_STATUS } = require('../utils/constants')
 const { emitToUser } = require('../config/socket')
 const { sendHelpClosureInitiatedNotification, sendHelpRequestClosedNotification } = require('./notification.service')
+const { closeSession } = require('./chat.service')
+const { updateCommunityBalance } = require('./communityBalance.service')
+const { awardBadgeIfEarned } = require('./badge.service')
 
 const safeEmitToUser = (userId, event, data) => {
   try {
@@ -111,8 +114,14 @@ const initiateClosure = async (userId, { requestId, rating, feedback }) => {
   // Determine status
   const requesterDone = typeof closure.requesterFeedback?.providedHelp === 'boolean' || !!closure.ratingByRequester
   const helperDone = typeof closure.helperFeedback?.providedHelp === 'boolean' || !!closure.ratingByHelper
+  const conflictingFeedback =
+    requesterDone &&
+    helperDone &&
+    typeof closure.requesterFeedback?.providedHelp === 'boolean' &&
+    typeof closure.helperFeedback?.providedHelp === 'boolean' &&
+    closure.requesterFeedback.providedHelp !== closure.helperFeedback.providedHelp
   if (requesterDone && helperDone) {
-    closure.status = 'closed'
+    closure.status = conflictingFeedback ? 'disputed' : 'closed'
     closure.closedAt = new Date()
   } else {
     closure.status = 'awaiting_other_party'
@@ -120,11 +129,9 @@ const initiateClosure = async (userId, { requestId, rating, feedback }) => {
 
   await closure.save()
 
-  // If both rated, finalize request
-  if (closure.status === 'closed') {
+  if (requesterDone && helperDone) {
     await finalizeClosureInternal(closure, userId)
   } else {
-    // Move request to closing state
     if (!['closing', 'closed'].includes(request.status)) {
       request.status = HELP_REQUEST_STATUS.CLOSING || 'closing'
       await request.save()
@@ -171,13 +178,15 @@ const finalizeClosureInternal = async (closure, actorUserId) => {
   const request = await HelpRequest.findById(closure.requestId)
   if (!request) return null
 
-  // Mark request closed
+  if (request.status === HELP_REQUEST_STATUS.CLOSED) {
+    return request
+  }
+
   request.status = HELP_REQUEST_STATUS.CLOSED || 'closed'
   request.closedAt = new Date()
   await request.save()
 
-  // Complete match
-  await HelpMatch.findOneAndUpdate(
+  const matchUpdate = await HelpMatch.findOneAndUpdate(
     { requestId: closure.requestId, helperId: closure.helperId, status: { $in: ['accepted', 'notified'] } },
     {
       status: HELP_MATCH_STATUS.COMPLETED,
@@ -192,6 +201,27 @@ const finalizeClosureInternal = async (closure, actorUserId) => {
   closure.finalizedBy = actorUserId || null
   await closure.save()
 
+  const ChatSession = require('../models/ChatSession')
+  const session = await ChatSession.findOne({ requestId: closure.requestId })
+  if (session) {
+    try {
+      await closeSession(session._id)
+    } catch (e) {
+      logger.error('finalizeClosureInternal: closeSession failed', e)
+    }
+  }
+
+  if (matchUpdate) {
+    const wasResolved = closure.requesterFeedback?.providedHelp === true
+    const accountability = closure.flags?.helperNoShow ? 'no_show' : wasResolved ? 'arrived_completed' : null
+    try {
+      await updateCommunityBalance(closure.helperId, 'help_given')
+      await awardBadgeIfEarned(closure.helperId, { wasResolved, accountability })
+    } catch (e) {
+      logger.error('finalizeClosureInternal: balance/badge failed', e)
+    }
+  }
+
   const occurredAt = new Date().toISOString()
   safeEmitToUser(request.requesterId, 'help:request_closed', {
     requestId: String(closure.requestId),
@@ -199,6 +229,7 @@ const finalizeClosureInternal = async (closure, actorUserId) => {
     closedBy: actorUserId ? String(actorUserId) : null,
     reason: 'finalized',
     occurredAt,
+    userRole: 'requester',
   })
   safeEmitToUser(closure.helperId, 'help:request_closed', {
     requestId: String(closure.requestId),
@@ -206,18 +237,21 @@ const finalizeClosureInternal = async (closure, actorUserId) => {
     closedBy: actorUserId ? String(actorUserId) : null,
     reason: 'finalized',
     occurredAt,
+    userRole: 'helper',
   })
   sendHelpRequestClosedNotification(String(request.requesterId), {
     requestId: closure.requestId,
     requestType: request?.category || 'help_request',
     reason: 'finalized',
     occurredAt,
+    recipientRole: 'requester',
   }).catch(() => {})
   sendHelpRequestClosedNotification(String(closure.helperId), {
     requestId: closure.requestId,
     requestType: request?.category || 'help_request',
     reason: 'finalized',
     occurredAt,
+    recipientRole: 'helper',
   }).catch(() => {})
 
   return request

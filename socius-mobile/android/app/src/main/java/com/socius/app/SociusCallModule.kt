@@ -24,7 +24,6 @@ import android.media.AudioManager
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
-import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
 import androidx.core.graphics.drawable.IconCompat
@@ -78,7 +77,7 @@ class SociusCallModule(private val reactContext: ReactApplicationContext) :
 
         return when (type) {
             "PRESENCE_ALARM" -> NotifConfig(
-                channelId     = "socius_presence_alarm_channel_v9",
+                channelId     = "socius_presence_alarm",
                 channelName   = "Presence Alarms",
                 soundName     = "presence_alarm",
                 category      = NotificationCompat.CATEGORY_ALARM,
@@ -94,7 +93,7 @@ class SociusCallModule(private val reactContext: ReactApplicationContext) :
                 acceptBtnBg   = "bg_btn_alarm"
             )
             "MATCH_FOUND" -> NotifConfig(
-                channelId     = "socius_match_found_channel_v9",
+                channelId     = "socius_updates",
                 channelName   = "Match Found",
                 soundName     = "match_found",
                 category      = NotificationCompat.CATEGORY_STATUS,
@@ -110,10 +109,10 @@ class SociusCallModule(private val reactContext: ReactApplicationContext) :
                 acceptBtnBg   = "bg_btn_match"
             )
             else -> NotifConfig(       // HELP_REQUEST (default)
-                channelId     = "socius_help_request_channel_v9",
+                channelId     = "socius_help_alarm",
                 channelName   = "Help Requests",
                 soundName     = "help_request",
-                category      = NotificationCompat.CATEGORY_MESSAGE,
+                category      = NotificationCompat.CATEGORY_CALL,
                 accentColor   = Color.parseColor("#4A7EB5"),
                 darkColor     = Color.parseColor("#0D2E5A"),
                 lightColor    = Color.BLUE,
@@ -355,7 +354,11 @@ class SociusCallModule(private val reactContext: ReactApplicationContext) :
                 }
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    val finalChannelId = "${cfg.channelId}_v9"
+                    val finalChannelId = cfg.channelId
+                    val existing = notifMgr.getNotificationChannel(finalChannelId)
+                    if (existing != null) {
+                        notifMgr.deleteNotificationChannel(finalChannelId)
+                    }
                     val channel = NotificationChannel(
                         finalChannelId,
                         cfg.channelName,
@@ -422,20 +425,18 @@ class SociusCallModule(private val reactContext: ReactApplicationContext) :
                     )
 
                 val acceptPendingIntent  = activityIntent("answer")
-                
-                val fullScreenIntent = Intent(reactContext, LockScreenActivity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NO_USER_ACTION
-                    putExtra("call_uuid", uuid)
-                    putExtra("name", name)
-                    putExtra("info", info)
-                    putExtra("avatar_url", avatarUrl ?: "")
-                    payload?.let { putExtra("payload", it) }
-                }
-                
+                val openPendingIntent = activityIntent("fullscreen")
                 val fullScreenPendingIntent = PendingIntent.getActivity(
                     reactContext,
-                    uuid.hashCode() + 3,
-                    fullScreenIntent,
+                    uuid.hashCode() + 31,
+                    Intent(reactContext, LockScreenActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                        putExtra("call_uuid", uuid)
+                        putExtra("name", name)
+                        putExtra("info", info)
+                        putExtra("avatar_url", avatarUrl ?: "")
+                        payload?.let { putExtra("payload", it) }
+                    },
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
 
@@ -452,8 +453,8 @@ class SociusCallModule(private val reactContext: ReactApplicationContext) :
                 )
 
                 val body  = cfg.bodyTemplate.replace("{info}", info)
-                val isHelpRequest = cfg.channelId.contains("help_request")
-                val displayTitle = if (isHelpRequest) "Help Request" else cfg.titleTemplate.replace("{name}", name)
+                val isHelpRequest = cfg.channelId == "socius_help_alarm"
+                val displayTitle = if (isHelpRequest) "Socius" else cfg.titleTemplate.replace("{name}", name)
 
                 val smallIconRes = listOf(
                     "ic_notification",
@@ -469,7 +470,7 @@ class SociusCallModule(private val reactContext: ReactApplicationContext) :
                     if (id != 0) id else null
                 } ?: android.R.drawable.ic_dialog_info
 
-                val channelId = "${cfg.channelId}_v9"
+                val channelId = cfg.channelId
                 val notificationBuilder = NotificationCompat.Builder(reactContext, channelId)
                     .setSmallIcon(smallIconRes)
                     .setContentTitle(displayTitle)
@@ -478,21 +479,21 @@ class SociusCallModule(private val reactContext: ReactApplicationContext) :
                     .setCategory(NotificationCompat.CATEGORY_CALL)
                     .setAutoCancel(true)
                     .setOngoing(true)
-                    .setFullScreenIntent(fullScreenPendingIntent, true)
+                    .setOnlyAlertOnce(true)
                     .setVibrate(longArrayOf(0, 500, 1000, 500, 1000))
-                    .setColor(Color.parseColor("#1C1C2E"))
                     .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                    .setContentIntent(fullScreenPendingIntent)
+                    .setColorized(false)
+                    .setContentIntent(openPendingIntent)
+                    .setFullScreenIntent(fullScreenPendingIntent, true)
+                    .setStyle(NotificationCompat.BigTextStyle().bigText(body))
 
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
                     notificationBuilder.setSound(soundUri)
                 }
                 
                 notificationBuilder
-                    .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-                    .addAction(0, cfg.declineLabel, declinePendingIntent)
-                    .addAction(0, cfg.acceptLabel, acceptPendingIntent)
-                    .setLargeIcon(finalAvatar)
+                    .addAction(0, "Not available", declinePendingIntent)
+                    .addAction(0, "View", acceptPendingIntent)
                     
                 val notification = notificationBuilder.build()
                 notification.flags = notification.flags or android.app.Notification.FLAG_INSISTENT

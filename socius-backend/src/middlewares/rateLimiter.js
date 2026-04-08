@@ -25,8 +25,7 @@ const formatWindow = (windowSeconds) => {
  */
 const createRateLimiter = (prefix, maxRequests, windowSeconds, keyFn) => {
   return async (req, res, next) => {
-    // Development mode me rate limit bypass karo
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.SKIP_RATE_LIMIT === 'true') {
       return next()
     }
 

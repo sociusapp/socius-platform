@@ -34,9 +34,37 @@ const getMessages = async (req, res, next) => {
 
 const sendMessage = async (req, res, next) => {
   try {
-    const { text, replyToId } = req.body
-    const result = await chatService.sendMessage(req.params.sessionId, req.user._id, text, replyToId)
+    const { text, replyToId, messageType, attachment } = req.body
+    const result = await chatService.sendMessage(req.params.sessionId, req.user._id, text, replyToId, {
+      messageType,
+      attachment,
+    })
     return created(res, result.message, 'Message sent')
+  } catch (err) {
+    next(err)
+  }
+}
+
+const uploadChatMedia = async (req, res, next) => {
+  try {
+    const file = req.file
+    if (!file) {
+      const err = new Error('No file uploaded')
+      err.statusCode = 400
+      throw err
+    }
+    await chatService.getSession(req.params.sessionId, req.user._id)
+    const uploadIndex = file.path.indexOf('uploads/')
+    const rel =
+      uploadIndex !== -1
+        ? `/${file.path.substring(uploadIndex).replace(/\\/g, '/')}`
+        : `/uploads/chat-media/${file.filename}`
+    return success(res, {
+      url: rel,
+      mimeType: file.mimetype,
+      fileName: file.originalname,
+      size: file.size,
+    })
   } catch (err) {
     next(err)
   }
@@ -61,4 +89,12 @@ const reactToMessage = async (req, res, next) => {
   }
 }
 
-module.exports = { getSession, getSessionByRequest, getMessages, sendMessage, markRead, reactToMessage }
+module.exports = {
+  getSession,
+  getSessionByRequest,
+  getMessages,
+  sendMessage,
+  markRead,
+  reactToMessage,
+  uploadChatMedia,
+}

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../../components/common/Header';
@@ -327,7 +327,7 @@ const ReviewRequestScreen = ({ navigation, route }) => {
           }
 
           navigation.navigate('RequestActive', { initialRequest: updatedOrCreatedRequest });
-        }, 1500);
+        }, 800);
         return;
       }
 
@@ -720,12 +720,16 @@ const ReviewRequestScreen = ({ navigation, route }) => {
           <MotionView preset="fadeUp" duration={220} delay={90}>
           <View style={[styles.buttonsContainer, { gap: vscale(12), marginBottom: vscale(12) }]}>
             <TouchableOpacity
-              style={[styles.shareButton, { borderRadius: scale(28), paddingVertical: vscale(16) }]}
+              style={[styles.shareButton, { borderRadius: scale(28), paddingVertical: vscale(16), opacity: submitting ? 0.8 : 1 }]}
               onPress={handleShareRequest}
               disabled={submitting}
               activeOpacity={0.9}
             >
-              <Text style={[styles.shareButtonText, { fontSize: ms(16) }]}>Share request</Text>
+              {submitting ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={[styles.shareButtonText, { fontSize: ms(16) }]}>Share request</Text>
+              )}
             </TouchableOpacity>
 
             <TouchableOpacity

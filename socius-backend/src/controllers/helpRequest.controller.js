@@ -1,6 +1,7 @@
 const helpRequestService = require('../services/helpRequest.service')
 const closureService = require('../services/closure.service')
-const { shouldShowNudge, recordNudgeShown } = require('../services/communityBalance.service')
+const { shouldShowNudge, recordNudgeShown, getBalance } = require('../services/communityBalance.service')
+const { sendCommunityBalanceNudgeNotification } = require('../services/notification.service')
 const { success, created } = require('../utils/response')
 
 const createRequest = async (req, res, next) => {
@@ -15,6 +16,15 @@ const createRequest = async (req, res, next) => {
     })
     if (showNudge) {
       recordNudgeShown(req.user._id).catch(() => {})
+      getBalance(req.user._id)
+        .then((bal) =>
+          sendCommunityBalanceNudgeNotification(req.user._id, {
+            helpRequestsSent: bal?.helpRequestsSent ?? 0,
+            helpGiven: bal?.helpGiven ?? 0,
+            nudgeKey: 'create_request',
+          })
+        )
+        .catch(() => {})
     }
     return created(
       res,
@@ -132,6 +142,33 @@ const getNearbyRequests = async (req, res, next) => {
   }
 }
 
+/** Requester: extend session timer or mark completed from completion prompt */
+const sessionAction = async (req, res, next) => {
+  try {
+    const { action, additionalMinutes } = req.body
+    const id = req.params.id
+
+    if (action === 'extend') {
+      const result = await helpRequestService.extendHelpSession(req.user._id, id, additionalMinutes)
+      return success(res, result, 'Session extended')
+    }
+
+    if (action === 'complete') {
+      const request = await closureService.closeHelpRequest(id, req.user._id, {
+        wasResolved: true,
+        accountability: 'completed_as_agreed',
+      })
+      return success(res, { request }, 'Request closed')
+    }
+
+    const err = new Error('Invalid action')
+    err.statusCode = 400
+    throw err
+  } catch (err) {
+    next(err)
+  }
+}
+
 module.exports = {
   createRequest,
   updateRequest,
@@ -143,4 +180,5 @@ module.exports = {
   closeRequest,
   markAsDelivered,
   getNearbyRequests,
+  sessionAction,
 }

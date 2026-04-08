@@ -85,10 +85,41 @@ const uploadHelpCategoryIcon = multer({
   limits: { fileSize: 2 * 1024 * 1024 },
 }).single('icon');
 
+const chatMediaMimes = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'audio/mpeg',
+  'audio/mp4',
+  'audio/aac',
+  'audio/wav',
+  'audio/x-wav',
+  'audio/webm',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+])
+
+const chatMediaFilter = (req, file, cb) => {
+  if (chatMediaMimes.has(file.mimetype) || file.mimetype.startsWith('image/') || file.mimetype.startsWith('audio/')) {
+    cb(null, true)
+    return
+  }
+  cb(new Error('Unsupported file type for chat'), false)
+}
+
+const uploadChatMedia = multer({
+  storage: createStorage('uploads/chat-media'),
+  fileFilter: chatMediaFilter,
+  limits: { fileSize: 15 * 1024 * 1024 },
+}).single('file')
+
 module.exports = { 
   upload, 
   uploadVerificationDocs, 
   uploadReviewDocs, 
   uploadClosureEvidence,
-  uploadHelpCategoryIcon
+  uploadHelpCategoryIcon,
+  uploadChatMedia,
 };

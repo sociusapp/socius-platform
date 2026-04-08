@@ -302,6 +302,15 @@ const schemas = {
     'object.xor': 'Provide either lat/lng or latitude/longitude, not both'
   }),
 
+  helpSessionAction: Joi.object({
+    action: Joi.string().valid('extend', 'complete').required(),
+    additionalMinutes: Joi.number().integer().min(5).max(120).when('action', {
+      is: 'extend',
+      then: Joi.required(),
+      otherwise: Joi.forbidden(),
+    }),
+  }),
+
   // Close request
   closeRequest: Joi.object({
     wasResolved: Joi.boolean().required(),
@@ -318,10 +327,21 @@ const schemas = {
     feedback: Joi.string().optional().allow(''),
   }),
 
-  // Chat message
+  // Chat message (service validates text vs attachment)
   sendMessage: Joi.object({
-    text: Joi.string().trim().min(1).max(1000).required(),
+    text: Joi.string().trim().max(4000).allow('').optional(),
     replyToId: Joi.string().optional().allow(null, ''),
+    messageType: Joi.string().valid('text', 'image', 'location', 'audio', 'file').optional(),
+    attachment: Joi.object({
+      url: Joi.string().optional().allow(null, ''),
+      mimeType: Joi.string().optional().allow(null, ''),
+      fileName: Joi.string().optional().allow(null, ''),
+      size: Joi.number().optional(),
+      durationSec: Joi.number().optional(),
+      lat: Joi.number().optional(),
+      lng: Joi.number().optional(),
+      address: Joi.string().optional().allow(null, ''),
+    }).optional(),
   }),
 
   reactToMessage: Joi.object({

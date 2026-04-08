@@ -10,6 +10,7 @@ const {
   closeRequest,
   markAsDelivered,
   getNearbyRequests,
+  sessionAction,
 } = require('../controllers/helpRequest.controller')
 const { authenticate, requireActive } = require('../middlewares/auth')
 const { validate, schemas } = require('../middlewares/validate')
@@ -51,6 +52,15 @@ router.patch('/:id/decline', authenticate, declineRequest)
 
 // PATCH /api/help-request/:id/delivered  (helper)
 router.patch('/:id/delivered', authenticate, markAsDelivered)
+
+// PATCH /api/help-request/:id/session  (requester — extend or quick-complete)
+router.patch(
+  '/:id/session',
+  authenticate,
+  requireActive,
+  validate(schemas.helpSessionAction),
+  sessionAction
+)
 
 // PATCH /api/help-request/:id/cancel  (requester)
 router.patch('/:id/cancel', authenticate, cancelRequest)

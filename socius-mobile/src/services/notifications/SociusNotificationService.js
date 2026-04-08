@@ -21,6 +21,174 @@ export const CHANNELS = {
 
 let initialized = false;
 
+export const displaySociusUpdateNotification = async (rawData) => {
+  if (Platform.OS !== 'android') return;
+  const data = rawData || {};
+  const upper = String(data.type || '')
+    .toUpperCase()
+    .replace(/-/g, '_');
+  const idBase = String(data.requestId || data.badgeType || 'upd');
+  let title = 'Socius';
+  let body = 'Tap to open the app.';
+  let channelId = CHANNELS.UPDATES;
+  let importance = AndroidImportance.DEFAULT;
+  switch (upper) {
+    case 'REQUEST_ACKNOWLEDGED':
+      title = 'Request live';
+      body = 'Your help request is active.';
+      break;
+    case 'NO_HELPERS_NEARBY':
+      title = 'Looking for helpers';
+      body = 'No one is in range yet — we will notify when someone is nearby.';
+      break;
+    case 'REQUEST_EXPIRING_WARNING':
+      title = data.phase === 't5' ? 'Expiring in ~5 min' : 'Expiring in ~15 min';
+      body = 'Still no match — you can wait or adjust your request.';
+      importance = AndroidImportance.HIGH;
+      break;
+    case 'HELPER_ARRIVED':
+      title = 'Helper nearby';
+      body = 'They are close — check the map or chat.';
+      break;
+    case 'COMMUNITY_BALANCE_NUDGE':
+      title = 'Community balance';
+      body = 'Consider helping nearby when you can.';
+      break;
+    case 'BADGE_EARNED':
+      title = 'Badge earned';
+      body = data.badgeTitle ? String(data.badgeTitle) : 'You earned a new badge!';
+      break;
+    case 'HELPER_DISTANCE_UPDATE':
+      title = 'Helper on the way';
+      body =
+        data.distanceMeters != null
+          ? `About ${Math.round(Number(data.distanceMeters))}m away`
+          : 'Location updated';
+      break;
+    case 'HELP_SESSION_TIME_ENDED_HELPER':
+      title = 'Return time ended';
+      body =
+        'The agreed item return time has ended. Open Socius to follow up with the requester.';
+      channelId = CHANNELS.UPDATES;
+      importance = AndroidImportance.DEFAULT;
+      break;
+    case 'HELP_SESSION_EXTENDED_HELPER':
+      title = 'Session extended';
+      body = data.additionalMinutes
+        ? `The requester added ${String(data.additionalMinutes)} minutes. Your meeting end time was updated.`
+        : 'The requester extended the meeting time. Open the app for the new end time.';
+      channelId = CHANNELS.UPDATES;
+      importance = AndroidImportance.DEFAULT;
+      break;
+    case 'REVIEW_DECISION': {
+      const approved = String(data.approved || '').toLowerCase() === 'true';
+      title = approved ? 'Verification approved' : 'Verification update';
+      body = approved
+        ? 'Your account has been approved. Open Socius to continue.'
+        : 'Verification was not approved. Open Socius to review and resubmit.';
+      importance = AndroidImportance.HIGH;
+      break;
+    }
+    default:
+      break;
+  }
+  try {
+    await notifee.displayNotification({
+      id: `soc_${upper}_${idBase}`.replace(/[^a-zA-Z0-9_:.-]/g, '_').slice(0, 120),
+      title,
+      body,
+      android: {
+        channelId,
+        pressAction: { id: 'default', launchActivity: 'default' },
+        importance,
+        style: { type: AndroidStyle.BIGTEXT, text: body },
+      },
+      data: Object.fromEntries(
+        Object.entries(data).map(([k, v]) => [k, v != null ? String(v) : ''])
+      ),
+    });
+  } catch (e) {
+    console.warn('[Notifee] displaySociusUpdateNotification failed', e);
+  }
+
+  // Helper session-ended/extended updates should remain normal-priority updates.
+};
+
+/**
+ * FCM does not show a system banner while the app is foregrounded. Mirror native alarm channels so users
+ * still get a high-importance, call-category heads-up in the tray (alongside the in-app modal).
+ */
+export const displayAndroidForegroundIncomingHeadsUp = async (kind, rawData = {}) => {
+  if (Platform.OS !== 'android') return;
+  const data = rawData || {};
+  const requestId = String(data.requestId || data.presenceId || data.id || '');
+  if (!requestId) return;
+  try {
+    await initNotifeeChannels();
+  } catch (e) {
+    return;
+  }
+  const isHelp = kind === 'help';
+  // Keep high alarm behavior in header tray as requested.
+  const channelId = isHelp ? CHANNELS.HELP_ALARM : CHANNELS.PRESENCE_ALARM;
+  const title = isHelp ? 'Someone nearby needs help' : 'Presence alert nearby';
+  const body = String(
+    isHelp
+      ? data.description || data.categoryName || data.category || 'Open to view details'
+      : data.description || data.situation || data.situationType || 'Someone needs awareness nearby'
+  )
+    .trim()
+    .slice(0, 220);
+  const notifType = isHelp ? 'help_request' : 'presence_alarm';
+  const notifData = Object.fromEntries(
+    Object.entries({
+      ...data,
+      type: notifType,
+      requestId,
+    }).map(([k, v]) => [k, v != null ? String(v) : ''])
+  );
+  try {
+    await notifee.displayNotification({
+      id: `${isHelp ? 'fg_help' : 'fg_presence'}_${requestId}`.slice(0, 120),
+      title,
+      body: body || title,
+      android: {
+        channelId,
+        category: AndroidCategory.CALL,
+        importance: AndroidImportance.HIGH,
+        visibility: AndroidVisibility.PUBLIC,
+        pressAction: { id: 'default', launchActivity: 'default' },
+        actions: [
+          {
+            title: 'Not available',
+            pressAction: { id: isHelp ? 'decline_help' : 'decline_presence', launchActivity: 'default' },
+          },
+          {
+            title: 'View',
+            pressAction: { id: 'default', launchActivity: 'default' },
+          },
+        ],
+      },
+      data: notifData,
+    });
+  } catch (e) {
+    console.warn('[Notifee] displayAndroidForegroundIncomingHeadsUp failed', e);
+  }
+};
+
+const SOCIUS_DATA_UPDATE_TYPES = new Set([
+  'REQUEST_ACKNOWLEDGED',
+  'NO_HELPERS_NEARBY',
+  'REQUEST_EXPIRING_WARNING',
+  'HELPER_ARRIVED',
+  'COMMUNITY_BALANCE_NUDGE',
+  'BADGE_EARNED',
+  'HELPER_DISTANCE_UPDATE',
+  'HELP_SESSION_TIME_ENDED_HELPER',
+  'HELP_SESSION_EXTENDED_HELPER',
+  'REVIEW_DECISION',
+]);
+
 export const initNotifeeChannels = async () => {
   if (initialized || Platform.OS !== 'android') return;
   try {
@@ -87,6 +255,43 @@ export const handleIncomingCallMessage = async (remoteMessage) => {
         console.log('[FCM] Cancelling alarm for requestId:', requestId);
         NativeCallService.cancelCallNotification(requestId);
       }
+      return true;
+    }
+
+    if (SOCIUS_DATA_UPDATE_TYPES.has(type)) {
+      await initNotifeeChannels();
+      await displaySociusUpdateNotification(data);
+      return true;
+    }
+
+    if (type.includes('REQUEST_REMATCHED')) {
+      await initNotifeeChannels();
+      try {
+        const auth = await loadAuth();
+        if (auth?.accessToken && data.requestId) {
+          markRequestDelivered(auth.accessToken, data.requestId).catch(() => {});
+        }
+      } catch (err) {
+        console.log('Auth load failed in rematch notification', err);
+      }
+      const category = data.category || 'General Support';
+      const categoryName = data.categoryName || '';
+      const categoryIcon = data.categoryIcon || '';
+      const description = data.description || '';
+      const distanceMeters = parseInt(data.distanceMeters || '0', 10) || 0;
+      const area = data.area || '';
+      await showHelpAlarm({
+        requestId: data.requestId || '',
+        category,
+        categoryName,
+        categoryIcon,
+        description,
+        distanceMeters,
+        area,
+        trustSignals: [],
+        trustEmojis: [],
+        userImage: null,
+      });
       return true;
     }
 

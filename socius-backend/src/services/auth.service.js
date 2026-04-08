@@ -15,11 +15,17 @@ const sendOtp = async ({ phone, ipAddress }) => {
 
   const otp = await saveOtp(phone, ipAddress)
 
-  // TODO: Real SMS gateway (Twilio / MSG91) yahan integrate karo
-  // Ab sirf log kar rahe hain dev me
-  logger.info(`OTP for ${phone}: ${otp}`)
+  // TODO: Real SMS gateway (Twilio / MSG91) — send `otp` here; do not return otp in JSON.
+  logger.info(`OTP sent (6-digit) for ${phone}`)
 
-  return { message: 'OTP sent successfully', otp }
+  const payload = { message: 'OTP sent successfully' }
+  // TEMPORARY (all environments, inc. live production): same OTP as saved in OtpLog — app pre-fills until SMS ships.
+  // REMOVE `payload.otp` before Play Store / public hardening — never expose OTP in API in final production.
+  payload.otp = otp
+  if (process.env.NODE_ENV === 'production') {
+    logger.warn('[auth] TEMP: OTP returned in send-otp body — strip before final Play Store release')
+  }
+  return payload
 }
 
 const verifyOtpAndLogin = async ({

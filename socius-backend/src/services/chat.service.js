@@ -1,7 +1,51 @@
 const ChatSession = require('../models/ChatSession')
 const ChatMessage = require('../models/ChatMessage')
+const User = require('../models/User')
 const { CHAT_SESSION_STATUS } = require('../utils/constants')
 const logger = require('../utils/logger')
+const { sendChatNotification } = require('./notification.service')
+
+const summarizeMessage = (messageType, text, attachment) => {
+  const t = String(text || '').trim()
+  if (t) return t.slice(0, 200)
+  switch (messageType) {
+    case 'image':
+      return '📷 Photo'
+    case 'audio':
+      return '🎤 Voice message'
+    case 'location':
+      return '📍 Location shared'
+    case 'file':
+      return '📎 File'
+    default:
+      return 'Message'
+  }
+}
+
+const notifyChatReceiverAsync = async (session, message, senderId) => {
+  try {
+    const receiverId =
+      String(session.requesterId) === String(senderId) ? session.helperId : session.requesterId
+    const recipientRole =
+      String(receiverId) === String(session.requesterId) ? 'requester' : 'helper'
+    const sender = await User.findById(senderId).select('fullName').lean()
+    const preview = summarizeMessage(
+      message.messageType || 'text',
+      message.text,
+      message.attachment
+    )
+    await sendChatNotification(receiverId, {
+      senderName: sender?.fullName || 'Someone',
+      preview,
+      sessionId: String(session._id),
+      requestId: String(session.requestId),
+      messageType: message.messageType || 'text',
+      recipientRole,
+    })
+  } catch (e) {
+    logger.warn('notifyChatReceiverAsync failed', e)
+  }
+}
 
 /**
  * Chat session create karo — jab helper accept kare
@@ -54,10 +98,57 @@ const getSession = async (sessionId, userId) => {
 }
 
 /**
- * Message bhejo
+ * Message bhejo (text + optional rich attachment)
  */
-const sendMessage = async (sessionId, senderId, text, replyToId = null) => {
-  console.log(`sendMessage: ${sessionId}, ${senderId}, ${text}, ${replyToId}`);
+const sendMessage = async (sessionId, senderId, text, replyToId = null, options = {}) => {
+  const messageType = options.messageType || 'text'
+  let attachment = options.attachment || null
+  if (attachment && typeof attachment === 'object') {
+    attachment = {
+      url: attachment.url || null,
+      mimeType: attachment.mimeType || null,
+      fileName: attachment.fileName || null,
+      size: attachment.size != null ? Number(attachment.size) : null,
+      durationSec: attachment.durationSec != null ? Number(attachment.durationSec) : null,
+      lat: attachment.lat != null ? Number(attachment.lat) : null,
+      lng: attachment.lng != null ? Number(attachment.lng) : null,
+      address: attachment.address || null,
+    }
+    const empty = !attachment.url && attachment.lat == null && attachment.lng == null
+    if (empty) attachment = null
+  }
+
+  let bodyText = typeof text === 'string' ? text.trim() : ''
+
+  if (messageType === 'text') {
+    if (!bodyText) {
+      const err = new Error('Message text is required')
+      err.statusCode = 400
+      throw err
+    }
+  } else if (messageType === 'location') {
+    if (!attachment || attachment.lat == null || attachment.lng == null) {
+      const err = new Error('Location coordinates are required')
+      err.statusCode = 400
+      throw err
+    }
+    if (!bodyText) {
+      bodyText =
+        attachment.address ||
+        `${Number(attachment.lat).toFixed(5)}, ${Number(attachment.lng).toFixed(5)}`
+    }
+  } else {
+    if (!attachment || !attachment.url) {
+      const err = new Error('Attachment URL is required')
+      err.statusCode = 400
+      throw err
+    }
+    if (!bodyText) {
+      bodyText = summarizeMessage(messageType, '', attachment)
+    }
+  }
+
+  console.log(`sendMessage: ${sessionId}, ${senderId}, type=${messageType}, ${bodyText?.slice(0, 40)}, ${replyToId}`)
   const session = await ChatSession.findById(sessionId)
 
   if (!session || session.status !== CHAT_SESSION_STATUS.ACTIVE) {
@@ -84,30 +175,39 @@ const sendMessage = async (sessionId, senderId, text, replyToId = null) => {
       : session.requesterId
 
   try {
-    const message = await ChatMessage.create({
+    const doc = {
       sessionId,
       senderId,
       receiverId,
-      text,
+      text: bodyText,
+      messageType,
       replyTo: replyToId,
-    })
-    console.log(`sendMessage: Message created: ${message._id}`);
-    
-    if (replyToId) {
-      await message.populate('replyTo', 'text senderId')
     }
-  
+    if (attachment) doc.attachment = attachment
+    const message = await ChatMessage.create(doc)
+    console.log(`sendMessage: Message created: ${message._id}`);
+
+    if (replyToId) {
+      await message.populate('replyTo', 'text senderId messageType attachment')
+    }
+
     // Session last message update karo
     await ChatSession.findByIdAndUpdate(sessionId, {
       $inc: { messageCount: 1 },
       lastMessage: {
-        text,
+        text: summarizeMessage(messageType, bodyText, attachment),
         senderId,
         sentAt: new Date(),
       },
     })
-    
-    return { message, receiverId }
+
+    const populated = await ChatMessage.findById(message._id)
+      .populate('replyTo', 'text senderId messageType attachment')
+      .select('-__v')
+
+    notifyChatReceiverAsync(session, populated, senderId)
+
+    return { message: populated, receiverId }
   } catch (err) {
     console.error(`sendMessage: Failed to create message: ${err}`);
     throw err;
@@ -124,7 +224,7 @@ const getMessages = async (sessionId, userId, { page = 1, limit = 50 } = {}) => 
 
   // Get latest messages first
   const messages = await ChatMessage.find({ sessionId, isDeleted: false })
-    .populate('replyTo', 'text senderId')
+    .populate('replyTo', 'text senderId messageType')
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit)
@@ -190,7 +290,7 @@ const toggleReaction = async (messageId, userId, emoji) => {
   await message.save()
 
   const updated = await ChatMessage.findById(messageId)
-    .populate('replyTo', 'text senderId')
+    .populate('replyTo', 'text senderId messageType attachment')
     .select('-__v')
 
   return updated

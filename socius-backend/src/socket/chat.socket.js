@@ -6,9 +6,18 @@ module.exports = (io, socket) => {
   socket.on('chat:send', async (payload) => {
     try {
       console.log('Socket chat:send received payload:', payload);
-      const { sessionId, text, localId, replyToId } = payload || {}
-      if (!sessionId || !text) {
-        console.error('Socket chat:send missing sessionId or text');
+      const { sessionId, text, localId, replyToId, messageType, attachment } = payload || {}
+      const mt = messageType || 'text'
+      if (!sessionId) {
+        console.error('Socket chat:send missing sessionId');
+        return;
+      }
+      if (mt === 'text' && !(text && String(text).trim())) {
+        console.error('Socket chat:send missing text for text message');
+        return;
+      }
+      if (mt !== 'text' && !attachment?.url && !(attachment?.lat != null && attachment?.lng != null)) {
+        console.error('Socket chat:send missing attachment for media message');
         return;
       }
 
@@ -16,7 +25,8 @@ module.exports = (io, socket) => {
         sessionId,
         socket.userId,
         text,
-        replyToId
+        replyToId,
+        { messageType: mt, attachment }
       )
 
       console.log('Socket chat:send success, message created:', message._id);
