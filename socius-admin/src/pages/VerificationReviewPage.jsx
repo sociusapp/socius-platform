@@ -25,6 +25,8 @@ const VerificationReviewPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [idPreviewOpen, setIdPreviewOpen] = useState(false);
   const [idZoom, setIdZoom] = useState(false);
+  const [idImgFailed, setIdImgFailed] = useState(false);
+  const [selfieImgFailed, setSelfieImgFailed] = useState(false);
 
   const mapAccountStatus = (status) => {
     if (status === 'limited') return 'Limited';
@@ -63,11 +65,31 @@ const VerificationReviewPage = () => {
     return reasons.map((r) => labels[r] || r).join(', ');
   };
 
-  const buildAssetUrl = (path) => {
-    if (!path) return null;
-    if (path.startsWith('http://') || path.startsWith('https://')) return path;
-    const root = baseURL.replace(/\/api\/?$/, '');
-    return `${root}/${path}`;
+  const buildAssetUrl = (rawPath) => {
+    if (!rawPath) return null;
+    if (typeof rawPath !== 'string') return null;
+
+    const value = rawPath.trim();
+    if (!value) return null;
+    if (value.startsWith('http://') || value.startsWith('https://')) return value;
+
+    // Normalize Windows/absolute/local paths to a web-served /uploads/... path
+    const normalized = value.replace(/\\/g, '/');
+    const uploadsIdx = normalized.indexOf('/uploads/');
+    const uploadsNoSlashIdx = normalized.indexOf('uploads/');
+    let assetPath = normalized;
+    if (uploadsIdx !== -1) {
+      assetPath = normalized.slice(uploadsIdx);
+    } else if (uploadsNoSlashIdx !== -1) {
+      assetPath = `/${normalized.slice(uploadsNoSlashIdx)}`;
+    }
+
+    if (!assetPath.startsWith('/')) {
+      assetPath = `/${assetPath}`;
+    }
+
+    const root = String(baseURL || '').replace(/\/api\/?$/, '').replace(/\/$/, '');
+    return `${root}${assetPath}`;
   };
 
   const extractFilePath = (value) => {
@@ -126,6 +148,8 @@ const VerificationReviewPage = () => {
         console.log('[Admin] Raw verification data:', data);
         console.log('[Admin] governmentId:', data.governmentId);
         console.log('[Admin] selfie:', data.selfie);
+        setIdImgFailed(false);
+        setSelfieImgFailed(false);
         
         setData({
           userId: String(user._id || data.userId || ''),
@@ -505,11 +529,18 @@ const VerificationReviewPage = () => {
               <div className="p-4 flex flex-col items-center">
                 {/* ID Card Image */}
                 <div className="w-full max-w-md bg-gray-50 dark:bg-gray-700/30 border border-gray-200 dark:border-gray-600 rounded-xl p-4 flex items-center justify-center mb-3">
-                   <img 
-                     src={data?.governmentIdUrl || 'https://placehold.co/600x400/374151/FFFFFF?text=Government+ID'} 
-                     alt="Government ID" 
-                     className="w-full h-48 object-cover rounded-lg shadow-sm"
-                   />
+                  {data?.governmentIdUrl && !idImgFailed ? (
+                    <img
+                      src={data.governmentIdUrl}
+                      alt="Government ID"
+                      className="w-full h-48 object-cover rounded-lg shadow-sm"
+                      onError={() => setIdImgFailed(true)}
+                    />
+                  ) : (
+                    <div className="w-full h-48 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center text-sm text-gray-500 dark:text-gray-400">
+                      Government ID unavailable
+                    </div>
+                  )}
                 </div>
                 
                 <div className="flex space-x-6">
@@ -543,11 +574,18 @@ const VerificationReviewPage = () => {
                       </div>
                     </div>
                     <div className="overflow-auto max-h-[70vh] border border-gray-200 dark:border-gray-700 rounded-md">
-                      <img
-                        src={data?.governmentIdUrl || 'https://placehold.co/1200x800/374151/FFFFFF?text=Government+ID'}
-                        alt="Government ID"
-                        className={`w-full object-contain ${idZoom ? 'scale-125' : 'scale-100'} transition-transform`}
-                      />
+                      {data?.governmentIdUrl && !idImgFailed ? (
+                        <img
+                          src={data.governmentIdUrl}
+                          alt="Government ID"
+                          className={`w-full object-contain ${idZoom ? 'scale-125' : 'scale-100'} transition-transform`}
+                          onError={() => setIdImgFailed(true)}
+                        />
+                      ) : (
+                        <div className="w-full h-72 flex items-center justify-center text-sm text-gray-500 dark:text-gray-400">
+                          Government ID unavailable
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -563,11 +601,18 @@ const VerificationReviewPage = () => {
               <div className="p-4 flex flex-col items-center">
                 {/* Selfie Image */}
                 <div className="w-full bg-gray-50 dark:bg-gray-700/30 border border-gray-200 dark:border-gray-600 rounded-xl p-4 flex items-center justify-center mb-3">
-                  <img 
-                    src={data?.selfieUrl || 'https://i.pravatar.cc/300?img=33'} 
-                    alt="Selfie Verification" 
-                    className="h-48 w-48 object-cover rounded-lg shadow-sm"
-                  />
+                  {data?.selfieUrl && !selfieImgFailed ? (
+                    <img
+                      src={data.selfieUrl}
+                      alt="Selfie Verification"
+                      className="h-48 w-48 object-cover rounded-lg shadow-sm"
+                      onError={() => setSelfieImgFailed(true)}
+                    />
+                  ) : (
+                    <div className="h-48 w-48 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center text-sm text-gray-500 dark:text-gray-400">
+                      Selfie unavailable
+                    </div>
+                  )}
                 </div>
                 <p className="text-sm text-gray-500 dark:text-gray-400 italic">
                   Selfie is used only to confirm document ownership.
