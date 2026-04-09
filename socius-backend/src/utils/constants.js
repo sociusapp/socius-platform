@@ -218,6 +218,7 @@ const NOTIFICATION_TYPE = {
   HELP_SESSION_EXTENDED_HELPER: 'help_session_extended_helper',
   BORROW_ITEM_REQUEST: 'borrow_item_request',
   BORROW_ITEM_STATUS: 'borrow_item_status',
+  OFFER_ITEM_REQUEST: 'offer_item_request',
 }
 
 const NOTIFICATION_PRIORITY = {

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, BackHandler, Modal, Animated, Easing, RefreshControl } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, BackHandler, Modal, Animated, Easing, RefreshControl, ActivityIndicator } from 'react-native';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -9,13 +9,24 @@ import Button from '../../../components/common/Button';
 import { SkeletonBox, SkeletonCircle, SkeletonSpacer } from '../../../components/common/Skeleton';
 import { useResponsive } from '../../../utils/responsive';
 import { getMyActiveHelpRequest, cancelHelpRequest } from '../../../services/api/dailyHelp.api';
-import { clearActiveHelpRequestId, loadAuth, saveActiveHelpRequestId } from '../../../services/storage/asyncStorage.service';
+import { clearActiveHelpRequestId, loadActiveHelpRequestId, loadAuth, saveActiveHelpRequestId } from '../../../services/storage/asyncStorage.service';
 import { connectSocket, disconnectSocket, appEvents } from '../../../services/socket/socket.service';
 import CustomAlert from '../../../components/common/CustomAlert';
 import { sociusRefreshProps } from '../../../utils/sociusRefreshControl';
 
+function getStackTopRoute(nav) {
+  try {
+    const state = nav?.getState?.();
+    if (!state?.routes?.length) return null;
+    return state.routes[state.index];
+  } catch {
+    return null;
+  }
+}
+
 const RequestSuccessScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
+  const isFocused = useIsFocused();
   const { initialRequest, initialNoHelpers } = route?.params || {};
   const [loading, setLoading] = useState(!initialRequest);
   const [request, setRequest] = useState(initialRequest || null);
@@ -282,14 +293,34 @@ const RequestSuccessScreen = ({ navigation, route }) => {
 
         const response = await getMyActiveHelpRequest(token);
         if (response?.success && response?.data) {
-          // Handle new response structure { activeRequest, activeHelp }
-          // If response.data has activeRequest property, use it. Otherwise assume it's the request object itself (backward compatibility)
-          const activeRequest = response.data.activeRequest !== undefined ? response.data.activeRequest : response.data;
-          
-          if (activeRequest) {
-            setRequest(activeRequest);
-            if (activeRequest?.id || activeRequest?._id) {
-              saveActiveHelpRequestId(activeRequest.id || activeRequest._id).catch(() => {});
+          const d = response.data;
+          let list = [];
+          if (Array.isArray(d.activeRequests) && d.activeRequests.length > 0) {
+            list = d.activeRequests;
+          } else if (d.activeRequest) {
+            list = [d.activeRequest];
+          } else if (d._id && !('activeRequests' in d)) {
+            list = [d];
+          }
+
+          const initialR = route?.params?.initialRequest;
+          const initialId = initialR?._id || initialR?.id;
+          const storedId = await loadActiveHelpRequestId().catch(() => null);
+          const currentId = requestRef.current?._id || requestRef.current?.id;
+          const preferId = initialId || currentId || storedId;
+
+          let chosen = null;
+          if (preferId && list.length) {
+            chosen = list.find((r) => String(r._id || r.id) === String(preferId)) || null;
+          }
+          if (!chosen && list.length) {
+            chosen = list[0];
+          }
+
+          if (chosen) {
+            setRequest(chosen);
+            if (chosen?.id || chosen?._id) {
+              saveActiveHelpRequestId(chosen.id || chosen._id).catch(() => {});
             }
           } else {
             setRequest(null);
@@ -348,7 +379,10 @@ const RequestSuccessScreen = ({ navigation, route }) => {
           }
 
           if (reqId) {
-            // Force reset to Meeting Details screen
+            const top = getStackTopRoute(navigation);
+            if (top?.name === 'RequesterMatchingMap' && String(top?.params?.requestId) === String(reqId)) {
+              return;
+            }
             navigation.reset({
               index: 1,
               routes: [
@@ -433,98 +467,35 @@ const RequestSuccessScreen = ({ navigation, route }) => {
   }, []);
 
   useEffect(() => {
-    if (['accepted', 'in_progress', 'matched', 'en_route', 'arrived', 'active'].includes(String(request?.status).toLowerCase())) {
-       navigation.reset({
-          index: 1,
-          routes: [
-            { name: 'MainApp', params: { screen: 'HomeTab' } },
-            { name: 'RequesterMatchingMap', params: { requestId: request.id || request._id } }
-          ]
-       });
+    if (!isFocused) return;
+    const rid = request?.id || request?._id;
+    if (!rid) return;
+    if (!['accepted', 'in_progress', 'matched', 'en_route', 'arrived', 'active'].includes(String(request?.status).toLowerCase())) {
+      return;
     }
-  }, [request?.status, navigation]);
+    const top = getStackTopRoute(navigation);
+    if (top?.name === 'RequesterMatchingMap' && String(top?.params?.requestId) === String(rid)) {
+      return;
+    }
+    navigation.reset({
+      index: 1,
+      routes: [
+        { name: 'MainApp', params: { screen: 'HomeTab' } },
+        { name: 'RequesterMatchingMap', params: { requestId: rid } }
+      ]
+    });
+  }, [request?.status, request?.id, request?._id, navigation, isFocused]);
 
   const renderContent = () => {
     if (['accepted', 'in_progress', 'matched', 'en_route', 'arrived', 'active'].includes(String(request?.status).toLowerCase())) {
-         return (
-            <View style={{ width: contentWidth }}>
-                <View style={[styles.successContainer, { height: vscale(120), marginBottom: vscale(18) }]}>
-                    <View style={[styles.pulseRing1, { width: scale(90), height: scale(90), borderRadius: scale(45), backgroundColor: '#E7F9F0', shadowColor: '#28C76F' }]} />
-                    <View style={[styles.pulseRing2, { width: scale(68), height: scale(68), borderRadius: scale(34), backgroundColor: '#D0F4E2', shadowColor: '#28C76F' }]} />
-                    <View style={[styles.successCircle, { width: scale(48), height: scale(48), borderRadius: scale(24), backgroundColor: '#28C76F' }]}>
-                         <Icon name="check" size={scale(24)} color="#FFFFFF" />
-                    </View>
-                </View>
-
-                <View style={[styles.messageSection, { marginBottom: vscale(28) }]}>
-                    <Text style={[styles.successTitle, { fontSize: ms(22), marginBottom: vscale(6), lineHeight: ms(28) }]}>Match Found!</Text>
-                    <Text style={[styles.successSubtitle, { fontSize: ms(15), lineHeight: ms(22) }]}>A volunteer is on their way.</Text>
-                </View>
-
-                 <View style={[styles.requestDetailsCard, { 
-                    borderRadius: scale(22),
-                    borderWidth: scale(1),
-                    paddingHorizontal: spacing(20),
-                    paddingVertical: vscale(18),
-                    marginBottom: vscale(20),
-                    shadowOffset: { width: 0, height: vscale(3) },
-                    shadowRadius: scale(8),
-                    elevation: scale(3)
-                }]}>
-                    <Text style={[styles.cardLabel, { fontSize: ms(13), marginBottom: vscale(10), paddingBottom: vscale(10), borderBottomWidth: scale(1) }]}>Volunteer Details</Text>
-                     {request.volunteer ? (
-                        <>
-                             <Text style={[styles.requestTitle, { fontSize: ms(17), marginTop: vscale(12), marginBottom: vscale(8), lineHeight: ms(26) }]}>
-                                {request.volunteer.fullName || 'A Volunteer'}
-                            </Text>
-                            <Text style={[styles.requestSubtitle, { fontSize: ms(14), lineHeight: ms(21) }]}>
-                                is coming to help you.
-                            </Text>
-                        </>
-                     ) : (
-                        <Text style={[styles.requestTitle, { fontSize: ms(17), marginTop: vscale(12) }]}>
-                            Fetching details...
-                        </Text>
-                     )}
-                </View>
-
-                <Button
-                    title="View Map"
-                    onPress={() => {
-                        const isAccepted = ['accepted', 'in_progress', 'matched', 'en_route', 'arrived', 'active'].includes(String(request.status).toLowerCase()) || request.volunteer;
-                        if (isAccepted) {
-                             navigation.navigate('RequesterMatchingMap', { requestId: request.id || request._id });
-                        } else {
-                             showAlert('Not Accepted', 'Your request has not been accepted yet. Please wait for a volunteer.', [{ text: 'OK', onPress: closeAlert }]);
-                        }
-                    }}
-                    variant="outline"
-                    fullWidth
-                    style={{ marginBottom: vscale(12) }}
-                    disabled={!request.volunteer && !['accepted', 'in_progress', 'matched', 'en_route', 'arrived', 'active'].includes(String(request.status).toLowerCase())}
-                    icon={<Icon name="map-marker-radius-outline" size={scale(18)} color="#E85555" />}
-                    accessibilityLabel="View meeting details on map"
-                />
-          <Button
-            title="Close Request"
-                    onPress={handleCloseRequest}
-                    variant="gradient"
-                    fullWidth
-                    style={{ marginBottom: vscale(12) }}
-                    icon={<Icon name="check-circle-outline" size={scale(18)} color="#FFFFFF" />}
-                    accessibilityLabel="Close this request"
-                />
-                 <Button
-                    title="Emergency"
-                    onPress={() => navigation.navigate('EmergencyHelp')}
-                    variant="white"
-                    fullWidth
-                    textStyle={{ color: '#FF3B30' }}
-                    icon={<Icon name="phone-alert-outline" size={scale(18)} color="#FF3B30" />}
-                    accessibilityLabel="Open emergency help"
-                />
-            </View>
-         );
+      return (
+        <View style={{ width: contentWidth, alignItems: 'center', paddingVertical: vscale(48) }}>
+          <ActivityIndicator size="large" color="#D84D42" />
+          <Text style={{ marginTop: vscale(16), fontSize: ms(15), color: '#64748B', textAlign: 'center' }}>
+            Opening meeting…
+          </Text>
+        </View>
+      );
     }
 
     return (

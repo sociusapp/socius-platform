@@ -147,6 +147,7 @@ const sendToDevice = async ({ token, title, body, data = {}, priority = 'high' }
       if (
         t.includes('help_request') ||
         t.includes('borrow_item_request') ||
+        t.includes('offer_item_request') ||
         t.includes('request_rematched') ||
         t === 'request_completion_prompt'
       ) {

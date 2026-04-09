@@ -13,7 +13,9 @@ const logger = require('../utils/logger')
 const getHistory = async (userId, { page = 1, limit = 20 } = {}) => {
   // 1. My Help Requests
   const helpRequests = await HelpRequest.find({ requesterId: userId })
-    .select('category categoryName categoryIcon description status createdAt location requestedDurationLabel')
+    .select(
+      'category categoryName categoryIcon description status createdAt location requestedDurationLabel sessionEndsAt matchedAt activeAt closedAt cancelledAt'
+    )
     .sort({ createdAt: -1 })
     .limit(limit)
     .lean()
@@ -39,7 +41,8 @@ const getHistory = async (userId, { page = 1, limit = 20 } = {}) => {
   })
     .populate({
       path: 'requestId',
-      select: 'category categoryName categoryIcon description status createdAt location requesterId requestedDurationLabel',
+      select:
+        'category categoryName categoryIcon description status createdAt location requesterId requestedDurationLabel sessionEndsAt matchedAt activeAt closedAt cancelledAt',
       populate: {
         path: 'requesterId',
         select: 'fullName profileImage'

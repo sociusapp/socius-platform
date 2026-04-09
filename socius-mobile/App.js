@@ -3,7 +3,7 @@ import { StatusBar, LogBox, Platform, PermissionsAndroid, DeviceEventEmitter } f
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as SplashScreen from 'expo-splash-screen';
-import AppNavigator, { navigationRef } from './src/navigation/AppNavigator';
+import AppNavigator from './src/navigation/AppNavigator';
 import { initNotifeeChannels } from './src/services/notifications/SociusNotificationService';
 import { loadAuth } from './src/services/storage/asyncStorage.service';
 import { declineHelpAsVolunteer } from './src/services/api/volunteer.api';

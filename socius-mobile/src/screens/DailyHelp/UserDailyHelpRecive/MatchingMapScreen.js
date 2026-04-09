@@ -1,17 +1,27 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, Linking, Alert, Dimensions, ScrollView, Image, Animated, NativeModules, Modal, TextInput, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, Linking, Alert, Dimensions, ScrollView, Image, Animated, NativeModules, Modal, TextInput, RefreshControl, BackHandler } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
+import * as ImagePicker from 'expo-image-picker';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import Header from '../../../components/common/Header';
 import Button from '../../../components/common/Button';
 import { useResponsive } from '../../../utils/responsive';
-import { getBorrowItems, getHelpRequestById, respondBorrowItemRequest } from '../../../services/api/dailyHelp.api';
+import {
+  createOfferItemRequest,
+  getBorrowItems,
+  getHelpRequestById,
+} from '../../../services/api/dailyHelp.api';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
 import { baseURL } from '../../../services/api/client';
 import { resolveBorrowImageUri, formatBorrowDateTime } from '../../../utils/borrowDisplay';
-import { parseMinutesFromDurationLabel, formatMinutesAsDurationLabel } from '../../../utils/durationLabel';
+import {
+  parseMinutesFromDurationLabel,
+  formatMinutesAsDurationLabel,
+  formatMeetingWindowCountdownTick,
+  MEETING_TIME_COPY,
+} from '../../../utils/durationLabel';
 import { sociusRefreshProps } from '../../../utils/sociusRefreshControl';
 
 const { width, height } = Dimensions.get('window');
@@ -20,7 +30,6 @@ import { getSocket, connectSocket, appEvents } from '../../../services/socket/so
 import { getSessionByRequest, getMessages, markMessagesRead } from '../../../services/api/chat.api';
 import ChatModal from '../../../components/common/ChatModal';
 import CustomAlert from '../../../components/common/CustomAlert';
-import NativeCallService from '../../../services/notifications/NativeCallService';
 import { buildClosureInitiatedCopy, buildRequestClosedCopy } from '../../../utils/closureMessages';
 import {
   ROUTES,
@@ -31,7 +40,7 @@ import {
   isTerminalHelpStatus,
   normalizeHelpStatus,
 } from '../../../utils/helpRequestFlow';
-import { submitReport, getMyReports, updateMyReport, deleteMyReport } from '../../../services/api/incident.api';
+import { submitReport, getMyReports, updateMyReport, deleteMyReport, uploadClosureEvidence } from '../../../services/api/incident.api';
 
 const getMessageSenderId = (m) => {
   const s = m?.senderId;
@@ -53,6 +62,7 @@ const countUnreadMessages = (messages, userId) => {
 const MatchingMapScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
   const prefillRequest = route?.params?.prefillRequest || null;
+  const requestId = route?.params?.requestId;
   const [loading, setLoading] = useState(!prefillRequest);
   const [request, setRequest] = useState(prefillRequest);
   const [chatVisible, setChatVisible] = useState(false);
@@ -72,14 +82,19 @@ const MatchingMapScreen = ({ navigation, route }) => {
   const [isReportHistoryLoading, setIsReportHistoryLoading] = useState(false);
   const [editingReportId, setEditingReportId] = useState('');
   const [offerHistory, setOfferHistory] = useState([]);
-  const [borrowIncoming, setBorrowIncoming] = useState(null);
-  const [respondingBorrowId, setRespondingBorrowId] = useState('');
-  const [borrowImageFailed, setBorrowImageFailed] = useState(false);
-  const [offerThumbFailed, setOfferThumbFailed] = useState({});
+  const [offerHistoryThumbFailed, setOfferHistoryThumbFailed] = useState({});
+  const [offerItemName, setOfferItemName] = useState('');
+  const [offerNote, setOfferNote] = useState('');
+  const [offerDuration, setOfferDuration] = useState(30);
+  const [offerCustomMinutes, setOfferCustomMinutes] = useState('');
+  const [offerImageUrl, setOfferImageUrl] = useState('');
+  const [offerImagePreviewUri, setOfferImagePreviewUri] = useState('');
+  const [isUploadingOfferImage, setIsUploadingOfferImage] = useState(false);
+  const [isOfferSubmitting, setIsOfferSubmitting] = useState(false);
+  const [photoPickerOfferVisible, setPhotoPickerOfferVisible] = useState(false);
   const [pullRefreshing, setPullRefreshing] = useState(false);
   const prevSessionEndRef = useRef(null);
   const delayHistoryRequestIdRef = useRef(null);
-  const dismissedBorrowIdsRef = useRef(new Set());
 
   // Custom Alert State
   const [alertVisible, setAlertVisible] = useState(false);
@@ -167,7 +182,6 @@ const MatchingMapScreen = ({ navigation, route }) => {
   
   const mapRef = useRef(null);
   const chatVisibleRef = useRef(chatVisible);
-  const requestId = route?.params?.requestId;
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -176,6 +190,34 @@ const MatchingMapScreen = ({ navigation, route }) => {
       mountedRef.current = false;
     };
   }, []);
+
+  const goHomeFromMeeting = useCallback(() => {
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+    });
+  }, [navigation]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        goHomeFromMeeting();
+        return true;
+      });
+      return () => sub.remove();
+    }, [goHomeFromMeeting])
+  );
+
+  useEffect(() => {
+    const unsub = navigation.addListener('beforeRemove', (e) => {
+      const type = e.data.action?.type;
+      if (type === 'GO_BACK' || type === 'POP') {
+        e.preventDefault();
+        queueMicrotask(() => goHomeFromMeeting());
+      }
+    });
+    return unsub;
+  }, [navigation, goHomeFromMeeting]);
 
   const refreshRequestDetails = useCallback(async () => {
     if (!requestId) return false;
@@ -465,6 +507,7 @@ const MatchingMapScreen = ({ navigation, route }) => {
         requestType: data?.requestType || 'Help request',
         initiatedBy: data?.initiatedBy,
         occurredAt: data?.occurredAt,
+        recipientRole: 'helper',
       });
       showAlert(
         copy.title,
@@ -582,22 +625,9 @@ const MatchingMapScreen = ({ navigation, route }) => {
   })();
 
   useEffect(() => {
-    if (!sessionEndsAtIso) {
-      setCountdownText('No active timer');
-      prevSessionEndRef.current = null;
-      return;
-    }
     const tick = () => {
-      const endMs = new Date(sessionEndsAtIso).getTime();
-      const nowMs = Date.now();
-      const diff = Math.max(0, endMs - nowMs);
-      if (diff <= 0) {
-        setCountdownText('Time finished');
-        return;
-      }
-      const mins = Math.floor(diff / 60000);
-      const secs = Math.floor((diff % 60000) / 1000);
-      setCountdownText(`${mins}m ${secs.toString().padStart(2, '0')}s left`);
+      const u = formatMeetingWindowCountdownTick(sessionEndsAtIso);
+      setCountdownText(u.line);
     };
     tick();
     const id = setInterval(tick, 1000);
@@ -699,98 +729,142 @@ const MatchingMapScreen = ({ navigation, route }) => {
   }, [refreshRequestDetails, loadOfferHistory]);
 
   useEffect(() => {
-    dismissedBorrowIdsRef.current = new Set();
+    setOfferHistoryThumbFailed({});
   }, [requestId]);
-
-  useEffect(() => {
-    if (!requestId || borrowIncoming) return;
-    const pending = (offerHistory || []).find((r) => String(r?.status || '').toLowerCase() === 'pending');
-    if (!pending?._id) return;
-    const bid = String(pending._id);
-    if (dismissedBorrowIdsRef.current.has(bid)) return;
-    setBorrowIncoming({
-      borrowId: bid,
-      _id: bid,
-      requestId: String(requestId),
-      itemName: pending.itemName,
-      note: pending.note || '',
-      requestedMinutes: pending.requestedMinutes,
-      imageUrl: pending.imageUrl || '',
-    });
-  }, [requestId, offerHistory, borrowIncoming]);
-
-  useEffect(() => {
-    setBorrowImageFailed(false);
-  }, [borrowIncoming?.borrowId, borrowIncoming?.imageUrl]);
 
   useEffect(() => {
     let socket;
     const setup = async () => {
       socket = await connectSocket();
       if (!socket) return;
-      const onBorrowRequested = (payload) => {
-        if (String(payload?.requestId || '') !== String(requestId || '')) return;
-        try { NativeCallService.startHelpRequestRingtone(); } catch (e) {}
-        setBorrowIncoming(payload || null);
-        loadOfferHistory();
-      };
       const onBorrowResponse = (payload) => {
         if (String(payload?.requestId || '') !== String(requestId || '')) return;
         loadOfferHistory();
       };
-      socket.on('help:borrow_requested', onBorrowRequested);
+      const onOfferResponse = (payload) => {
+        if (String(payload?.requestId || '') !== String(requestId || '')) return;
+        loadOfferHistory();
+      };
       socket.on('help:borrow_response', onBorrowResponse);
+      socket.on('help:offer_response', onOfferResponse);
     };
     setup();
     return () => {
       if (!socket) return;
-      socket.off('help:borrow_requested');
       socket.off('help:borrow_response');
+      socket.off('help:offer_response');
     };
   }, [requestId, loadOfferHistory]);
 
   useEffect(() => {
-    const onBorrowRequestedLocal = (payload) => {
-      if (payload == null) {
-        setBorrowIncoming(null);
-        return;
-      }
-      if (String(payload?.requestId || '') !== String(requestId || '')) return;
-      try { NativeCallService.startHelpRequestRingtone(); } catch (e) {}
-      setBorrowIncoming(payload || null);
+    const onItemsChanged = ({ requestId: rid } = {}) => {
+      if (String(rid || '') !== String(requestId || '')) return;
       loadOfferHistory();
     };
-    appEvents.on('help:borrow_requested_local', onBorrowRequestedLocal);
-    return () => appEvents.off('help:borrow_requested_local', onBorrowRequestedLocal);
+    appEvents.on('help:borrow_offer_items_changed', onItemsChanged);
+    return () => appEvents.off('help:borrow_offer_items_changed', onItemsChanged);
   }, [requestId, loadOfferHistory]);
 
-  const dismissBorrowModal = useCallback(() => {
+  const uploadOfferPhoto = useCallback(async (localUri) => {
+    if (!localUri) return;
     try {
-      NativeCallService.stopRingtone();
-    } catch (e) {}
-    const bid = String(borrowIncoming?.borrowId || borrowIncoming?._id || '');
-    if (bid) dismissedBorrowIdsRef.current.add(bid);
-    setBorrowIncoming(null);
-  }, [borrowIncoming]);
-
-  const handleBorrowDecision = useCallback(async (borrowId, action) => {
-    try {
-      if (!borrowId || !requestId) return;
-      setRespondingBorrowId(String(borrowId));
+      setIsUploadingOfferImage(true);
       const auth = await loadAuth();
       if (!auth?.accessToken) throw new Error('No auth');
-      await respondBorrowItemRequest(auth.accessToken, requestId, borrowId, action);
-      try { NativeCallService.stopRingtone(); } catch (e) {}
-      await loadOfferHistory();
-      if (String(borrowIncoming?._id || '') === borrowId || String(borrowIncoming?.borrowId || '') === borrowId) {
-        setBorrowIncoming(null);
-      }
+      const form = new FormData();
+      const filename = localUri.split('/').pop() || `offer_${Date.now()}.jpg`;
+      const ext = (filename.split('.').pop() || 'jpg').toLowerCase();
+      const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
+      form.append('evidence', {
+        uri: localUri,
+        name: filename,
+        type: mime,
+      });
+      const res = await uploadClosureEvidence(auth.accessToken, form);
+      const files = Array.isArray(res?.data?.files) ? res.data.files : Array.isArray(res?.files) ? res.files : [];
+      const first = files[0];
+      const rawUrl = String(first || '').trim();
+      if (!rawUrl) throw new Error('No image URL');
+      setOfferImageUrl(rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`);
+      setOfferImagePreviewUri(localUri);
     } catch (e) {
-      showAlert('Unable to update', 'Please try again.', [{ text: 'OK', onPress: closeAlert }]);
+      showAlert('Upload failed', 'Unable to upload photo. Please try again.', [{ text: 'OK', onPress: closeAlert }]);
     } finally {
-      setRespondingBorrowId('');
+      setIsUploadingOfferImage(false);
     }
-  }, [requestId, loadOfferHistory, borrowIncoming]);
+  }, []);
+
+  const handleOpenCameraForOffer = useCallback(async () => {
+    setPhotoPickerOfferVisible(false);
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (perm.status !== 'granted') {
+      showAlert('Permission required', 'Camera permission is required.', [{ text: 'OK', onPress: closeAlert }]);
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({ quality: 0.8, allowsEditing: true });
+    if (!result.canceled && result.assets?.[0]?.uri) {
+      await uploadOfferPhoto(result.assets[0].uri);
+    }
+  }, [uploadOfferPhoto]);
+
+  const handleOpenGalleryForOffer = useCallback(async () => {
+    setPhotoPickerOfferVisible(false);
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (perm.status !== 'granted') {
+      showAlert('Permission required', 'Gallery permission is required.', [{ text: 'OK', onPress: closeAlert }]);
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      quality: 0.9,
+      allowsEditing: true,
+      mediaTypes: ['images'],
+    });
+    if (!result.canceled && result.assets?.[0]?.uri) {
+      await uploadOfferPhoto(result.assets[0].uri);
+    }
+  }, [uploadOfferPhoto]);
+
+  const handleOfferItemSubmit = useCallback(async () => {
+    try {
+      if (!requestId) return;
+      const label = String(offerItemName || '').trim();
+      if (!label) {
+        showAlert('Missing item', 'Please enter the item name.', [{ text: 'OK', onPress: closeAlert }]);
+        return;
+      }
+      setIsOfferSubmitting(true);
+      const auth = await loadAuth();
+      if (!auth?.accessToken) throw new Error('No auth');
+      await createOfferItemRequest(auth.accessToken, requestId, {
+        itemName: label,
+        note: String(offerNote || '').trim(),
+        requestedMinutes: Number(offerDuration || 30),
+        imageUrl: String(offerImageUrl || '').trim(),
+      });
+      await loadOfferHistory();
+      setOfferItemName('');
+      setOfferNote('');
+      setOfferImageUrl('');
+      setOfferImagePreviewUri('');
+      setOfferDuration(30);
+      setOfferCustomMinutes('');
+      showAlert(
+        'Offer sent',
+        'Your offer has been sent to the requester.',
+        [{ text: 'OK', onPress: closeAlert, style: 'primary' }],
+        'check-circle',
+        '#28C76F'
+      );
+    } catch (e) {
+      const msg =
+        e?.response?.data?.message ||
+        e?.message ||
+        'Could not send offer right now.';
+      showAlert('Unable to send', String(msg), [{ text: 'OK', onPress: closeAlert }]);
+    } finally {
+      setIsOfferSubmitting(false);
+    }
+  }, [requestId, offerItemName, offerNote, offerDuration, offerImageUrl, loadOfferHistory]);
 
   const handleSubmitRequestReport = useCallback(async () => {
     try {
@@ -863,76 +937,134 @@ const MatchingMapScreen = ({ navigation, route }) => {
       return (
         <View style={[styles.bottomPanelCard, styles.bottomPanelScreen]}>
           <Text style={styles.bottomPanelTitle}>Offer Item</Text>
-          <Text style={styles.bottomPanelMuted}>Borrow requests sent by requester are listed here.</Text>
-          {offerHistory.slice(0, 10).map((row) => {
-            const id = String(row?._id || '');
-            const isPending = String(row?.status || '').toLowerCase() === 'pending';
-            const thumbUri = resolveBorrowImageUri(row?.imageUrl);
-            const showThumb = thumbUri && !offerThumbFailed[id];
-            const sentAt = formatBorrowDateTime(row?.createdAt);
-            const actedAt = formatBorrowDateTime(row?.actedAt);
-            return (
-              <View key={id || `offer_${row?.createdAt}`} style={styles.offerHistoryRow}>
-                {showThumb ? (
-                  <Image
-                    source={{ uri: thumbUri }}
-                    style={styles.offerHistoryThumb}
-                    onError={() => setOfferThumbFailed((p) => ({ ...p, [id]: true }))}
-                  />
-                ) : (
-                  <View style={[styles.offerHistoryThumb, styles.offerHistoryThumbPlaceholder]}>
-                    <Icon name="image-outline" size={22} color="#9CA3AF" />
-                  </View>
-                )}
-                <View style={styles.offerHistoryMain}>
-                  <View style={styles.offerHistoryTitleRow}>
-                    <Text style={styles.offerHistoryTitle} numberOfLines={2}>
-                      {String(row?.itemName || 'Item')}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.offerStatusPill,
-                        row?.status === 'accepted' && styles.offerStatusPillAccepted,
-                        row?.status === 'declined' && styles.offerStatusPillDeclined,
-                        isPending && styles.offerStatusPillPending,
-                      ]}
-                    >
-                      {String(row?.status || 'pending')}
-                    </Text>
-                  </View>
-                  <Text style={styles.offerHistoryMeta}>
-                    {Number(row?.requestedMinutes || 0)} min
-                    {sentAt ? ` · Sent ${sentAt}` : ''}
-                  </Text>
-                  {!!row?.note ? <Text style={styles.offerHistoryNote}>Note: {String(row.note)}</Text> : null}
-                  {actedAt && !isPending ? (
-                    <Text style={styles.offerHistoryMetaSmall}>
-                      {row?.status === 'accepted' ? 'Accepted' : 'Declined'} {actedAt}
-                    </Text>
-                  ) : null}
-                  {isPending ? (
-                    <View style={styles.offerActionButtonsRow}>
-                      <TouchableOpacity
-                        style={[styles.offerMiniBtn, styles.offerAcceptBtn]}
-                        onPress={() => handleBorrowDecision(id, 'accept')}
-                        disabled={respondingBorrowId === id}
-                      >
-                        <Text style={styles.offerMiniBtnText}>Accept</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.offerMiniBtn, styles.offerDeclineBtn]}
-                        onPress={() => handleBorrowDecision(id, 'decline')}
-                        disabled={respondingBorrowId === id}
-                      >
-                        <Text style={[styles.offerMiniBtnText, { color: '#374151' }]}>Decline</Text>
-                      </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.photoBox}
+            onPress={() => setPhotoPickerOfferVisible(true)}
+            disabled={isUploadingOfferImage}
+          >
+            <Icon name="camera" size={22} color="#4B5563" />
+            <Text style={styles.photoBoxText}>
+              {isUploadingOfferImage ? 'Uploading...' : offerImagePreviewUri ? 'Change Photo' : 'Add Photo'}
+            </Text>
+          </TouchableOpacity>
+          {offerImagePreviewUri ? (
+            <Image source={{ uri: offerImagePreviewUri }} style={styles.borrowPreviewImage} resizeMode="cover" />
+          ) : null}
+          <TextInput
+            value={offerItemName}
+            onChangeText={setOfferItemName}
+            placeholder="Item name"
+            placeholderTextColor="#9CA3AF"
+            style={styles.panelInput}
+          />
+          <TextInput
+            value={offerNote}
+            onChangeText={setOfferNote}
+            placeholder="Message (optional)"
+            placeholderTextColor="#9CA3AF"
+            style={styles.panelInput}
+          />
+          <View style={styles.durationRow}>
+            {[30, 60, 120].map((m) => (
+              <TouchableOpacity
+                key={String(m)}
+                style={[styles.durationChip, offerDuration === m && styles.durationChipActive]}
+                onPress={() => setOfferDuration(m)}
+              >
+                <Text style={[styles.durationChipText, offerDuration === m && styles.durationChipTextActive]}>
+                  {m < 60 ? `${m} min` : `${m / 60} hour${m === 120 ? 's' : ''}`}
+                </Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={[styles.durationChip, offerDuration > 120 && styles.durationChipActive]}
+              onPress={() => {
+                const parsed = Number(offerCustomMinutes || 0);
+                if (parsed > 0) setOfferDuration(parsed);
+              }}
+            >
+              <Text style={[styles.durationChipText, offerDuration > 120 && styles.durationChipTextActive]}>
+                Custom
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <TextInput
+            value={offerCustomMinutes}
+            onChangeText={setOfferCustomMinutes}
+            placeholder="Custom minutes (optional)"
+            placeholderTextColor="#9CA3AF"
+            keyboardType="numeric"
+            style={styles.panelInput}
+          />
+          <TouchableOpacity
+            style={styles.requestActionButton}
+            onPress={handleOfferItemSubmit}
+            disabled={isOfferSubmitting}
+          >
+            <Text style={styles.requestActionButtonText}>{isOfferSubmitting ? 'Sending...' : 'Offer'}</Text>
+          </TouchableOpacity>
+          <View style={styles.borrowHistoryWrap}>
+            <Text style={styles.borrowHistoryTitle}>Recent offers you sent</Text>
+            {(offerHistory || [])
+              .filter((row) => String(row?.initiatedBy || '').toLowerCase() === 'helper')
+              .slice(0, 10)
+              .map((row, index) => {
+                const hid = String(row?._id || `offer_hist_${index}`);
+                const thumbUri = resolveBorrowImageUri(row?.imageUrl);
+                const showThumb = thumbUri && !offerHistoryThumbFailed[hid];
+                const sentAt = formatBorrowDateTime(row?.createdAt);
+                const actedAt = formatBorrowDateTime(row?.actedAt);
+                const isPending = String(row?.status || '').toLowerCase() === 'pending';
+                const st = String(row?.status || 'pending');
+                return (
+                  <View key={hid} style={styles.borrowHistoryDetailRow}>
+                    {showThumb ? (
+                      <Image
+                        source={{ uri: thumbUri }}
+                        style={styles.borrowHistoryThumb}
+                        onError={() => setOfferHistoryThumbFailed((p) => ({ ...p, [hid]: true }))}
+                      />
+                    ) : (
+                      <View style={[styles.borrowHistoryThumb, styles.borrowHistoryThumbPlaceholder]}>
+                        <Icon name="image-outline" size={22} color="#9CA3AF" />
+                      </View>
+                    )}
+                    <View style={styles.borrowHistoryDetailBody}>
+                      <View style={styles.borrowHistoryTitleRow}>
+                        <Text style={styles.borrowHistoryItemTitle} numberOfLines={2}>
+                          {String(row?.itemName || 'Item')}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.borrowStatusText,
+                            row?.status === 'accepted' && styles.borrowStatusAccepted,
+                            row?.status === 'declined' && styles.borrowStatusDeclined,
+                            isPending && styles.borrowStatusPending,
+                          ]}
+                        >
+                          {st}
+                        </Text>
+                      </View>
+                      <Text style={styles.borrowHistoryMetaLine}>
+                        You are helping · {Number(row?.requestedMinutes || 0)} min
+                        {sentAt ? ` · Sent ${sentAt}` : ''}
+                      </Text>
+                      {row?.note ? (
+                        <Text style={styles.borrowHistoryNoteLine}>Note: {String(row.note)}</Text>
+                      ) : null}
+                      {actedAt && !isPending ? (
+                        <Text style={styles.borrowHistoryMetaSmall}>
+                          {row?.status === 'accepted' ? 'Accepted' : 'Declined'} {actedAt}
+                        </Text>
+                      ) : null}
                     </View>
-                  ) : null}
-                </View>
-              </View>
-            );
-          })}
-          {!offerHistory.length ? <Text style={styles.bottomPanelMuted}>No borrow requests yet.</Text> : null}
+                  </View>
+                );
+              })}
+            {!(offerHistory || []).some((row) => String(row?.initiatedBy || '').toLowerCase() === 'helper') ? (
+              <Text style={styles.bottomPanelMuted}>No offers sent yet.</Text>
+            ) : null}
+          </View>
         </View>
       );
     }
@@ -948,21 +1080,23 @@ const MatchingMapScreen = ({ navigation, route }) => {
                 <Icon name="clock-outline" size={18} color="#DC5C69" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.delayHeroTitle}>Delay and time updates</Text>
-                <Text style={styles.delayHeroSub}>Track extension updates from requester</Text>
+                <Text style={styles.delayHeroTitle}>Time & extensions</Text>
+                <Text style={styles.delayHeroSub}>{MEETING_TIME_COPY.delayTabHelperLead}</Text>
               </View>
             </View>
             <View style={styles.delayStatsRow}>
               <View style={styles.delayStatCard}>
-                <Text style={styles.delayStatLabel}>Requested time</Text>
+                <Text style={styles.delayStatLabel}>{MEETING_TIME_COPY.plannedDurationLabel}</Text>
                 <Text style={styles.delayStatValue}>{requestedDurationLabel}</Text>
+                <Text style={styles.delayStatHint}>{MEETING_TIME_COPY.plannedDurationHint}</Text>
               </View>
               <View style={styles.delayStatCard}>
-                <Text style={styles.delayStatLabel}>Session status</Text>
+                <Text style={styles.delayStatLabel}>{MEETING_TIME_COPY.countdownLabel}</Text>
                 <Text style={styles.delayStatValue}>{countdownText}</Text>
+                <Text style={styles.delayStatHint}>{MEETING_TIME_COPY.countdownHint}</Text>
               </View>
             </View>
-            {!!latestDelayAt ? (
+            {latestDelayAt ? (
               <Text style={styles.delayLatestText}>Last update at {latestDelayAt}</Text>
             ) : (
               <Text style={styles.delayLatestText}>No delay update yet</Text>
@@ -972,7 +1106,7 @@ const MatchingMapScreen = ({ navigation, route }) => {
           <View style={styles.delayInfoBox}>
             <Icon name="information-outline" size={16} color="#7C3AED" />
             <Text style={styles.delayInfoText}>
-              Requester can add extra minutes from their Extend tab. You can send a quick message to coordinate meanwhile.
+              Here, &quot;delay&quot; means the requester extended the meeting window (extra time before the timer ends). It is not travel delay. Use chat to coordinate arrival.
             </Text>
           </View>
 
@@ -1085,7 +1219,7 @@ const MatchingMapScreen = ({ navigation, route }) => {
                     <Text style={styles.reportHistoryCategory}>{reportCategoryLabel(row?.category)}</Text>
                     <Text style={styles.reportHistoryStatus}>{status}</Text>
                   </View>
-                  {!!row?.details ? <Text style={styles.reportHistoryDetails}>{String(row.details)}</Text> : null}
+                  {row?.details ? <Text style={styles.reportHistoryDetails}>{String(row.details)}</Text> : null}
                   <Text style={styles.reportHistoryDate}>
                     {new Date(row?.updatedAt || row?.createdAt || Date.now()).toLocaleString()}
                   </Text>
@@ -1156,7 +1290,7 @@ const MatchingMapScreen = ({ navigation, route }) => {
     <SafeAreaView style={styles.container} edges={['top']}>
       <Header 
         title="Nearby Help Request" 
-        onBackPress={() => navigation.goBack()}
+        onBackPress={goHomeFromMeeting}
         style={{ borderBottomWidth: 1, borderBottomColor: '#E8EAED' }}
         rightComponent={
           <TouchableOpacity 
@@ -1380,52 +1514,37 @@ const MatchingMapScreen = ({ navigation, route }) => {
         prefillMessage={prefillMessage}
         autoFocus={true}
       />
-      <Modal visible={!!borrowIncoming} transparent animationType="fade" onRequestClose={dismissBorrowModal}>
-        <View style={styles.borrowModalBackdrop}>
-          <View style={styles.borrowModalCard}>
-            <TouchableOpacity style={styles.borrowModalClose} onPress={dismissBorrowModal}>
-              <Icon name="close" size={24} color="#6B7280" />
+      <Modal
+        visible={photoPickerOfferVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPhotoPickerOfferVisible(false)}
+      >
+        <TouchableOpacity
+          activeOpacity={1}
+          style={styles.photoPickerBackdrop}
+          onPress={() => setPhotoPickerOfferVisible(false)}
+        >
+          <View style={styles.photoPickerCard}>
+            <Text style={styles.photoPickerTitle}>Add Photo</Text>
+            <Text style={styles.photoPickerSubtitle}>Choose image source</Text>
+            <View style={styles.photoPickerActions}>
+              <TouchableOpacity style={styles.photoPickerBtn} onPress={handleOpenCameraForOffer}>
+                <Icon name="camera-outline" size={18} color="#DC5C69" />
+                <Text style={styles.photoPickerBtnText}>Camera</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.photoPickerBtn} onPress={handleOpenGalleryForOffer}>
+                <Icon name="image-outline" size={18} color="#DC5C69" />
+                <Text style={styles.photoPickerBtnText}>Gallery</Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity style={styles.photoPickerCancelBtn} onPress={() => setPhotoPickerOfferVisible(false)}>
+              <Text style={styles.photoPickerCancelText}>Cancel</Text>
             </TouchableOpacity>
-            <View style={styles.borrowModalAvatarWrap}>
-              {request?.requesterId?.profileImage ? (
-                <Image source={getProfileImage(request?.requesterId?.profileImage)} style={styles.borrowModalAvatar} />
-              ) : (
-                <Icon name="account-circle" size={74} color="#9CA3AF" />
-              )}
-            </View>
-            <Text style={styles.borrowModalName}>{request?.requesterId?.fullName || 'Requester'}</Text>
-            <View style={styles.borrowModalDivider} />
-            <Text style={styles.borrowMetaLine}><Text style={styles.borrowMetaLabel}>Item:</Text> {String(borrowIncoming?.itemName || '-')}</Text>
-            <Text style={styles.borrowMetaLine}><Text style={styles.borrowMetaLabel}>Note:</Text> "{String(borrowIncoming?.note || 'No note')}"</Text>
-            <Text style={styles.borrowMetaLine}><Text style={styles.borrowMetaLabel}>Time:</Text> {String(borrowIncoming?.requestedMinutes || '')} min</Text>
-            <Image
-              source={(() => {
-                const resolved = resolveBorrowImageUri(borrowIncoming?.imageUrl);
-                const fallback = 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=600&q=60';
-                if (!resolved || borrowImageFailed) return { uri: fallback };
-                return { uri: resolved };
-              })()}
-              style={styles.borrowModalItemImage}
-              resizeMode="cover"
-              onError={() => setBorrowImageFailed(true)}
-            />
-            <View style={styles.borrowModalActions}>
-              <TouchableOpacity
-                style={[styles.borrowModalBtn, styles.borrowModalAccept]}
-                onPress={() => handleBorrowDecision(String(borrowIncoming?.borrowId || borrowIncoming?._id || ''), 'accept')}
-              >
-                <Text style={styles.borrowModalAcceptText}>Accept</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.borrowModalBtn, styles.borrowModalDecline]}
-                onPress={() => handleBorrowDecision(String(borrowIncoming?.borrowId || borrowIncoming?._id || ''), 'decline')}
-              >
-                <Text style={styles.borrowModalDeclineText}>Decline</Text>
-              </TouchableOpacity>
-            </View>
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
+
       <CustomAlert
         visible={alertVisible}
         title={alertConfig.title}
@@ -1828,6 +1947,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#1F2937',
     fontWeight: '700',
+  },
+  delayStatHint: {
+    marginTop: 5,
+    fontSize: 10,
+    color: '#9CA3AF',
+    lineHeight: 14,
   },
   delayLatestText: {
     marginTop: 8,
@@ -2360,6 +2485,100 @@ const styles = StyleSheet.create({
   durationChipTextActive: {
     color: '#DC5C69',
   },
+  photoBox: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#F3F4F6',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  photoBoxText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#374151',
+  },
+  borrowPreviewImage: {
+    width: '100%',
+    height: 155,
+    borderRadius: 12,
+    marginBottom: 10,
+    backgroundColor: '#F3F4F6',
+  },
+  requestActionButton: {
+    backgroundColor: '#E35F52',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  requestActionButtonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  photoPickerBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.40)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  photoPickerCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+  },
+  photoPickerTitle: {
+    fontSize: 22,
+    color: '#111827',
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  photoPickerSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 14,
+  },
+  photoPickerActions: {
+    gap: 10,
+    marginBottom: 12,
+  },
+  photoPickerBtn: {
+    borderWidth: 1,
+    borderColor: '#F3D5DA',
+    borderRadius: 12,
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FFF7F8',
+  },
+  photoPickerBtnText: {
+    fontSize: 16,
+    color: '#DC5C69',
+    fontWeight: '700',
+  },
+  photoPickerCancelBtn: {
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+  },
+  photoPickerCancelText: {
+    fontSize: 15,
+    color: '#374151',
+    fontWeight: '700',
+  },
   borrowHistoryWrap: {
     marginTop: 12,
     borderTopWidth: 1,
@@ -2371,6 +2590,70 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#6B7280',
     fontWeight: '700',
+  },
+  borrowHistoryDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#ECEFF3',
+    borderRadius: 10,
+    padding: 10,
+  },
+  borrowHistoryThumb: {
+    width: 56,
+    height: 56,
+    borderRadius: 10,
+    backgroundColor: '#F3F4F6',
+  },
+  borrowHistoryThumbPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  borrowHistoryDetailBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  borrowHistoryTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  borrowHistoryItemTitle: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  borrowHistoryMetaLine: {
+    marginTop: 4,
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  borrowHistoryMetaSmall: {
+    marginTop: 2,
+    fontSize: 11,
+    color: '#9CA3AF',
+  },
+  borrowHistoryNoteLine: {
+    marginTop: 6,
+    fontSize: 12,
+    color: '#374151',
+    lineHeight: 18,
+  },
+  borrowStatusAccepted: {
+    color: '#16A34A',
+    backgroundColor: '#E8F7EE',
+  },
+  borrowStatusDeclined: {
+    color: '#DC2626',
+    backgroundColor: '#FDECEC',
+  },
+  borrowStatusPending: {
+    color: '#B45309',
+    backgroundColor: '#FEF3C7',
   },
   borrowHistoryRow: {
     flexDirection: 'row',

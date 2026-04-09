@@ -53,8 +53,8 @@ const CommunityScreen = ({ navigation }) => {
   }, []);
   const isFocused = useIsFocused();
   const [activeTab, setActiveTab] = useState('overview');
-  const [activeRequest, setActiveRequest] = useState(null);
-  const [activeHelp, setActiveHelp] = useState(null);
+  const [activeRequests, setActiveRequests] = useState([]);
+  const [activeHelps, setActiveHelps] = useState([]);
   const [categoriesBySlug, setCategoriesBySlug] = useState({});
   const [blogTypes, setBlogTypes] = useState([]);
   const [blogTypesLoaded, setBlogTypesLoaded] = useState(false);
@@ -209,11 +209,23 @@ const CommunityScreen = ({ navigation }) => {
         const response = await getMyActiveHelpRequest(token);
         if (response?.success && response?.data) {
           const data = response.data;
-          setActiveRequest(data.activeRequest !== undefined ? data.activeRequest : data);
-          setActiveHelp(data.activeHelp || null);
+          const reqList =
+            Array.isArray(data.activeRequests) && data.activeRequests.length > 0
+              ? data.activeRequests
+              : data.activeRequest
+                ? [data.activeRequest]
+                : [];
+          const helpList =
+            Array.isArray(data.activeHelps) && data.activeHelps.length > 0
+              ? data.activeHelps
+              : data.activeHelp
+                ? [data.activeHelp]
+                : [];
+          setActiveRequests(reqList);
+          setActiveHelps(helpList);
         } else {
-          setActiveRequest(null);
-          setActiveHelp(null);
+          setActiveRequests([]);
+          setActiveHelps([]);
         }
       }
     } catch (error) {
@@ -441,38 +453,75 @@ const CommunityScreen = ({ navigation }) => {
             </Text>
           </View>
 
-          {/* Active Request Card (Requester) */}
-          {activeRequest && (
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={() => {
-                const status = String(activeRequest.status || '').toLowerCase();
-                if (['accepted', 'in_progress', 'matched', 'en_route', 'arrived', 'active'].includes(status)) {
-                  navigation.navigate('RequesterMatchingMap', { requestId: activeRequest._id });
-                } else {
-                  navigation.navigate('RequestActive');
-                }
-              }}
-              style={[styles.activeCard, styles.helpActiveCard]}
-            >
-              <View style={[styles.activeIconBadge, { backgroundColor: '#0EA5E9', width: scale(40), height: scale(40), borderRadius: scale(20), marginRight: spacing(12) }]}>
-                <Icon name="hand-heart" size={scale(20)} color="#FFFFFF" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
-                  <View style={{ marginRight: spacing(6) }}>
-                    <PulseDot color="#0EA5E9" size={6} />
-                  </View>
-                  <Text style={[styles.activeCardTitle, { fontSize: ms(14), color: '#0EA5E9', fontWeight: '700', marginRight: spacing(6) }]}>
-                    Active Help Request
-                  </Text>
-                  <View style={styles.liveBadge}><Text style={styles.liveText}>LIVE</Text></View>
+          {/* Active help requests you posted (may be several) */}
+          {activeRequests.map((ar) => {
+            const rid = ar._id || ar.id;
+            if (!rid) return null;
+            const status = String(ar.status || '').toLowerCase();
+            return (
+              <TouchableOpacity
+                key={String(rid)}
+                activeOpacity={0.9}
+                onPress={() => {
+                  if (['accepted', 'in_progress', 'matched', 'en_route', 'arrived', 'active'].includes(status)) {
+                    navigation.navigate('RequesterMatchingMap', { requestId: rid });
+                  } else {
+                    navigation.navigate('RequestActive', { initialRequest: ar });
+                  }
+                }}
+                style={[styles.activeCard, styles.helpActiveCard, { marginBottom: vscale(8) }]}
+              >
+                <View style={[styles.activeIconBadge, { backgroundColor: '#0EA5E9', width: scale(40), height: scale(40), borderRadius: scale(20), marginRight: spacing(12) }]}>
+                  <Icon name="hand-heart" size={scale(20)} color="#FFFFFF" />
                 </View>
-                <Text numberOfLines={1} style={styles.activeCardDesc}>{activeRequest.description}</Text>
-              </View>
-              <Icon name="chevron-right" size={scale(20)} color="#0EA5E9" />
-            </TouchableOpacity>
-          )}
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+                    <View style={{ marginRight: spacing(6) }}>
+                      <PulseDot color="#0EA5E9" size={6} />
+                    </View>
+                    <Text style={[styles.activeCardTitle, { fontSize: ms(14), color: '#0EA5E9', fontWeight: '700', marginRight: spacing(6) }]}>
+                      Active Help Request
+                    </Text>
+                    <View style={styles.liveBadge}><Text style={styles.liveText}>LIVE</Text></View>
+                  </View>
+                  <Text numberOfLines={2} style={styles.activeCardDesc}>{ar.description || '—'}</Text>
+                </View>
+                <Icon name="chevron-right" size={scale(20)} color="#0EA5E9" />
+              </TouchableOpacity>
+            );
+          })}
+
+          {/* Sessions where you are the helper (may be several) */}
+          {activeHelps.map((h) => {
+            const req = h.request || h.requestId;
+            const rid = req?._id || req?.id;
+            if (!rid) return null;
+            return (
+              <TouchableOpacity
+                key={String(h.matchId || rid)}
+                activeOpacity={0.9}
+                onPress={() => navigation.navigate('MatchingMap', { requestId: rid })}
+                style={[styles.activeCard, styles.helperActiveCard, { marginBottom: vscale(8) }]}
+              >
+                <View style={[styles.activeIconBadge, { backgroundColor: '#059669', width: scale(40), height: scale(40), borderRadius: scale(20), marginRight: spacing(12) }]}>
+                  <Icon name="account-heart" size={scale(20)} color="#FFFFFF" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+                    <View style={{ marginRight: spacing(6) }}>
+                      <PulseDot color="#059669" size={6} />
+                    </View>
+                    <Text style={[styles.activeCardTitle, { fontSize: ms(14), color: '#059669', fontWeight: '700', marginRight: spacing(6) }]}>
+                      Helping nearby
+                    </Text>
+                    <View style={styles.liveBadge}><Text style={styles.liveText}>LIVE</Text></View>
+                  </View>
+                  <Text numberOfLines={2} style={styles.activeCardDesc}>{req.description || '—'}</Text>
+                </View>
+                <Icon name="chevron-right" size={scale(20)} color="#059669" />
+              </TouchableOpacity>
+            );
+          })}
 
           {/* Ask for Local Help — Request / Survey tabs */}
           <View
@@ -821,6 +870,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', shadowColor: "#000", shadowOpacity: 0.1, elevation: 3
   },
   helpActiveCard: { borderWidth: 1.5, borderColor: '#0EA5E9', backgroundColor: '#F0F9FF' },
+  helperActiveCard: { borderWidth: 1.5, borderColor: '#059669', backgroundColor: '#ECFDF5' },
   activeIconBadge: { alignItems: 'center', justifyContent: 'center' },
   activeCardTitle: { fontWeight: '700' },
   activeCardDesc: { fontSize: 13, color: '#334155' },

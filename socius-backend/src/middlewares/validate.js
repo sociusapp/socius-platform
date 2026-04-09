@@ -341,6 +341,17 @@ const schemas = {
     action: Joi.string().valid('accept', 'decline').required(),
   }),
 
+  offerItemCreate: Joi.object({
+    itemName: Joi.string().trim().min(2).max(120).required(),
+    note: Joi.string().trim().max(400).optional().allow(''),
+    requestedMinutes: Joi.number().integer().min(5).max(1440).required(),
+    imageUrl: Joi.string().trim().max(400).optional().allow(''),
+  }),
+
+  offerItemRespond: Joi.object({
+    action: Joi.string().valid('accept', 'decline').required(),
+  }),
+
   // Close request
   closeRequest: Joi.object({
     wasResolved: Joi.boolean().required(),

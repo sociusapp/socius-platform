@@ -20,18 +20,51 @@ const formatRequestLabel = ({ requestType }) => {
   return label.endsWith('Request') ? label : `${label} request`
 }
 
-const buildClosureInitiatedCopy = ({ requestId, requestType = 'Help request', initiatedBy, occurredAt }) => {
-  const label = formatRequestLabel({ requestType })
-  const by =
-    initiatedBy === 'requester'
-      ? 'The requester'
-      : initiatedBy === 'helper'
-      ? 'The helper'
-      : 'A participant'
+const normalizeViewerRole = (value) => {
+  const v = String(value || '').toLowerCase().trim()
+  if (v === 'helper' || v === 'volunteer' || v === 'responder') return 'helper'
+  if (v === 'requester' || v === 'owner') return 'requester'
+  return ''
+}
 
+/**
+ * Shown to the party who did NOT submit first — FCM includes recipientRole.
+ * initiatedBy = who submitted closure first (requester | helper).
+ */
+const buildClosureInitiatedCopy = ({
+  requestId,
+  requestType = 'Help request',
+  initiatedBy,
+  occurredAt,
+  recipientRole,
+}) => {
+  const label = formatRequestLabel({ requestType })
+  let viewer = normalizeViewerRole(recipientRole)
+  if (!viewer) {
+    if (initiatedBy === 'helper') viewer = 'requester'
+    else if (initiatedBy === 'requester') viewer = 'helper'
+  }
+
+  const ib = String(initiatedBy || '').toLowerCase()
+
+  if (viewer === 'requester' && ib === 'helper') {
+    return {
+      title: 'Closure in progress',
+      message: `Your helper has started closing your ${label}. Finish your part from My activity when you can—the live meeting map is no longer needed for this step.`,
+    }
+  }
+  if (viewer === 'helper' && ib === 'requester') {
+    return {
+      title: 'Closure in progress',
+      message: `The requester has started closing the ${label} you accepted. Complete your part from My activity when you're ready.`,
+    }
+  }
+
+  const by =
+    ib === 'requester' ? 'The requester' : ib === 'helper' ? 'The helper' : 'The other person'
   return {
-    title: 'Closure started',
-    message: `${by} started closing your ${label}.\nOpen Socius to review and complete the closure.`,
+    title: 'Closure in progress',
+    message: `${by} started closing this ${label}. Use My activity to finish—you do not need the live meeting screen.`,
   }
 }
 
@@ -49,9 +82,10 @@ const buildRequestClosedCopy = ({ requestId, requestType = 'Help request', reaso
       ? 'It was auto-closed.'
       : isRequester ? 'It was closed.' : 'The request has been closed.'
   
+  const tail = 'The live meeting screen is no longer available for this request.'
   const message = isRequester
-    ? `Your ${label} is no longer active.\n${reasonPart}`
-    : `The ${label} you accepted is no longer active.\n${reasonPart}`
+    ? `Your ${label} is fully closed.\n${reasonPart}\n${tail}`
+    : `The ${label} you accepted is fully closed.\n${reasonPart}\n${tail}`
   
   return {
     title: 'Request closed',

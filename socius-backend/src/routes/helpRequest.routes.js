@@ -14,6 +14,8 @@ const {
   createBorrowItem,
   getBorrowItems,
   respondBorrowItem,
+  createOfferItem,
+  respondOfferItem,
 } = require('../controllers/helpRequest.controller')
 const { authenticate, requireActive } = require('../middlewares/auth')
 const { validate, schemas } = require('../middlewares/validate')
@@ -75,5 +77,8 @@ router.patch('/:id/close', authenticate, validate(schemas.closeRequest), closeRe
 router.get('/:id/borrow-items', authenticate, getBorrowItems)
 router.post('/:id/borrow', authenticate, requireActive, validate(schemas.borrowItemCreate), createBorrowItem)
 router.patch('/:id/borrow/:borrowId', authenticate, requireActive, validate(schemas.borrowItemRespond), respondBorrowItem)
+
+router.post('/:id/offer', authenticate, requireActive, validate(schemas.offerItemCreate), createOfferItem)
+router.patch('/:id/offer/:offerId', authenticate, requireActive, validate(schemas.offerItemRespond), respondOfferItem)
 
 module.exports = router

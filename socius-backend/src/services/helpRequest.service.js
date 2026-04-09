@@ -16,6 +16,7 @@ const {
   sendHelperArrivedNotification,
   sendHelperSessionExtendedNotification,
   sendBorrowItemRequestNotification,
+  sendOfferItemRequestNotification,
 } = require('./notification.service')
 const { findNearbyAvailableUsers } = require('../utils/geoQuery')
 const { parseRequestedDurationMinutes } = require('../utils/helpDuration')
@@ -180,38 +181,6 @@ const updateRequest = async (requesterId, requestId, { category, categoryId, sub
  */
 const createRequest = async (requesterId, { category, categoryId, subcategoryId, description, time, location, itemReturnRequired }, meta = null) => {
   logger.info(`[HelpRequest] createRequest by=${requesterId} cat=${category} loc=(${location?.lng},${location?.lat})`)
-  
-  // Check ALL requests for this user (not just active ones) for debugging
-  const allUserRequests = await HelpRequest.find({
-    requesterId,
-  }).select('_id status category').lean()
-  logger.info(`[HelpRequest] All requests for user ${requesterId}:`, allUserRequests.map(r => ({ id: r._id, status: r.status, category: r.category })))
-  
-  // Active request check — ek time pe ek hi request
-  const activeRequest = await HelpRequest.findOne({
-    requesterId,
-    status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING, HELP_REQUEST_STATUS.MATCHED, HELP_REQUEST_STATUS.ACTIVE] },
-  })
-
-  if (activeRequest) {
-    logger.warn(`[HelpRequest] BLOCK: active help request exists id=${activeRequest._id} status=${activeRequest.status}`)
-    logRequestAttempt({
-      requesterId,
-      requestKind: 'help_request',
-      outcome: 'blocked_active_request',
-      reason: 'active_help_request',
-      category,
-      description,
-      itemReturnRequired: itemReturnRequired || false,
-      location,
-      radiusMeters: GEO.DEFAULT_RADIUS_METERS,
-      meta,
-    }).catch(() => {})
-    const err = new Error('You already have an active request')
-    err.statusCode = 409
-    err.code = 'ACTIVE_REQUEST_EXISTS'
-    throw err
-  }
 
   const activePresence = await PresenceRequest.findOne({
     requesterId,
@@ -446,28 +415,6 @@ const createRequest = async (requesterId, { category, categoryId, subcategoryId,
  * Helper ne accept kiya (atomic: partial unique index on HelpMatch + conditional HelpRequest update)
  */
 const acceptRequest = async (helperId, requestId) => {
-  const busyRequester = await HelpRequest.findOne({
-    requesterId: helperId,
-    status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING, HELP_REQUEST_STATUS.MATCHED, HELP_REQUEST_STATUS.ACTIVE] },
-  }).select('_id status')
-
-  if (busyRequester) {
-    const err = new Error('You have an active request. Please close it first.')
-    err.statusCode = 409
-    throw err
-  }
-
-  const busyPresenceRequester = await PresenceRequest.findOne({
-    requesterId: helperId,
-    status: { $in: [PRESENCE_STATUS.ACTIVE, PRESENCE_STATUS.HELPERS_NOTIFIED, PRESENCE_STATUS.HELPERS_ACCEPTED] },
-  }).select('_id status')
-
-  if (busyPresenceRequester) {
-    const err = new Error('You have an active request. Please close it first.')
-    err.statusCode = 409
-    throw err
-  }
-
   let request = await HelpRequest.findById(requestId)
   if (!request || !['open', 'matching', 'matched', 'active'].includes(request.status)) {
     const err = new Error('Request is no longer available')
@@ -854,94 +801,107 @@ const getRequestById = async (requestId, userId) => {
 }
 
 /**
- * User ki active requests
+ * User ki active requests (multiple concurrent allowed: arrays + first-item legacy fields)
  */
 const getMyActiveRequest = async (userId) => {
   logger.info(`[HelpRequest] getMyActiveRequest for=${userId}`)
-  // 1. Check if user is a requester (Request active hai)
-  const request = await HelpRequest.findOne({
+
+  const requests = await HelpRequest.find({
     requesterId: userId,
     status: { $in: ['open', 'matching', 'matched', 'active'] },
-  }).populate('requesterId', 'fullName location profileImage')
+  })
+    .sort({ updatedAt: -1 })
+    .populate('requesterId', 'fullName location profileImage')
 
-  let requesterData = null
-  if (request) {
+  const requesterDataList = []
+  for (const request of requests) {
     logger.info(`[HelpRequest] Active as requester id=${request._id} status=${request.status}`)
-    // Canonical stats source for requester live counters.
     const stats = await computeHelpRequestStats(request._id)
     const matches = await HelpMatch.find({ requestId: request._id })
 
-    // Helper details if matched
     let volunteer = null
     if (request.status === 'matched' || request.status === 'active') {
-      const acceptedMatch = matches.find(m => m.status === 'accepted')
+      const acceptedMatch = matches.find((m) => m.status === 'accepted')
       if (acceptedMatch) {
         const helperUser = await require('../models/User').findById(acceptedMatch.helperId).select('fullName phone profileImage')
         if (helperUser) {
-          volunteer = helperUser.toObject();
+          volunteer = helperUser.toObject()
           if (volunteer.profileImage) {
-            volunteer.profileImage = normalizeProfileImage(volunteer.profileImage);
+            volunteer.profileImage = normalizeProfileImage(volunteer.profileImage)
           }
           if (!volunteer.profileImage) {
-            const ver = await Verification.findOne({ userId: acceptedMatch.helperId }).select('selfie');
-            if (ver?.selfie?.fileUrl) volunteer.profileImage = normalizeProfileImage(ver.selfie.fileUrl);
+            const ver = await Verification.findOne({ userId: acceptedMatch.helperId }).select('selfie')
+            if (ver?.selfie?.fileUrl) volunteer.profileImage = normalizeProfileImage(ver.selfie.fileUrl)
           }
         }
       }
     }
-    requesterData = { ...request.toObject(), stats, volunteer }
+    const requesterData = { ...request.toObject(), stats, volunteer }
 
     if (requesterData.requesterId && requesterData.requesterId.profileImage) {
-      requesterData.requesterId.profileImage = normalizeProfileImage(requesterData.requesterId.profileImage);
+      requesterData.requesterId.profileImage = normalizeProfileImage(requesterData.requesterId.profileImage)
     }
 
-    // Populate requester profile image from Verification if not set
     if (requesterData.requesterId && !requesterData.requesterId.profileImage) {
-      const ver = await Verification.findOne({ userId: requesterData.requesterId._id }).select('selfie');
+      const ver = await Verification.findOne({ userId: requesterData.requesterId._id }).select('selfie')
       if (ver?.selfie?.fileUrl) {
-        requesterData.requesterId.profileImage = normalizeProfileImage(ver.selfie.fileUrl);
+        requesterData.requesterId.profileImage = normalizeProfileImage(ver.selfie.fileUrl)
       }
     }
-    requesterData.requesterTrustSignals = await buildTrustSignalsForUser(requesterData.requesterId?._id || requesterData.requesterId)
+    requesterData.requesterTrustSignals = await buildTrustSignalsForUser(
+      requesterData.requesterId?._id || requesterData.requesterId
+    )
+    requesterDataList.push(requesterData)
   }
 
-  // 2. Check if user is a helper (Helping someone else)
-  const activeHelpMatch = await HelpMatch.findOne({
+  const activeHelpMatches = await HelpMatch.find({
     helperId: userId,
     status: 'accepted',
-  }).populate({
-    path: 'requestId',
-    match: { status: { $in: ['matched', 'active'] } }, // Request bhi active honi chahiye
-    populate: { path: 'requesterId', select: 'fullName location profileImage' }
   })
+    .sort({ acceptedAt: -1 })
+    .populate({
+      path: 'requestId',
+      match: { status: { $in: ['matched', 'active'] } },
+      populate: { path: 'requesterId', select: 'fullName location profileImage' },
+    })
 
-  let helperData = null
-  if (activeHelpMatch && activeHelpMatch.requestId) {
-    logger.info(`[HelpRequest] Active as helper match=${activeHelpMatch._id} req=${activeHelpMatch.requestId?._id} status=${activeHelpMatch.status}`)
-    let reqObj = activeHelpMatch.requestId.toObject();
+  const helperDataList = []
+  for (const activeHelpMatch of activeHelpMatches) {
+    if (!activeHelpMatch.requestId) continue
+    logger.info(
+      `[HelpRequest] Active as helper match=${activeHelpMatch._id} req=${activeHelpMatch.requestId?._id} status=${activeHelpMatch.status}`
+    )
+    let reqObj = activeHelpMatch.requestId.toObject()
 
     if (reqObj.requesterId && reqObj.requesterId.profileImage) {
-      reqObj.requesterId.profileImage = normalizeProfileImage(reqObj.requesterId.profileImage);
+      reqObj.requesterId.profileImage = normalizeProfileImage(reqObj.requesterId.profileImage)
     }
 
     if (reqObj.requesterId && !reqObj.requesterId.profileImage) {
-      const ver = await Verification.findOne({ userId: reqObj.requesterId._id }).select('selfie');
+      const ver = await Verification.findOne({ userId: reqObj.requesterId._id }).select('selfie')
       if (ver?.selfie?.fileUrl) {
-        reqObj.requesterId.profileImage = normalizeProfileImage(ver.selfie.fileUrl);
+        reqObj.requesterId.profileImage = normalizeProfileImage(ver.selfie.fileUrl)
       }
     }
     reqObj.requesterTrustSignals = await buildTrustSignalsForUser(reqObj.requesterId?._id || reqObj.requesterId)
 
-    helperData = {
+    helperDataList.push({
       matchId: activeHelpMatch._id,
       request: reqObj,
       status: activeHelpMatch.status,
-      acceptedAt: activeHelpMatch.acceptedAt
-    }
+      acceptedAt: activeHelpMatch.acceptedAt,
+    })
   }
 
-  logger.info(`[HelpRequest] Active summary requester=${!!request} helper=${!!activeHelpMatch}`)
-  return { activeRequest: requesterData, activeHelp: helperData }
+  logger.info(
+    `[HelpRequest] Active summary requesterCount=${requesterDataList.length} helperCount=${helperDataList.length}`
+  )
+  return {
+    activeRequest: requesterDataList[0] || null,
+    activeRequests: requesterDataList,
+    activeHelp: helperDataList[0] || null,
+    activeHelps: helperDataList,
+  }
 }
 
 /**
@@ -1237,6 +1197,7 @@ const createBorrowItemRequest = async (requesterId, requestId, { itemName, note,
     requestedMinutes: Number(requestedMinutes),
     imageUrl: imageUrl || '',
     status: 'pending',
+    initiatedBy: 'requester',
   })
 
   const payload = {
@@ -1249,6 +1210,7 @@ const createBorrowItemRequest = async (requesterId, requestId, { itemName, note,
     requestedMinutes: String(doc.requestedMinutes),
     imageUrl: doc.imageUrl || '',
     status: doc.status,
+    initiatedBy: 'requester',
     createdAt: doc.createdAt ? doc.createdAt.toISOString() : new Date().toISOString(),
   }
 
@@ -1295,6 +1257,144 @@ const getBorrowItems = async (userId, requestId) => {
   return { items }
 }
 
+const createOfferItemRequest = async (helperId, requestId, { itemName, note, requestedMinutes, imageUrl }) => {
+  const request = await HelpRequest.findById(requestId).select('_id requesterId status')
+  if (!request) {
+    const err = new Error('Request not found')
+    err.statusCode = 404
+    throw err
+  }
+  if (![HELP_REQUEST_STATUS.MATCHED, HELP_REQUEST_STATUS.ACTIVE].includes(String(request.status || '').toLowerCase())) {
+    const err = new Error('Request is not active for offers')
+    err.statusCode = 409
+    throw err
+  }
+
+  const acceptedMatch = await getAcceptedMatchForRequest(requestId)
+  if (!acceptedMatch?.helperId || String(acceptedMatch.helperId) !== String(helperId)) {
+    const err = new Error('Only the assigned helper can send an offer')
+    err.statusCode = 403
+    throw err
+  }
+
+  const pendingOffer = await HelpBorrowItem.findOne({
+    requestId,
+    helperId,
+    status: 'pending',
+    initiatedBy: 'helper',
+  })
+    .select('_id')
+    .lean()
+  if (pendingOffer) {
+    const err = new Error('You already have a pending offer for this request')
+    err.statusCode = 409
+    err.code = 'OFFER_ITEM_PENDING_EXISTS'
+    throw err
+  }
+
+  const doc = await HelpBorrowItem.create({
+    requestId,
+    requesterId: request.requesterId,
+    helperId,
+    itemName,
+    note: note || '',
+    requestedMinutes: Number(requestedMinutes),
+    imageUrl: imageUrl || '',
+    status: 'pending',
+    initiatedBy: 'helper',
+  })
+
+  const helperUser = await User.findById(helperId).select('fullName').lean()
+  const helperName = helperUser?.fullName || 'Helper'
+
+  const payload = {
+    offerId: String(doc._id),
+    borrowId: String(doc._id),
+    requestId: String(requestId),
+    requesterId: String(request.requesterId),
+    helperId: String(helperId),
+    helperName,
+    itemName: doc.itemName,
+    note: doc.note || '',
+    requestedMinutes: String(doc.requestedMinutes),
+    imageUrl: doc.imageUrl || '',
+    status: doc.status,
+    initiatedBy: 'helper',
+    createdAt: doc.createdAt ? doc.createdAt.toISOString() : new Date().toISOString(),
+  }
+
+  try {
+    emitToUser(String(request.requesterId), 'help:offer_requested', payload)
+  } catch (e) {
+    logger.error('help:offer_requested emit failed', e)
+  }
+
+  try {
+    await sendOfferItemRequestNotification(String(request.requesterId), {
+      ...payload,
+      offerId: String(doc._id),
+    })
+  } catch (e) {
+    logger.error('sendOfferItemRequestNotification failed', e)
+  }
+
+  return { item: doc }
+}
+
+const respondOfferItemRequest = async (requesterId, requestId, offerId, { action }) => {
+  const request = await HelpRequest.findById(requestId).select('_id requesterId').lean()
+  if (!request) {
+    const err = new Error('Request not found')
+    err.statusCode = 404
+    throw err
+  }
+  if (String(request.requesterId) !== String(requesterId)) {
+    const err = new Error('Forbidden')
+    err.statusCode = 403
+    throw err
+  }
+
+  const status = action === 'accept' ? 'accepted' : 'declined'
+  const item = await HelpBorrowItem.findOneAndUpdate(
+    { _id: offerId, requestId, requesterId, status: 'pending', initiatedBy: 'helper' },
+    { $set: { status, actedAt: new Date(), actedBy: requesterId } },
+    { new: true }
+  )
+  if (!item) {
+    const err = new Error('Offer not found or already handled')
+    err.statusCode = 404
+    throw err
+  }
+
+  const helperUser = await User.findById(item.helperId).select('fullName').lean()
+  const helperName = helperUser?.fullName || 'Helper'
+
+  const responsePayload = {
+    offerId: String(item._id),
+    borrowId: String(item._id),
+    requestId: String(requestId),
+    status: item.status,
+    initiatedBy: 'helper',
+    helperId: String(item.helperId),
+    helperName,
+    requesterId: String(item.requesterId),
+    actedAt: item.actedAt ? item.actedAt.toISOString() : new Date().toISOString(),
+    itemName: item.itemName,
+    note: item.note || '',
+    requestedMinutes: String(item.requestedMinutes),
+    imageUrl: item.imageUrl || '',
+  }
+
+  try {
+    emitToUser(String(item.requesterId), 'help:offer_response', responsePayload)
+    emitToUser(String(item.helperId), 'help:offer_response', responsePayload)
+  } catch (e) {
+    logger.error('help:offer_response emit failed', e)
+  }
+
+  return { item }
+}
+
 const respondBorrowItemRequest = async (helperId, requestId, borrowId, { action }) => {
   const acceptedMatch = await getAcceptedMatchForRequest(requestId)
   if (!acceptedMatch?.helperId || String(acceptedMatch.helperId) !== String(helperId)) {
@@ -1305,7 +1405,13 @@ const respondBorrowItemRequest = async (helperId, requestId, borrowId, { action 
 
   const status = action === 'accept' ? 'accepted' : 'declined'
   const item = await HelpBorrowItem.findOneAndUpdate(
-    { _id: borrowId, requestId, helperId, status: 'pending' },
+    {
+      _id: borrowId,
+      requestId,
+      helperId,
+      status: 'pending',
+      initiatedBy: { $ne: 'helper' },
+    },
     { $set: { status, actedAt: new Date(), actedBy: helperId } },
     { new: true }
   )
@@ -1321,6 +1427,7 @@ const respondBorrowItemRequest = async (helperId, requestId, borrowId, { action 
     status: item.status,
     actedAt: item.actedAt ? item.actedAt.toISOString() : new Date().toISOString(),
     helperId: String(helperId),
+    initiatedBy: item.initiatedBy || 'requester',
   }
 
   try {
@@ -1345,6 +1452,8 @@ module.exports = {
   getNearbyHelpRequests,
   extendHelpSession,
   createBorrowItemRequest,
+  createOfferItemRequest,
   getBorrowItems,
   respondBorrowItemRequest,
+  respondOfferItemRequest,
 }

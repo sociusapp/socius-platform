@@ -1,15 +1,28 @@
 import { getMessaging, setBackgroundMessageHandler } from '@react-native-firebase/messaging';
 import notifee, { AndroidStyle, EventType } from '@notifee/react-native';
-import { CHANNELS, handleIncomingCallMessage, initNotifeeChannels, displayBorrowItemActionNotification } from './SociusNotificationService';
+import {
+  CHANNELS,
+  handleIncomingCallMessage,
+  initNotifeeChannels,
+  displayBorrowItemActionNotification,
+  displayOfferItemActionNotification,
+} from './SociusNotificationService';
 import { buildClosureInitiatedCopy, buildRequestClosedCopy } from '../../utils/closureMessages';
 import {
   displayRequestCompletionPrompt,
   handleCompletionPromptNotifeeAction,
 } from './requestCompletionPrompt';
 import { handleChatMessageFcm } from '../chat/chatNotificationSync';
-import { loadAuth, savePendingBorrowItemOpen, clearPendingBorrowItemOpen } from '../storage/asyncStorage.service';
+import {
+  loadAuth,
+  savePendingBorrowItemOpen,
+  clearPendingBorrowItemOpen,
+  savePendingOfferItemOpen,
+  clearPendingOfferItemOpen,
+} from '../storage/asyncStorage.service';
 import { declineHelpAsVolunteer, declinePresenceAsVolunteer } from '../api/volunteer.api';
-import { respondBorrowItemRequest } from '../api/dailyHelp.api';
+import { respondBorrowItemRequest, respondOfferItemRequest } from '../api/dailyHelp.api';
+import { appEvents } from '../socket/socket.service';
 
 const messaging = getMessaging();
 
@@ -32,6 +45,12 @@ setBackgroundMessageHandler(messaging, async remoteMessage => {
   if (type === 'borrow_item_request' && data.requestId && data.borrowId) {
     await initNotifeeChannels();
     await displayBorrowItemActionNotification(data);
+    return;
+  }
+
+  if (type === 'offer_item_request' && data.requestId && (data.offerId || data.borrowId)) {
+    await initNotifeeChannels();
+    await displayOfferItemActionNotification(data);
     return;
   }
 
@@ -62,6 +81,7 @@ setBackgroundMessageHandler(messaging, async remoteMessage => {
       requestType: data.requestType || 'Help request',
       initiatedBy: data.initiatedBy,
       occurredAt: data.occurredAt,
+      recipientRole: data.recipientRole || data.userRole,
     });
     title = copy.title
     body = copy.message
@@ -129,6 +149,15 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
     if (isBorrowTap) {
       await savePendingBorrowItemOpen(data);
     }
+    const offerOidBg = String(data.offerId || data.borrowId || '');
+    const isOfferTap =
+      String(data.type || '').toLowerCase() === 'offer_item_request' &&
+      data.requestId &&
+      offerOidBg &&
+      (actionId === 'offer_view' || actionId === 'default');
+    if (isOfferTap) {
+      await savePendingOfferItemOpen(data);
+    }
     if ((actionId === 'decline_help' || actionId === 'decline_presence') && data?.requestId) {
       try {
         const auth = await loadAuth();
@@ -154,9 +183,32 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
             String(data.borrowId),
             actionId === 'borrow_accept' ? 'accept' : 'decline'
           );
+          appEvents.emit('help:borrow_offer_items_changed', { requestId: String(data.requestId) });
         }
       } catch (e) {
         console.log('[Notifee] background borrow action failed', e);
+      }
+    }
+    if (
+      (actionId === 'offer_accept' || actionId === 'offer_decline') &&
+      data?.requestId &&
+      offerOidBg &&
+      String(data.type || '').toLowerCase() === 'offer_item_request'
+    ) {
+      try {
+        await clearPendingOfferItemOpen();
+        const auth = await loadAuth();
+        if (auth?.accessToken) {
+          await respondOfferItemRequest(
+            auth.accessToken,
+            String(data.requestId),
+            offerOidBg,
+            actionId === 'offer_accept' ? 'accept' : 'decline'
+          );
+          appEvents.emit('help:borrow_offer_items_changed', { requestId: String(data.requestId) });
+        }
+      } catch (e) {
+        console.log('[Notifee] background offer action failed', e);
       }
     }
     await notifee.cancelNotification(notification.id);

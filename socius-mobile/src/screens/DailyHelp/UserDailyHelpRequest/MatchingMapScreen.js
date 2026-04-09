@@ -8,7 +8,11 @@ import { useFocusEffect } from '@react-navigation/native';
 import Header from '../../../components/common/Header';
 import Button from '../../../components/common/Button';
 import { useResponsive } from '../../../utils/responsive';
-import { createBorrowItemRequest, getBorrowItems, getHelpRequestById } from '../../../services/api/dailyHelp.api';
+import {
+  createBorrowItemRequest,
+  getBorrowItems,
+  getHelpRequestById,
+} from '../../../services/api/dailyHelp.api';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
 import { baseURL } from '../../../services/api/client';
 import { resolveBorrowImageUri, formatBorrowDateTime } from '../../../utils/borrowDisplay';
@@ -31,7 +35,11 @@ import {
   stopActiveHelpSessionNotification,
 } from '../../../services/notifications/activeHelpSessionNotification';
 import { patchHelpSession, submitReport, uploadClosureEvidence, getMyReports, updateMyReport, deleteMyReport } from '../../../services/api/incident.api';
-import { parseMinutesFromDurationLabel, formatMinutesAsDurationLabel } from '../../../utils/durationLabel';
+import {
+  parseMinutesFromDurationLabel,
+  formatMinutesAsDurationLabel,
+  MEETING_TIME_COPY,
+} from '../../../utils/durationLabel';
 import { sociusRefreshProps } from '../../../utils/sociusRefreshControl';
 
 const { width, height } = Dimensions.get('window');
@@ -57,6 +65,8 @@ const countUnreadMessages = (messages, userId) => {
 const MatchingMapScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
   const prefillRequest = route?.params?.prefillRequest || null;
+  const requestId = route?.params?.requestId;
+  const perf = route?.params?.perf;
   const [loading, setLoading] = useState(!prefillRequest);
   const [request, setRequest] = useState(prefillRequest);
   const [chatVisible, setChatVisible] = useState(false);
@@ -196,8 +206,6 @@ const MatchingMapScreen = ({ navigation, route }) => {
   
   const mapRef = useRef(null);
   const chatVisibleRef = useRef(chatVisible);
-  const requestId = route?.params?.requestId;
-  const perf = route?.params?.perf;
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -783,6 +791,7 @@ const MatchingMapScreen = ({ navigation, route }) => {
         requestType: data?.requestType || 'Help request',
         initiatedBy: data?.initiatedBy,
         occurredAt: data?.occurredAt,
+        recipientRole: 'requester',
       });
       showAlert(
         copy.title,
@@ -875,15 +884,6 @@ const MatchingMapScreen = ({ navigation, route }) => {
   const isChatAllowed = isChatAllowedForStatus(statusForChat);
   const showMeetingActions = canStayOnMeetingMap(statusForChat);
   const inClosure = isClosingStatus(statusForChat);
-
-  const openCancelRequestScreen = useCallback(() => {
-    const rid = request?.id || request?._id || requestId;
-    if (!rid) {
-      showAlert('Error', 'Request ID missing.', [{ text: 'OK', onPress: closeAlert }]);
-      return;
-    }
-    navigation.navigate('CancelRequest', { requestId: rid });
-  }, [navigation, request, requestId]);
 
   const rawDistance = Number(request?.distanceMeters ?? request?.distance_meters ?? request?.distance);
   const distanceLabel = Number.isFinite(rawDistance) && rawDistance > 0
@@ -984,29 +984,6 @@ const MatchingMapScreen = ({ navigation, route }) => {
     request?.requestedDurationLabel,
   ]);
 
-  const [moreSessionCountdown, setMoreSessionCountdown] = useState('');
-  useEffect(() => {
-    const endIso = request?.sessionEndsAt;
-    if (!endIso) {
-      setMoreSessionCountdown('');
-      return;
-    }
-    const tick = () => {
-      const endMs = new Date(endIso).getTime();
-      const diff = endMs - Date.now();
-      if (diff <= 0) {
-        setMoreSessionCountdown('Session window ended');
-        return;
-      }
-      const m = Math.floor(diff / 60000);
-      const s = Math.floor((diff % 60000) / 1000);
-      setMoreSessionCountdown(`${m}m ${s.toString().padStart(2, '0')}s left`);
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [request?.sessionEndsAt]);
-
   const handleSubmitReport = useCallback(async () => {
     try {
       if (!requestId) return;
@@ -1103,13 +1080,28 @@ const MatchingMapScreen = ({ navigation, route }) => {
         if (String(payload?.requestId || '') !== String(requestId || '')) return;
         loadBorrowHistory();
       };
+      const onOfferResponse = (payload) => {
+        if (String(payload?.requestId || '') !== String(requestId || '')) return;
+        loadBorrowHistory();
+      };
       socket.on('help:borrow_response', onBorrowResponse);
+      socket.on('help:offer_response', onOfferResponse);
     };
     setup();
     return () => {
       if (!socket) return;
       socket.off('help:borrow_response');
+      socket.off('help:offer_response');
     };
+  }, [requestId, loadBorrowHistory]);
+
+  useEffect(() => {
+    const onItemsChanged = ({ requestId: rid } = {}) => {
+      if (String(rid || '') !== String(requestId || '')) return;
+      loadBorrowHistory();
+    };
+    appEvents.on('help:borrow_offer_items_changed', onItemsChanged);
+    return () => appEvents.off('help:borrow_offer_items_changed', onItemsChanged);
   }, [requestId, loadBorrowHistory]);
 
   const handleBorrowRequestSubmit = useCallback(async () => {
@@ -1390,6 +1382,12 @@ const MatchingMapScreen = ({ navigation, route }) => {
             <Text style={styles.requestActionButtonText}>{isBorrowSubmitting ? 'Sending...' : 'Request'}</Text>
           </TouchableOpacity>
           <View style={styles.borrowHistoryWrap}>
+            <Text style={styles.borrowSessionContext}>
+              You requested help ·{' '}
+              {String(request?.status || 'active')
+                .replace(/_/g, ' ')
+                .replace(/\b\w/g, (c) => c.toUpperCase())}
+            </Text>
             <Text style={styles.borrowHistoryTitle}>Recent item requests</Text>
             {(borrowHistory || []).slice(0, 10).map((row, index) => {
               const hid = String(row?._id || `borrow_${index}`);
@@ -1398,6 +1396,11 @@ const MatchingMapScreen = ({ navigation, route }) => {
               const sentAt = formatBorrowDateTime(row?.createdAt);
               const actedAt = formatBorrowDateTime(row?.actedAt);
               const isPending = String(row?.status || '').toLowerCase() === 'pending';
+              const by = String(row?.initiatedBy || 'requester').toLowerCase();
+              const metaLead =
+                by === 'helper'
+                  ? `Helper offered · ${Number(row?.requestedMinutes || 0)} min`
+                  : `You asked to borrow · ${Number(row?.requestedMinutes || 0)} min`;
               return (
                 <View key={hid} style={styles.borrowHistoryDetailRow}>
                   {showThumb ? (
@@ -1428,10 +1431,10 @@ const MatchingMapScreen = ({ navigation, route }) => {
                       </Text>
                     </View>
                     <Text style={styles.borrowHistoryMetaLine}>
-                      {Number(row?.requestedMinutes || 0)} min
+                      {metaLead}
                       {sentAt ? ` · Sent ${sentAt}` : ''}
                     </Text>
-                    {!!row?.note ? (
+                    {row?.note ? (
                       <Text style={styles.borrowHistoryNoteLine}>Note: {String(row.note)}</Text>
                     ) : null}
                     {actedAt && !isPending ? (
@@ -1443,7 +1446,9 @@ const MatchingMapScreen = ({ navigation, route }) => {
                 </View>
               );
             })}
-            {!borrowHistory?.length ? <Text style={styles.bottomPanelMuted}>No item requests yet.</Text> : null}
+            {!(borrowHistory || []).length ? (
+              <Text style={styles.bottomPanelMuted}>No item requests yet.</Text>
+            ) : null}
           </View>
         </View>
       );
@@ -1464,13 +1469,13 @@ const MatchingMapScreen = ({ navigation, route }) => {
                 <Text style={styles.extendHeroLabel}>Current requested time</Text>
                 <Text style={styles.extendHeroValue}>{requestedDurationLabel}</Text>
               </View>
-              {!!lastUpdate ? (
+              {lastUpdate ? (
                 <View style={styles.extendUpdatedPill}>
                   <Text style={styles.extendUpdatedPillText}>Updated {lastUpdate}</Text>
                 </View>
               ) : null}
             </View>
-            <Text style={styles.extendHeroHint}>Choose extra time to keep your helper informed and avoid confusion.</Text>
+            <Text style={styles.extendHeroHint}>{MEETING_TIME_COPY.extendTabRequesterLead}</Text>
           </View>
 
           <Text style={styles.extendSectionTitle}>Add extra minutes</Text>
@@ -1617,7 +1622,7 @@ const MatchingMapScreen = ({ navigation, route }) => {
                     <Text style={styles.reportHistoryCategory}>{reportCategoryLabel(row?.category)}</Text>
                     <Text style={styles.reportHistoryStatus}>{status}</Text>
                   </View>
-                  {!!row?.details ? <Text style={styles.reportHistoryDetails}>{String(row.details)}</Text> : null}
+                  {row?.details ? <Text style={styles.reportHistoryDetails}>{String(row.details)}</Text> : null}
                   <Text style={styles.reportHistoryDate}>
                     {new Date(row?.updatedAt || row?.createdAt || Date.now()).toLocaleString()}
                   </Text>
@@ -1663,7 +1668,7 @@ const MatchingMapScreen = ({ navigation, route }) => {
             </View>
             <View style={styles.moreHeroStats}>
               <View style={styles.moreHeroStat}>
-                <Text style={styles.moreHeroStatLabel}>Planned time</Text>
+                <Text style={styles.moreHeroStatLabel}>{MEETING_TIME_COPY.plannedDurationLabel}</Text>
                 <Text style={styles.moreHeroStatValue}>{requestedDurationLabel}</Text>
               </View>
               <View style={styles.moreHeroStatDivider} />
@@ -1672,12 +1677,6 @@ const MatchingMapScreen = ({ navigation, route }) => {
                 <Text style={styles.moreHeroStatMono}>…{ridShort}</Text>
               </View>
             </View>
-            {moreSessionCountdown ? (
-              <View style={styles.moreCountdownRow}>
-                <Icon name="timer-sand" size={18} color="#B45309" />
-                <Text style={styles.moreCountdownText}>{moreSessionCountdown}</Text>
-              </View>
-            ) : null}
             {inClosure ? (
               <View style={styles.moreClosureHint}>
                 <Icon name="file-document-edit-outline" size={18} color="#92400E" />
@@ -1794,52 +1793,37 @@ const MatchingMapScreen = ({ navigation, route }) => {
     return null;
   };
 
-  const showLeaveConfirm = useCallback(() => {
-    showAlert(
-      'Active request',
-      'Your request is still active. You can cancel it if you no longer need help.\n\nDo you want to stay here?',
-      [
-        { text: 'Stay', style: 'cancel', onPress: closeAlert },
-        {
-          text: 'Cancel request',
-          style: 'destructive',
-          onPress: () => {
-            closeAlert();
-            openCancelRequestScreen();
-          },
-        },
-      ].filter(Boolean),
-      'alert-circle-outline',
-      '#DC5C69',
-      'confirmation'
-    );
-  }, [openCancelRequestScreen]);
+  const goHomeFromMeeting = useCallback(() => {
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+    });
+  }, [navigation]);
 
-  const handleBackPress = () => {
-    showLeaveConfirm();
-  };
+  const handleBackPress = goHomeFromMeeting;
 
   useFocusEffect(
     useCallback(() => {
       const onHardwareBack = () => {
-        showLeaveConfirm();
+        goHomeFromMeeting();
         return true;
       };
 
       const sub = BackHandler.addEventListener('hardwareBackPress', onHardwareBack);
       return () => sub.remove();
-    }, [showLeaveConfirm])
+    }, [goHomeFromMeeting])
   );
 
   useEffect(() => {
     const unsub = navigation.addListener('beforeRemove', (e) => {
-      if (e.data.action?.type === 'GO_BACK' || e.data.action?.type === 'POP') {
+      const type = e.data.action?.type;
+      if (type === 'GO_BACK' || type === 'POP') {
         e.preventDefault();
-        showLeaveConfirm();
+        queueMicrotask(() => goHomeFromMeeting());
       }
     });
     return unsub;
-  }, [navigation, showLeaveConfirm]);
+  }, [navigation, goHomeFromMeeting]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -2763,6 +2747,12 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     gap: 8,
   },
+  borrowSessionContext: {
+    fontSize: 12,
+    color: '#374151',
+    fontWeight: '600',
+    marginBottom: 2,
+  },
   borrowHistoryTitle: {
     fontSize: 13,
     color: '#6B7280',
@@ -3234,20 +3224,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3D4DA',
     marginHorizontal: 12,
   },
-  moreCountdownRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 14,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#FCE4E8',
-  },
-  moreCountdownText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#B45309',
-  },
   moreClosureHint: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -3490,6 +3466,107 @@ const styles = StyleSheet.create({
   },
   bottomActionTextActive: {
     color: '#DC5C69',
+  },
+  offerModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(17,24,39,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  offerModalCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  offerModalClose: {
+    position: 'absolute',
+    right: 12,
+    top: 10,
+    zIndex: 2,
+  },
+  offerModalAvatarWrap: {
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  offerModalAvatar: {
+    width: 82,
+    height: 82,
+    borderRadius: 41,
+  },
+  offerModalName: {
+    marginTop: 8,
+    textAlign: 'center',
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  offerModalDivider: {
+    marginTop: 8,
+    marginBottom: 10,
+    height: 1,
+    backgroundColor: '#E5E7EB',
+  },
+  offerMetaLine: {
+    fontSize: 17,
+    color: '#111827',
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  offerMetaLineMuted: {
+    fontSize: 15,
+    color: '#6B7280',
+    marginBottom: 8,
+  },
+  offerMetaQuote: {
+    fontSize: 15,
+    color: '#374151',
+    fontStyle: 'italic',
+    marginBottom: 10,
+    lineHeight: 22,
+  },
+  offerModalItemImage: {
+    width: '100%',
+    height: 170,
+    borderRadius: 12,
+    marginTop: 4,
+    marginBottom: 14,
+    backgroundColor: '#F3F4F6',
+  },
+  offerModalActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  offerModalBtn: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  offerModalAccept: {
+    backgroundColor: '#E35F52',
+  },
+  offerModalDecline: {
+    backgroundColor: '#E5E7EB',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+  },
+  offerModalAcceptText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 16,
+  },
+  offerModalDeclineText: {
+    color: '#1F2937',
+    fontWeight: '700',
+    fontSize: 16,
   },
 });
 

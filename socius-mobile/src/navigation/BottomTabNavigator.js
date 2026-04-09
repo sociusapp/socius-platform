@@ -29,6 +29,7 @@ import { requestLocationPermission, getCurrentPosition } from '../services/locat
 import { updateAvailabilityLocation } from '../services/api/incident.api';
 import { api } from '../services/api/client';
 import CustomAlert from '../components/common/CustomAlert';
+import DailyHelpActivePickModalHost from '../components/DailyHelp/DailyHelpActivePickModalHost';
 
 const Tab = createBottomTabNavigator();
 
@@ -434,6 +435,8 @@ const BottomTabNavigator = () => {
           }}
         />
       </Tab.Navigator>
+
+      <DailyHelpActivePickModalHost />
     </>
   );
 };

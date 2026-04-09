@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { NavigationContainer, createNavigationContainerRef, CommonActions } from '@react-navigation/native';
 import notifee, { AndroidStyle, EventType } from '@notifee/react-native';
 import { AppState, NativeEventEmitter, NativeModules, Platform } from 'react-native';
@@ -12,10 +12,12 @@ import {
   displaySociusUpdateNotification,
   displayAndroidForegroundIncomingHeadsUp,
   displayBorrowItemActionNotification,
+  displayOfferItemActionNotification,
 } from '../services/notifications/SociusNotificationService';
 import { connectSocket, emitStatusUpdate, appEvents } from '../services/socket/socket.service';
 import CustomAlert from '../components/common/CustomAlert';
 import DailyHelpIncomingModal from '../components/DailyHelp/modals/DailyHelpIncomingModal';
+const GlobalBorrowOfferItemModal = lazy(() => import('../components/DailyHelp/GlobalBorrowOfferItemModal'));
 import IncomingPresenceAlarmModal from '../components/notifications/IncomingPresenceAlarmModal';
 import {
   loadAuth,
@@ -23,10 +25,13 @@ import {
   savePendingBorrowItemOpen,
   loadPendingBorrowItemOpen,
   clearPendingBorrowItemOpen,
+  savePendingOfferItemOpen,
+  loadPendingOfferItemOpen,
+  clearPendingOfferItemOpen,
 } from '../services/storage/asyncStorage.service';
 import { declinePresenceAsVolunteer } from '../services/api/volunteer.api';
 import { markRequestDelivered } from '../services/api/incident.api';
-import { getHelpRequestById, respondBorrowItemRequest } from '../services/api/dailyHelp.api';
+import { getHelpRequestById, respondBorrowItemRequest, respondOfferItemRequest } from '../services/api/dailyHelp.api';
 import {
   displayRequestCompletionPrompt,
   handleCompletionPromptNotifeeAction,
@@ -42,6 +47,7 @@ import {
   navigateToHelpMeeting,
   isUserOnHelpMeetingScreen,
   shouldShowRequestStatusModal,
+  normalizeRecipientRole,
 } from './helpNotificationNavigation';
 
 const { SociusCallModule } = NativeModules;
@@ -120,20 +126,36 @@ const handleNotifeeNavigation = async (navRef, notification, pressAction) => {
       return;
     }
     appEvents.emit('help:borrow_requested_local', data);
-    await navigateToHelpMeeting(navRef, {
-      requestId: String(data.requestId),
-      data: {
-        ...data,
-        recipientRole: data.recipientRole || 'helper',
-        type: 'borrow_item_request',
-      },
-    });
     await clearPendingBorrowItemOpen();
     if (notification?.id) {
       try {
         await notifee.cancelNotification(notification.id);
       } catch (err) {
         console.warn('[AppNavigator] Failed to cancel borrow notification', err);
+      }
+    }
+    return;
+  }
+
+  if (
+    earlyType === 'offer_item_request' &&
+    data.requestId &&
+    (data.offerId || data.borrowId)
+  ) {
+    if (actionId === 'offer_accept' || actionId === 'offer_decline') {
+      return;
+    }
+    if (!navRef.isReady()) {
+      await savePendingOfferItemOpen(data);
+      return;
+    }
+    appEvents.emit('help:offer_requested_local', data);
+    await clearPendingOfferItemOpen();
+    if (notification?.id) {
+      try {
+        await notifee.cancelNotification(notification.id);
+      } catch (err) {
+        console.warn('[AppNavigator] Failed to cancel offer notification', err);
       }
     }
     return;
@@ -235,8 +257,12 @@ const handleNotifeeNavigation = async (navRef, notification, pressAction) => {
     const status = String(data.status || '').toLowerCase();
     const requestId = data.requestId;
     if (!requestId) return;
-    if (status === 'matched' || status === 'accepted' || status === 'closing') {
+    if (status === 'matched' || status === 'accepted') {
       await navigateToHelpMeeting(nav, { requestId, data });
+      return;
+    }
+    if (status === 'closing') {
+      navigateToActivity(requestId, 'closing');
       return;
     }
     if (status === 'closed') {
@@ -524,15 +550,16 @@ const AppNavigator = () => {
       const pendingBorrow = await loadPendingBorrowItemOpen();
       if (pendingBorrow?.requestId && pendingBorrow?.borrowId && navigationRef.isReady()) {
         appEvents.emit('help:borrow_requested_local', pendingBorrow);
-        await navigateToHelpMeeting(navigationRef, {
-          requestId: String(pendingBorrow.requestId),
-          data: {
-            ...pendingBorrow,
-            recipientRole: pendingBorrow.recipientRole || 'helper',
-            type: 'borrow_item_request',
-          },
-        });
         await clearPendingBorrowItemOpen();
+      }
+      const pendingOffer = await loadPendingOfferItemOpen();
+      if (
+        pendingOffer?.requestId &&
+        (pendingOffer?.offerId || pendingOffer?.borrowId) &&
+        navigationRef.isReady()
+      ) {
+        appEvents.emit('help:offer_requested_local', pendingOffer);
+        await clearPendingOfferItemOpen();
       }
     } catch (e) {
       console.log('[AppNavigator] Error restoring modal state', e);
@@ -753,7 +780,15 @@ const AppNavigator = () => {
         if (type === 'borrow_item_request' && data.requestId) {
           appEvents.emit('help:borrow_requested_local', data);
           void displayBorrowItemActionNotification(data);
-          void navigateToHelpMeeting(navigationRef, { requestId: data.requestId, data });
+          return;
+        }
+        if (
+          type === 'offer_item_request' &&
+          data.requestId &&
+          (data.offerId || data.borrowId)
+        ) {
+          appEvents.emit('help:offer_requested_local', data);
+          void displayOfferItemActionNotification(data);
           return;
         }
         if (type === 'review_decision') {
@@ -807,8 +842,12 @@ const AppNavigator = () => {
           if (['matched', 'accepted', 'taken', 'already_accepted', 'cancelled', 'closed', 'auto_closed'].includes(status)) {
             void clearPendingHelpAlert(rid);
           }
-          if (status === 'matched' || status === 'accepted' || status === 'closing') {
+          if (status === 'matched' || status === 'accepted') {
             void navigateToHelpMeeting(navigationRef, { requestId: rid, data });
+            return;
+          }
+          if (status === 'closing') {
+            navigateToActivity(rid, 'closing');
             return;
           }
           if (status === 'closed') {
@@ -838,15 +877,16 @@ const AppNavigator = () => {
         if (Platform.OS === 'android') {
           await displayBorrowItemActionNotification(data);
         }
-        if (navigationRef.isReady()) {
-          await navigateToHelpMeeting(navigationRef, {
-            requestId: String(data.requestId),
-            data: {
-              ...data,
-              recipientRole: data.recipientRole || 'helper',
-              type: 'borrow_item_request',
-            },
-          });
+        return;
+      }
+      if (
+        lowerType === 'offer_item_request' &&
+        data.requestId &&
+        (data.offerId || data.borrowId)
+      ) {
+        appEvents.emit('help:offer_requested_local', data);
+        if (Platform.OS === 'android') {
+          await displayOfferItemActionNotification(data);
         }
         return;
       }
@@ -1078,25 +1118,33 @@ const AppNavigator = () => {
           if (!shouldShowRequestStatusModal(rid, 'closing')) {
             return;
           }
+          const recipientForCopy =
+            normalizeRecipientRole(data.recipientRole) ||
+            (String(data.initiatedBy || '') === 'helper'
+              ? 'requester'
+              : String(data.initiatedBy || '') === 'requester'
+                ? 'helper'
+                : '');
           const copy = buildClosureInitiatedCopy({
             requestId: rid,
             requestType: data.requestType || 'Help request',
             initiatedBy: data.initiatedBy,
             occurredAt: data.occurredAt,
+            recipientRole: recipientForCopy,
           });
           showAlert(
             copy.title,
             copy.message,
             [
               {
-                text: 'View meeting',
+                text: 'My activity',
                 onPress: () => {
                   closeAlert();
-                  openHelpMeeting(rid, data);
+                  navigateToActivity(rid, 'closing');
                 },
                 style: 'primary',
               },
-              { text: 'Not now', onPress: closeAlert, style: 'cancel' },
+              { text: 'OK', onPress: closeAlert },
             ],
             'alert-circle-outline',
             '#DC5C69'
@@ -1112,7 +1160,11 @@ const AppNavigator = () => {
           if (!shouldShowRequestStatusModal(rid, 'closed')) {
             return;
           }
-          const roleForCopy = data.recipientRole || data.userRole || data.role;
+          const roleForCopy =
+            normalizeRecipientRole(data.recipientRole || data.userRole || data.role) ||
+            data.recipientRole ||
+            data.userRole ||
+            data.role;
           const copy = buildRequestClosedCopy({
             requestId: rid,
             requestType: data.requestType || 'Help request',
@@ -1125,7 +1177,7 @@ const AppNavigator = () => {
             copy.message,
             [
               {
-                text: 'Open activity',
+                text: 'My activity',
                 onPress: () => {
                   closeAlert();
                   navigateToActivity(rid, 'closed');
@@ -1249,6 +1301,21 @@ const AppNavigator = () => {
           return;
         }
 
+        if (lt === 'borrow_item_request' && data.requestId && data.borrowId) {
+          appEvents.emit('help:borrow_requested_local', data);
+          void displayBorrowItemActionNotification(data);
+          return;
+        }
+        if (
+          lt === 'offer_item_request' &&
+          data.requestId &&
+          (data.offerId || data.borrowId)
+        ) {
+          appEvents.emit('help:offer_requested_local', data);
+          void displayOfferItemActionNotification(data);
+          return;
+        }
+
         if ((lt.includes('help_request') || lt.includes('request_rematched')) && data.requestId) {
           loadAuth()
             .then((auth) => {
@@ -1293,8 +1360,10 @@ const AppNavigator = () => {
           if (['matched', 'accepted', 'taken', 'already_accepted', 'cancelled', 'closed', 'auto_closed'].includes(status)) {
             void clearPendingHelpAlert(rid);
           }
-          if (status === 'matched' || status === 'accepted' || status === 'closing') {
+          if (status === 'matched' || status === 'accepted') {
             void navigateToHelpMeeting(navigationRef, { requestId: rid, data });
+          } else if (status === 'closing') {
+            navigateToActivity(rid, 'closing');
           } else if (status === 'cancelled' || status === 'closed') {
             navigateToActivity(rid, status);
           }
@@ -1346,14 +1415,6 @@ const AppNavigator = () => {
       ) {
         appEvents.emit('help:borrow_requested_local', notifData);
         if (navigationRef.isReady()) {
-          await navigateToHelpMeeting(navigationRef, {
-            requestId: String(notifData.requestId),
-            data: {
-              ...notifData,
-              recipientRole: notifData.recipientRole || 'helper',
-              type: 'borrow_item_request',
-            },
-          });
           await clearPendingBorrowItemOpen();
         } else {
           await savePendingBorrowItemOpen(notifData);
@@ -1373,10 +1434,50 @@ const AppNavigator = () => {
               actionId === 'borrow_accept' ? 'accept' : 'decline'
             );
           }
-          appEvents.emit('help:borrow_requested_local', null);
+          appEvents.emit('help:borrow_offer_items_changed', { requestId: String(notifData.requestId) });
           if (notification?.id) await notifee.cancelNotification(notification.id);
         } catch (e) {
           console.log('[Notifee] borrow action failed', e);
+        }
+        return;
+      }
+      const offerOid = String(notifData?.offerId || notifData?.borrowId || '');
+      if (
+        actionId === 'offer_view' &&
+        notifData?.requestId &&
+        offerOid &&
+        String(notifData.type || '').toLowerCase() === 'offer_item_request'
+      ) {
+        appEvents.emit('help:offer_requested_local', { ...notifData, offerId: offerOid, borrowId: offerOid });
+        if (navigationRef.isReady()) {
+          await clearPendingOfferItemOpen();
+        } else {
+          await savePendingOfferItemOpen(notifData);
+        }
+        if (notification?.id) await notifee.cancelNotification(notification.id);
+        return;
+      }
+      if (
+        (actionId === 'offer_accept' || actionId === 'offer_decline') &&
+        notifData?.requestId &&
+        offerOid &&
+        String(notifData.type || '').toLowerCase() === 'offer_item_request'
+      ) {
+        try {
+          await clearPendingOfferItemOpen();
+          const auth = await loadAuth();
+          if (auth?.accessToken) {
+            await respondOfferItemRequest(
+              auth.accessToken,
+              String(notifData.requestId),
+              offerOid,
+              actionId === 'offer_accept' ? 'accept' : 'decline'
+            );
+          }
+          appEvents.emit('help:borrow_offer_items_changed', { requestId: String(notifData.requestId) });
+          if (notification?.id) await notifee.cancelNotification(notification.id);
+        } catch (e) {
+          console.log('[Notifee] offer action failed', e);
         }
         return;
       }
@@ -1389,15 +1490,22 @@ const AppNavigator = () => {
         if (!pending?.requestId || !pending?.borrowId) return true;
         if (!navigationRef.isReady()) return false;
         appEvents.emit('help:borrow_requested_local', pending);
-        await navigateToHelpMeeting(navigationRef, {
-          requestId: String(pending.requestId),
-          data: {
-            ...pending,
-            recipientRole: pending.recipientRole || 'helper',
-            type: 'borrow_item_request',
-          },
-        });
         await clearPendingBorrowItemOpen();
+        return true;
+      };
+      if (await run()) return;
+      setTimeout(run, 400);
+      setTimeout(run, 1600);
+    };
+
+    const flushPendingOfferOpen = async () => {
+      const run = async () => {
+        const pending = await loadPendingOfferItemOpen();
+        const oid = pending?.offerId || pending?.borrowId;
+        if (!pending?.requestId || !oid) return true;
+        if (!navigationRef.isReady()) return false;
+        appEvents.emit('help:offer_requested_local', { ...pending, offerId: String(oid), borrowId: String(oid) });
+        await clearPendingOfferItemOpen();
         return true;
       };
       if (await run()) return;
@@ -1418,6 +1526,7 @@ const AppNavigator = () => {
         }
       } catch (_) {}
       await flushPendingBorrowOpen();
+      await flushPendingOfferOpen();
     })();
 
     let socket;
@@ -1503,19 +1612,27 @@ const AppNavigator = () => {
           if (!requestId) return;
           if (isUserOnHelpMeetingScreen(navigationRef, requestId)) return;
           if (!shouldShowRequestStatusModal(requestId, 'closing')) return;
+          const role = normalizeRecipientRole(recipientRole || userRole);
+          const copyClosing = buildClosureInitiatedCopy({
+            requestId,
+            requestType,
+            initiatedBy,
+            occurredAt,
+            recipientRole: role,
+          });
           showAlert(
-            title,
-            message,
+            copyClosing.title,
+            copyClosing.message,
             [
               {
-                text: 'View meeting',
+                text: 'My activity',
                 onPress: () => {
                   closeAlert();
-                  openHelpMeeting(requestId, navPayload);
+                  navigateToActivity(requestId, 'closing');
                 },
                 style: 'primary',
               },
-              { text: 'Not now', onPress: closeAlert, style: 'cancel' },
+              { text: 'OK', onPress: closeAlert },
             ],
             'alert-circle-outline',
             '#DC5C69'
@@ -1526,19 +1643,21 @@ const AppNavigator = () => {
           if (!requestId) return;
           if (isUserOnHelpMeetingScreen(navigationRef, requestId)) return;
           if (!shouldShowRequestStatusModal(requestId, 'closed')) return;
+          const roleClosed =
+            normalizeRecipientRole(recipientRole || userRole) || recipientRole || userRole;
           const copy = buildRequestClosedCopy({
             requestId,
             requestType,
             reason,
             occurredAt,
-            userRole: recipientRole || userRole,
+            userRole: roleClosed,
           });
           showAlert(
             copy.title,
             copy.message,
             [
               {
-                text: 'Open activity',
+                text: 'My activity',
                 onPress: () => {
                   closeAlert();
                   navigateToActivity(requestId, 'closed');
@@ -1555,9 +1674,37 @@ const AppNavigator = () => {
       }
 
       if (!isActive) {
+        let trayTitle = title;
+        let trayBody = message;
+        const st = String(status || '').toLowerCase();
+        if (st === 'closing') {
+          const role = normalizeRecipientRole(recipientRole || userRole);
+          const c = buildClosureInitiatedCopy({
+            requestId,
+            requestType,
+            initiatedBy,
+            occurredAt,
+            recipientRole: role,
+          });
+          trayTitle = c.title;
+          trayBody = c.message;
+        }
+        if (st === 'closed') {
+          const roleTray =
+            normalizeRecipientRole(recipientRole || userRole) || recipientRole || userRole;
+          const c = buildRequestClosedCopy({
+            requestId,
+            requestType,
+            reason,
+            occurredAt,
+            userRole: roleTray,
+          });
+          trayTitle = c.title;
+          trayBody = c.message;
+        }
         await displayUpdateNotification({
-          title,
-          body: message,
+          title: trayTitle,
+          body: trayBody,
           data: {
             type: 'request_status',
             status,
@@ -1603,14 +1750,15 @@ const AppNavigator = () => {
         if (!requestId) return;
         if (isUserOnHelpMeetingScreen(navigationRef, requestId)) return;
         stopActiveHelpSessionNotification().catch(() => {});
+        const recipientRole =
+          payload?.initiatedBy === 'requester' ? 'helper' : payload?.initiatedBy === 'helper' ? 'requester' : '';
         const copy = buildClosureInitiatedCopy({
           requestId,
           requestType: payload?.requestType || 'Help request',
           initiatedBy: payload?.initiatedBy,
           occurredAt: payload?.occurredAt,
+          recipientRole,
         });
-        const recipientRole =
-          payload?.initiatedBy === 'requester' ? 'helper' : payload?.initiatedBy === 'helper' ? 'requester' : '';
         showUpdate(copy.title, copy.message, {
           requestId,
           status: 'closing',
@@ -1858,6 +2006,10 @@ const AppNavigator = () => {
           }, 800);
         }}
       />
+
+      <Suspense fallback={null}>
+        <GlobalBorrowOfferItemModal />
+      </Suspense>
 
       {/* Presence alarm — same visual priority as daily-help incoming (incoming-style modal) */}
       <IncomingPresenceAlarmModal

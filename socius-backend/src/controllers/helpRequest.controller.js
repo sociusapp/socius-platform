@@ -201,6 +201,29 @@ const respondBorrowItem = async (req, res, next) => {
   }
 }
 
+const createOfferItem = async (req, res, next) => {
+  try {
+    const result = await helpRequestService.createOfferItemRequest(req.user._id, req.params.id, req.body)
+    return created(res, result, 'Offer sent')
+  } catch (err) {
+    next(err)
+  }
+}
+
+const respondOfferItem = async (req, res, next) => {
+  try {
+    const result = await helpRequestService.respondOfferItemRequest(
+      req.user._id,
+      req.params.id,
+      req.params.offerId,
+      req.body
+    )
+    return success(res, result, 'Offer updated')
+  } catch (err) {
+    next(err)
+  }
+}
+
 module.exports = {
   createRequest,
   updateRequest,
@@ -216,4 +239,6 @@ module.exports = {
   createBorrowItem,
   getBorrowItems,
   respondBorrowItem,
+  createOfferItem,
+  respondOfferItem,
 }

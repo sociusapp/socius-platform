@@ -90,6 +90,15 @@ export const displaySociusUpdateNotification = async (rawData) => {
       importance = AndroidImportance.HIGH;
       break;
     }
+    case 'OFFER_ITEM_REQUEST': {
+      const item = String(data.itemName || 'An item').trim();
+      const h = String(data.helperName || 'Your helper').trim();
+      title = 'Item offered';
+      body = `${h} offered ${item}`;
+      channelId = CHANNELS.HELP_ALARM;
+      importance = AndroidImportance.HIGH;
+      break;
+    }
     case 'REVIEW_DECISION': {
       const approved = String(data.approved || '').toLowerCase() === 'true';
       title = approved ? 'Verification approved' : 'Verification update';
@@ -251,6 +260,52 @@ export const displayBorrowItemActionNotification = async (rawData = {}) => {
   });
 };
 
+export const displayOfferItemActionNotification = async (rawData = {}) => {
+  if (Platform.OS !== 'android') return;
+  const data = rawData || {};
+  const requestId = String(data.requestId || '');
+  const offerId = String(data.offerId || data.borrowId || '');
+  if (!requestId || !offerId) return;
+  await initNotifeeChannels();
+  const itemName = String(data.itemName || 'Offered item').trim();
+  const mins = Number(data.requestedMinutes || 0);
+  const minsText = Number.isFinite(mins) && mins > 0 ? `${mins} min` : 'custom time';
+  const note = String(data.note || '').trim();
+  const body = note
+    ? `${itemName} • ${minsText}\n${note}`.slice(0, 260)
+    : `${itemName} • ${minsText}`;
+  const notifData = Object.fromEntries(
+    Object.entries({
+      ...data,
+      type: 'offer_item_request',
+      requestId,
+      offerId,
+      borrowId: offerId,
+    }).map(([k, v]) => [k, v != null ? String(v) : ''])
+  );
+  await notifee.displayNotification({
+    id: `offer_req_${offerId}`.slice(0, 120),
+    title: 'Offer item request',
+    body,
+    android: {
+      channelId: CHANNELS.HELP_ALARM,
+      category: AndroidCategory.CALL,
+      importance: AndroidImportance.HIGH,
+      visibility: AndroidVisibility.PUBLIC,
+      ongoing: true,
+      autoCancel: false,
+      style: { type: AndroidStyle.BIGTEXT, text: body },
+      pressAction: { id: 'default', launchActivity: 'default' },
+      actions: [
+        { title: 'View', pressAction: { id: 'offer_view', launchActivity: 'default' } },
+        { title: 'Accept', pressAction: { id: 'offer_accept', launchActivity: 'default' } },
+        { title: 'Decline', pressAction: { id: 'offer_decline', launchActivity: 'default' } },
+      ],
+    },
+    data: notifData,
+  });
+};
+
 const SOCIUS_DATA_UPDATE_TYPES = new Set([
   'REQUEST_ACKNOWLEDGED',
   'NO_HELPERS_NEARBY',
@@ -262,6 +317,7 @@ const SOCIUS_DATA_UPDATE_TYPES = new Set([
   'HELP_SESSION_TIME_ENDED_HELPER',
   'HELP_SESSION_EXTENDED_HELPER',
   'BORROW_ITEM_REQUEST',
+  'OFFER_ITEM_REQUEST',
   'REVIEW_DECISION',
 ]);
 

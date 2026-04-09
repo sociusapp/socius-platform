@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { useWindowDimensions, View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Image, Animated, Easing, Modal, Platform, RefreshControl, ActivityIndicator, Alert, Dimensions, FlatList, TextInput } from 'react-native';
+import { useWindowDimensions, View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Image, Animated, Easing, Modal, Platform, RefreshControl, ActivityIndicator, Alert, Dimensions, FlatList, TextInput, LayoutAnimation, UIManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -14,7 +14,7 @@ import { updateDeviceToken } from '../../services/api/auth.api';
 import * as Device from 'expo-device';
 import * as Application from 'expo-application';
 import { reverseGeocode, requestLocationPermission, getCurrentPosition, formatLocationLabel, getNearbyPlaceName } from '../../services/location/geolocation.service';
-import { updateAvailabilityLocation, toggleAvailability, getMyActiveHelpRequest, getNearbyHelpRequests, getNearbyPresenceRequests, getActivePresenceRequest } from '../../services/api/incident.api';
+import { updateAvailabilityLocation, toggleAvailability, getNearbyHelpRequests, getNearbyPresenceRequests, getActivePresenceRequest } from '../../services/api/incident.api';
 import { getProfile, getHistory } from '../../services/api/user.api';
 import { getHelpCategories } from '../../services/api/helpCategories.api';
 import { api } from '../../services/api/client';
@@ -77,9 +77,18 @@ const HomeScreen = ({ navigation }) => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
+
+  useEffect(() => {
+    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
+  }, []);
+
+  const setHistoryFilter = useCallback((status) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setFilterStatus(status);
+  }, []);
   const [categoriesBySlug, setCategoriesBySlug] = useState({});
-  const [activeRequest, setActiveRequest] = useState(null);
-  const [activeHelp, setActiveHelp] = useState(null);
   const [activePresence, setActivePresence] = useState(null);
 
   const scrollX = useRef(new Animated.Value(0)).current;
@@ -471,22 +480,33 @@ const HomeScreen = ({ navigation }) => {
     }
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(item =>
-        (item.title && item.title.toLowerCase().includes(query)) ||
-        (item.description && item.description.toLowerCase().includes(query)) ||
-        (item._id && item._id.includes(query))
-      );
+      filtered = filtered.filter((item) => {
+        const raw = item?.data || {};
+        const other = item.otherUser?.fullName;
+        return (
+          (item.title && item.title.toLowerCase().includes(query)) ||
+          (item.description && item.description.toLowerCase().includes(query)) ||
+          (item._id && String(item._id).toLowerCase().includes(query)) ||
+          (other && String(other).toLowerCase().includes(query)) ||
+          (raw.category && String(raw.category).toLowerCase().includes(query)) ||
+          (raw.categoryName && String(raw.categoryName).toLowerCase().includes(query)) ||
+          (raw.requestedDurationLabel && String(raw.requestedDurationLabel).toLowerCase().includes(query)) ||
+          (raw.location?.address && String(raw.location.address).toLowerCase().includes(query)) ||
+          (item.status && String(item.status).toLowerCase().includes(query))
+        );
+      });
     }
     return filtered;
   };
 
-  const renderHistoryItem = ({ item }) => {
+  const renderHistoryItem = ({ item, index }) => {
     const isPresence = item.type === 'presence_request' || item.type === 'presence_provided';
     
     if (isPresence) {
       return (
         <NeedPresenceHistoryCard
           item={item}
+          index={index}
           onAction={(it) => {
             if (it.isMyRequest) {
               if (it.status === 'active' || it.status === 'helpers_notified' || it.status === 'accepted') {
@@ -505,6 +525,7 @@ const HomeScreen = ({ navigation }) => {
     return (
       <DailyHelpHistoryCard
         item={item}
+        index={index}
         resolveCategoryMeta={resolveCategoryMeta}
         baseRoot={baseRoot}
         onAction={(it) => {
@@ -546,17 +567,7 @@ const HomeScreen = ({ navigation }) => {
       const token = auth?.accessToken;
       if (!token) return;
 
-      const [helpRes, presenceRes] = await Promise.all([
-        getMyActiveHelpRequest(token).catch(() => null),
-        getActivePresenceRequest(token).catch(() => null)
-      ]);
-
-      if (helpRes?.success && helpRes?.data) {
-        const data = helpRes.data;
-        setActiveRequest(data.activeRequest !== undefined ? data.activeRequest : data);
-      } else {
-        setActiveRequest(null);
-      }
+      const presenceRes = await getActivePresenceRequest(token).catch(() => null);
 
       if (presenceRes?.success && presenceRes?.data) {
         const data = presenceRes.data;
@@ -593,12 +604,8 @@ const HomeScreen = ({ navigation }) => {
 
   useFocusEffect(
     useCallback(() => {
-      fetchActiveRequests().then(() => {
-        if (activeRequest) {
-          navigation.navigate('RequestActive');
-        }
-      });
-    }, [navigation, activeRequest])
+      void fetchActiveRequests();
+    }, [])
   );
 
   const syncCurrentLocationToDb = async (force = false) => {
@@ -1586,7 +1593,7 @@ const HomeScreen = ({ navigation }) => {
                     {['All', 'Active', 'Completed', 'Cancelled'].map((status) => (
                       <TouchableOpacity
                         key={status}
-                        onPress={() => setFilterStatus(status)}
+                        onPress={() => setHistoryFilter(status)}
                         style={{
                           paddingHorizontal: spacing(16),
                           paddingVertical: vscale(6),
@@ -1610,36 +1617,37 @@ const HomeScreen = ({ navigation }) => {
                 </View>
 
                 {(loadingHistory && historyData.length === 0) ? (
-                  <View style={{ marginTop: vscale(12), paddingBottom: vscale(125) }}>
+                  <View style={{ marginTop: vscale(10), paddingBottom: vscale(125) }}>
                     {[0, 1, 2, 3].map((i) => (
                       <View
                         key={i}
                         style={[
                           styles.historyCard,
                           {
-                            marginBottom: vscale(12),
-                            borderRadius: scale(16),
-                            padding: scale(16),
+                            marginBottom: vscale(8),
+                            borderRadius: scale(12),
+                            paddingHorizontal: spacing(10),
+                            paddingVertical: vscale(10),
                             backgroundColor: '#FFFFFF',
                             shadowColor: '#000',
-                            shadowOffset: { width: 0, height: 2 },
-                            shadowOpacity: 0.08,
-                            shadowRadius: 8,
-                            elevation: 3,
+                            shadowOffset: { width: 0, height: 1 },
+                            shadowOpacity: 0.06,
+                            shadowRadius: 6,
+                            elevation: 2,
                             borderWidth: 1,
-                            borderColor: '#F1F5F9',
+                            borderColor: '#EEF2F6',
                           },
                         ]}
                       >
                         <View style={{ flexDirection: 'row' }}>
-                          <SkeletonCircle size={scale(48)} style={{ marginRight: spacing(12) }} />
+                          <SkeletonCircle size={scale(36)} style={{ marginRight: spacing(10) }} />
                           <View style={{ flex: 1 }}>
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: vscale(6) }}>
-                              <SkeletonBox height={12} radius={8} width="55%" />
-                              <SkeletonBox height={18} radius={9} width={scale(70)} />
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: vscale(5) }}>
+                              <SkeletonBox height={11} radius={6} width="58%" />
+                              <SkeletonBox height={16} radius={8} width={scale(56)} />
                             </View>
-                            <SkeletonBox height={10} radius={8} width="70%" style={{ marginBottom: vscale(10) }} />
-                            <SkeletonBox height={10} radius={8} width="45%" />
+                            <SkeletonBox height={9} radius={6} width="72%" style={{ marginBottom: vscale(6) }} />
+                            <SkeletonBox height={9} radius={6} width="40%" />
                           </View>
                         </View>
                       </View>

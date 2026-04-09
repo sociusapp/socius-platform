@@ -49,6 +49,13 @@ const helpBorrowItemSchema = new mongoose.Schema(
       default: 'pending',
       index: true,
     },
+    /** requester = I need this item from helper; helper = I'm offering this item to requester */
+    initiatedBy: {
+      type: String,
+      enum: ['requester', 'helper'],
+      default: 'requester',
+      index: true,
+    },
     actedAt: {
       type: Date,
       default: null,

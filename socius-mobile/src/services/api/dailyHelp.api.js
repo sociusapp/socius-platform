@@ -72,6 +72,20 @@ const respondBorrowItemRequest = (token, requestId, borrowId, action) =>
     )
     .then((response) => response.data);
 
+const createOfferItemRequest = (token, requestId, payload) =>
+  api
+    .post(`/help-request/${encodeURIComponent(requestId)}/offer`, payload, authConfig(token))
+    .then((response) => response.data);
+
+const respondOfferItemRequest = (token, requestId, offerId, action) =>
+  api
+    .patch(
+      `/help-request/${encodeURIComponent(requestId)}/offer/${encodeURIComponent(offerId)}`,
+      { action },
+      authConfig(token)
+    )
+    .then((response) => response.data);
+
 const getHelpCatalogItems = (token, { categoryId, categorySlug } = {}, options = {}) =>
   api
     .get('/help-categories/items', {
@@ -96,7 +110,9 @@ export {
   submitClosure,
   getHelpCatalogItems,
   createBorrowItemRequest,
+  createOfferItemRequest,
   getBorrowItems,
   respondBorrowItemRequest,
+  respondOfferItemRequest,
 };
 

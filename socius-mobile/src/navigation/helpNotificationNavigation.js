@@ -5,6 +5,7 @@
 
 import { loadAuth } from '../services/storage/asyncStorage.service';
 import { getHelpRequestById } from '../services/api/incident.api';
+import { normalizeRecipientRole as normalizeRecipientRolePure } from '../utils/helpRecipientRole';
 
 export const HELP_MEETING_SCREENS = {
   requester: 'RequesterMatchingMap',
@@ -34,10 +35,7 @@ export function shouldShowRequestStatusModal(requestId, status, windowMs = ALERT
 }
 
 export function normalizeRecipientRole(value) {
-  const v = String(value || '').toLowerCase().trim();
-  if (v === 'helper' || v === 'volunteer' || v === 'responder') return 'helper';
-  if (v === 'requester' || v === 'owner') return 'requester';
-  return null;
+  return normalizeRecipientRolePure(value);
 }
 
 function meetingRouteForRole(role) {
@@ -80,6 +78,7 @@ function roleFromNotificationType(type) {
   const t = String(type || '').toLowerCase();
   if (t === 'help_session_time_ended_helper' || t === 'help_session_extended_helper') return 'helper';
   if (t === 'borrow_item_request') return 'helper';
+  if (t === 'offer_item_request') return 'requester';
   if (t === 'request_completion_prompt') return 'requester';
   return null;
 }

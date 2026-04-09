@@ -8,6 +8,7 @@ import { getHome } from '../../services/api/user.api';
 import { getMyActiveHelpRequest, getActivePresenceRequest, getPresenceById } from '../../services/api/incident.api';
 import notifee from '@notifee/react-native';
 import * as ExpoSplashScreen from 'expo-splash-screen';
+import { PENDING_DAILY_HELP_PICK_KEY } from '../../components/DailyHelp/DailyHelpActivePickModalHost';
 
 /**
  * App bootstrap: native splash is hidden ASAP so Android 12+ doesn’t keep the tiny system icon
@@ -159,42 +160,106 @@ const SplashScreen = () => {
 
           if (helpRes.status === 'fulfilled' && helpRes.value?.success && helpRes.value?.data) {
             const helpPayload = helpRes.value.data || {};
-            const requesterActive = helpPayload?.activeRequest || null;
-            const helperActive = helpPayload?.activeHelp || null;
+            const reqList =
+              Array.isArray(helpPayload.activeRequests) && helpPayload.activeRequests.length > 0
+                ? helpPayload.activeRequests
+                : helpPayload.activeRequest
+                  ? [helpPayload.activeRequest]
+                  : [];
+            const helpList =
+              Array.isArray(helpPayload.activeHelps) && helpPayload.activeHelps.length > 0
+                ? helpPayload.activeHelps
+                : helpPayload.activeHelp
+                  ? [helpPayload.activeHelp]
+                  : [];
 
-            // Helper accepted flow: app reopen should land directly on helper meeting map.
-            const helperRequest =
-              helperActive?.request ||
-              helperActive?.requestId ||
-              null;
-            const helperRequestId =
-              helperRequest?._id ||
-              helperRequest?.id ||
-              helperActive?.requestId?._id ||
-              helperActive?.requestId?.id ||
-              helperActive?.requestId ||
-              null;
-            const helperStatus = String(helperActive?.status || helperRequest?.status || '').toLowerCase();
-            const helperActiveStatuses = ['accepted', 'matched', 'active', 'in_progress', 'arrived', 'en_route'];
-            if (helperRequestId && helperActiveStatuses.includes(helperStatus)) {
+            const pickTargets = [];
+
+            const toIso = (d) => {
+              if (!d) return null;
+              try {
+                return new Date(d).toISOString();
+              } catch {
+                return null;
+              }
+            };
+
+            const buildTimeMeta = (doc) => {
+              if (!doc) return null;
+              const n = Number(doc.requestedDurationMinutes ?? doc.requestedMinutes ?? doc.durationMinutes ?? 0);
+              return {
+                requestedDurationLabel: doc.requestedDurationLabel || doc.requestedDuration || null,
+                requestedDurationMinutes: Number.isFinite(n) && n > 0 ? Math.round(n) : null,
+                matchedAt: toIso(doc.matchedAt),
+                sessionEndsAt: toIso(doc.sessionEndsAt),
+              };
+            };
+
+            for (const r of reqList) {
+              const st = String(r?.status || '').toLowerCase();
+              if (!['open', 'matching', 'matched', 'active'].includes(st)) continue;
+              const rid = r?._id || r?.id;
+              if (!rid) continue;
+              const isLiveMeeting = ['matched', 'active'].includes(st);
+              const title =
+                r.categoryName ||
+                (r.category ? String(r.category).replace(/_/g, ' ') : null) ||
+                'Your help request';
+              pickTargets.push({
+                key: `as-requester-${rid}`,
+                roleLabel: 'Your request',
+                title,
+                subtitle: (r.description || '').trim() || '—',
+                status: st,
+                categoryIcon: r.categoryIcon || null,
+                category: r.category || null,
+                timeMeta: buildTimeMeta(r),
+                target: isLiveMeeting
+                  ? { name: 'RequesterMatchingMap', params: { requestId: rid } }
+                  : { name: 'RequestActive', params: { initialRequest: r } },
+              });
+            }
+
+            for (const h of helpList) {
+              const req = h?.request || h?.requestId;
+              const rid = req?._id || req?.id;
+              if (!rid) continue;
+              const st = String(req?.status || '').toLowerCase();
+              const hst = String(h?.status || '').toLowerCase();
+              if (!['matched', 'active'].includes(st) && hst !== 'accepted') continue;
+
+              const title =
+                req.categoryName ||
+                (req.category ? String(req.category).replace(/_/g, ' ') : null) ||
+                'Helping nearby';
+              pickTargets.push({
+                key: `as-helper-${rid}`,
+                roleLabel: 'Helping',
+                title,
+                subtitle: (req.description || '').trim() || '—',
+                status: st || hst,
+                categoryIcon: req.categoryIcon || null,
+                category: req.category || null,
+                timeMeta: buildTimeMeta(req),
+                target: { name: 'MatchingMap', params: { requestId: rid } },
+              });
+            }
+
+            if (pickTargets.length > 1) {
               clearTimeout(emergency);
-              await hideThenReset([{ name: 'MatchingMap', params: { requestId: helperRequestId } }]);
+              try {
+                await AsyncStorage.setItem(PENDING_DAILY_HELP_PICK_KEY, JSON.stringify(pickTargets));
+              } catch (e) {
+                addLog(`pick modal storage failed: ${String(e?.message || e)}`);
+              }
+              await hideThenReset([{ name: 'MainApp', params: { screen: 'HomeTab' } }]);
               return;
             }
 
-            const request = requesterActive;
-            const status = String(request?.status || '').toLowerCase();
-            const activeStatuses = ['open', 'matching', 'matched', 'active'];
-
-            if (request && activeStatuses.includes(status)) {
-              const requestId = request?._id || request?.id;
-              if (requestId && ['matched', 'active'].includes(status)) {
-                clearTimeout(emergency);
-                await hideThenReset([{ name: 'RequesterMatchingMap', params: { requestId } }]);
-                return;
-              }
+            if (pickTargets.length === 1) {
               clearTimeout(emergency);
-              await hideThenReset([{ name: 'RequestActive' }]);
+              const t = pickTargets[0].target;
+              await hideThenReset([{ name: t.name, params: t.params }]);
               return;
             }
           }

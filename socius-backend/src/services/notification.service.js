@@ -526,11 +526,44 @@ const sendBorrowItemRequestNotification = async (helperId, payload = {}) => {
       type: NOTIFICATION_TYPE.BORROW_ITEM_REQUEST,
       requestId: String(payload.requestId || ''),
       borrowId: String(payload.borrowId || ''),
+      requesterId: String(payload.requesterId || ''),
+      helperId: String(helperId || ''),
       requesterName: String(payload.requesterName || ''),
       recipientRole: 'helper',
       itemName,
       note,
       requestedMinutes: String(mins || ''),
+      imageUrl: String(payload.imageUrl || ''),
+    },
+    priority: NOTIFICATION_PRIORITY.HIGH,
+  })
+}
+
+const sendOfferItemRequestNotification = async (requesterId, payload = {}) => {
+  const itemName = String(payload.itemName || 'An item').trim()
+  const helperName = String(payload.helperName || 'Your helper').trim()
+  const mins = Number(payload.requestedMinutes || 0)
+  const note = String(payload.note || '').trim()
+  const title = 'Item offered'
+  const body = note
+    ? `${helperName} offered ${itemName} • ${mins} min`.slice(0, 200)
+    : `${helperName} offered ${itemName}`.slice(0, 200)
+  return notifyUser(String(requesterId), {
+    title,
+    body,
+    data: {
+      type: NOTIFICATION_TYPE.OFFER_ITEM_REQUEST,
+      requestId: String(payload.requestId || ''),
+      offerId: String(payload.offerId || payload.borrowId || ''),
+      borrowId: String(payload.borrowId || payload.offerId || ''),
+      requesterId: String(requesterId || ''),
+      helperName,
+      helperId: String(payload.helperId || ''),
+      recipientRole: 'requester',
+      initiatedBy: 'helper',
+      itemName,
+      note,
+      requestedMinutes: String(Number.isFinite(mins) ? mins : ''),
       imageUrl: String(payload.imageUrl || ''),
     },
     priority: NOTIFICATION_PRIORITY.HIGH,
@@ -609,5 +642,6 @@ module.exports = {
   sendHelperSessionTimeEndedNotification,
   sendHelperSessionExtendedNotification,
   sendBorrowItemRequestNotification,
+  sendOfferItemRequestNotification,
   invalidateToken,
 }
