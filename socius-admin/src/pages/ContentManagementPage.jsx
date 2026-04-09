@@ -7,6 +7,12 @@ import Button from '../components/common/Button';
 import Table from '../components/common/Table';
 import { getStaticPages, updateStaticPage, createStaticPage } from '../services/api/staticPages';
 import { createHelpCategoryAdmin, deleteHelpCategoryAdmin, getHelpCategoriesAdmin, updateHelpCategoryAdmin } from '../services/api/helpCategories';
+import {
+  createHelpSubcategoryAdmin,
+  deleteHelpSubcategoryAdmin,
+  getHelpSubcategoriesAdmin,
+  updateHelpSubcategoryAdmin,
+} from '../services/api/helpSubcategories';
 import { baseURL as ADMIN_API_BASE } from '../services/api/client';
 import { 
   X, 
@@ -41,6 +47,8 @@ const ContentManagementPage = ({ initialTab = 'Categories' }) => {
   }, [initialTab]);
 
   const [categories, setCategories] = useState([]);
+  const [subcategories, setSubcategories] = useState([]);
+  const [editingSubcategory, setEditingSubcategory] = useState(null);
 
   const scenarios = useMemo(
     () => [
@@ -53,6 +61,7 @@ const ContentManagementPage = ({ initialTab = 'Categories' }) => {
 
   const tabs = [
     'Categories',
+    'Sub-categories',
     'Scenarios',
     'Do / Don\'t Guidance',
     'Preparedness Content',
@@ -110,6 +119,32 @@ const ContentManagementPage = ({ initialTab = 'Categories' }) => {
     };
   }, [activeTab, toast]);
 
+  useEffect(() => {
+    if (activeTab !== 'Sub-categories') return;
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const [categoriesRes, subRes] = await Promise.all([
+          getHelpCategoriesAdmin(),
+          getHelpSubcategoriesAdmin(),
+        ]);
+        const catItems = categoriesRes?.data?.items || categoriesRes?.data?.categories || categoriesRes?.items || [];
+        const subItems = subRes?.data?.items || subRes?.items || [];
+        if (cancelled) return;
+        setCategories(Array.isArray(catItems) ? catItems : []);
+        setSubcategories(Array.isArray(subItems) ? subItems : []);
+      } catch (error) {
+        if (cancelled) return;
+        const msg = error?.response?.data?.message || 'Failed to fetch sub-categories';
+        toast.error(msg);
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, toast]);
+
   const handleCreatePage = () => {
     navigate('/static-pages/new');
   };
@@ -118,18 +153,33 @@ const ContentManagementPage = ({ initialTab = 'Categories' }) => {
     setActiveTab(tab);
     setIsEditPanelOpen(false);
     setEditingCategory(null);
+    setEditingSubcategory(null);
     setSearchTerm('');
     setCurrentPage(1);
   };
 
   const handleEdit = (category) => {
     setEditingCategory({ ...category });
+    setEditingSubcategory(null);
+    setIsEditPanelOpen(true);
+  };
+
+  const handleEditSubcategory = (item) => {
+    setEditingSubcategory({
+      _id: item._id,
+      parentCategoryId: item.parentCategoryId || item.parentCategory?._id || '',
+      title: item.title || '',
+      description: item.description || '',
+      isActive: item.isActive !== false,
+    });
+    setEditingCategory(null);
     setIsEditPanelOpen(true);
   };
 
   const handleClosePanel = () => {
     setIsEditPanelOpen(false);
     setEditingCategory(null);
+    setEditingSubcategory(null);
     setEditingPage(null);
   };
 
@@ -158,6 +208,31 @@ const ContentManagementPage = ({ initialTab = 'Categories' }) => {
         }
       } catch (error) {
         toast.error('Failed to save page');
+      }
+    } else if (activeTab === 'Sub-categories') {
+      try {
+        const payload = {
+          parentCategoryId: editingSubcategory?.parentCategoryId || '',
+          title: editingSubcategory?.title || '',
+          description: editingSubcategory?.description || '',
+          isActive: !!editingSubcategory?.isActive,
+        };
+        if (!payload.parentCategoryId || !payload.title.trim() || !payload.description.trim()) {
+          toast.error('Parent category, title and description are required');
+          setIsSaving(false);
+          return;
+        }
+        if (editingSubcategory?._id) {
+          await updateHelpSubcategoryAdmin(editingSubcategory._id, payload);
+        } else {
+          await createHelpSubcategoryAdmin(payload);
+        }
+        const response = await getHelpSubcategoriesAdmin();
+        const items = response?.data?.items || response?.items || [];
+        setSubcategories(Array.isArray(items) ? items : []);
+        toast.success('Sub-category saved');
+      } catch (error) {
+        toast.error(error?.response?.data?.message || 'Failed to save sub-category');
       }
     } else {
       try {
@@ -196,6 +271,7 @@ const ContentManagementPage = ({ initialTab = 'Categories' }) => {
     setIsEditPanelOpen(false);
     setEditingCategory(null);
     setEditingPage(null);
+    setEditingSubcategory(null);
   };
 
   const handleDelete = async (category) => {
@@ -226,6 +302,26 @@ const ContentManagementPage = ({ initialTab = 'Categories' }) => {
         toast.dismiss(toastId);
         toast.error('Failed to delete category');
       }
+    }
+  };
+
+  const handleDeleteSubcategory = async (item) => {
+    const result = await confirm({
+      title: 'Delete Sub-category?',
+      text: `Delete "${item?.title || 'this sub-category'}"?`,
+      icon: 'warning',
+      confirmButtonText: 'Yes, delete',
+      confirmButtonColor: 'bg-red-600 hover:bg-red-700 text-white',
+    });
+    if (!result.isConfirmed) return;
+    try {
+      await deleteHelpSubcategoryAdmin(item._id);
+      const response = await getHelpSubcategoriesAdmin();
+      const items = response?.data?.items || response?.items || [];
+      setSubcategories(Array.isArray(items) ? items : []);
+      toast.success('Sub-category deleted');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to delete sub-category');
     }
   };
 
@@ -303,6 +399,29 @@ const ContentManagementPage = ({ initialTab = 'Categories' }) => {
     )}
   ];
 
+  const subcategoryColumns = [
+    { header: 'Parent Category', accessor: 'parentCategory', render: (row) => row.parentCategory?.name || '-' },
+    { header: 'Title', accessor: 'title', className: 'font-medium text-gray-900 dark:text-white' },
+    { header: 'Description', accessor: 'description' },
+    { header: 'Status', accessor: 'isActive', render: (row) => (
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+        row.isActive ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200' : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+      }`}>
+        {row.isActive ? 'Enabled' : 'Disabled'}
+      </span>
+    )},
+    { header: 'Action', accessor: 'actions', render: (row) => (
+      <div className="flex items-center space-x-3">
+        <button onClick={() => handleEditSubcategory(row)} className="text-socius-red hover:text-brand-dark transition-colors" title="Edit">
+          <Edit2 className="w-4 h-4" />
+        </button>
+        <button onClick={() => handleDeleteSubcategory(row)} className="text-socius-red hover:text-brand-dark transition-colors" title="Delete">
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </div>
+    )},
+  ];
+
   const scenarioColumns = [
     { header: 'Scenario Name', accessor: 'name', className: 'font-medium text-gray-900 dark:text-white' },
     { header: 'Risk Tier', accessor: 'risk', render: (row) => (
@@ -345,13 +464,22 @@ const ContentManagementPage = ({ initialTab = 'Categories' }) => {
       const list = [...categories].sort((a, b) => (Number(a?.sortOrder || 0) - Number(b?.sortOrder || 0)));
       if (!q) return list;
       return list.filter((c) => String(c?.name || '').toLowerCase().includes(q) || String(c?.slug || '').toLowerCase().includes(q));
+    } else if (activeTab === 'Sub-categories') {
+      const q = String(searchTerm || '').toLowerCase().trim();
+      const list = [...subcategories];
+      if (!q) return list;
+      return list.filter((s) =>
+        String(s?.title || '').toLowerCase().includes(q) ||
+        String(s?.description || '').toLowerCase().includes(q) ||
+        String(s?.parentCategory?.name || '').toLowerCase().includes(q)
+      );
     } else if (activeTab === 'Scenarios') {
       return scenarios.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
     } else if (activeTab === 'Static Pages') {
       return staticPages.filter(p => p.title.toLowerCase().includes(searchTerm.toLowerCase()));
     }
     return [];
-  }, [activeTab, categories, scenarios, staticPages, searchTerm]);
+  }, [activeTab, categories, subcategories, scenarios, staticPages, searchTerm]);
 
   const handleEditPage = (page) => {
     navigate(`/static-pages/edit/${page.slug}`);
@@ -546,6 +674,42 @@ const ContentManagementPage = ({ initialTab = 'Categories' }) => {
             </div>
           )}
 
+          {activeTab === 'Sub-categories' && (
+            <Table
+              columns={subcategoryColumns}
+              data={paginatedData}
+              onSearch={(value) => {
+                setSearchTerm(value);
+                setCurrentPage(1);
+              }}
+              searchPlaceholder="Search sub-categories..."
+              pagination={{
+                currentPage,
+                totalPages: Math.ceil(filteredData.length / itemsPerPage),
+                totalItems: filteredData.length,
+                itemsPerPage,
+              }}
+              onPageChange={setCurrentPage}
+              actions={
+                <button
+                  onClick={() => {
+                    setEditingSubcategory({
+                      parentCategoryId: categories?.[0]?._id || '',
+                      title: '',
+                      description: '',
+                      isActive: true,
+                    });
+                    setEditingCategory(null);
+                    setIsEditPanelOpen(true);
+                  }}
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-socius-red hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-socius-red"
+                >
+                  <Plus className="mr-2 h-4 w-4" /> Create Sub-category
+                </button>
+              }
+            />
+          )}
+
           {activeTab === 'Scenarios' && (
             <Table 
               columns={scenarioColumns}
@@ -600,7 +764,7 @@ const ContentManagementPage = ({ initialTab = 'Categories' }) => {
             />
           )}
 
-          {activeTab !== 'Categories' && activeTab !== 'Scenarios' && activeTab !== 'Static Pages' && (
+          {activeTab !== 'Categories' && activeTab !== 'Sub-categories' && activeTab !== 'Scenarios' && activeTab !== 'Static Pages' && (
              <div className="text-center py-10 text-gray-500">
                 Content for {activeTab} will be implemented soon.
              </div>
@@ -619,7 +783,7 @@ const ContentManagementPage = ({ initialTab = 'Categories' }) => {
           >
             <div className="px-4 md:px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between md:rounded-t-xl">
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                {editingPage ? 'Edit Page' : 'Edit Category'}
+                {editingPage ? 'Edit Page' : activeTab === 'Sub-categories' ? 'Edit Sub-category' : 'Edit Category'}
               </h2>
               <button 
                 onClick={handleClosePanel}
@@ -630,7 +794,70 @@ const ContentManagementPage = ({ initialTab = 'Categories' }) => {
             </div>
             
             <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
-                {/* Category Edit Form */}
+                {/* Category/Sub-category Edit Form */}
+                {activeTab === 'Sub-categories' ? (
+                <>
+                  <div>
+                    <label htmlFor="parentCategoryId" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Parent Category
+                    </label>
+                    <select
+                      id="parentCategoryId"
+                      value={editingSubcategory?.parentCategoryId || ''}
+                      onChange={(e) => setEditingSubcategory({ ...editingSubcategory, parentCategoryId: e.target.value })}
+                      className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-socius-red focus:ring-socius-red sm:text-sm dark:bg-gray-700 dark:text-white p-2 border"
+                    >
+                      <option value="">Select category</option>
+                      {(categories || []).map((c) => (
+                        <option key={c._id} value={c._id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label htmlFor="subcategoryTitle" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Title
+                    </label>
+                    <input
+                      type="text"
+                      id="subcategoryTitle"
+                      value={editingSubcategory?.title || ''}
+                      onChange={(e) => setEditingSubcategory({ ...editingSubcategory, title: e.target.value })}
+                      className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-socius-red focus:ring-socius-red sm:text-sm dark:bg-gray-700 dark:text-white p-2 border"
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="subcategoryDescription" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Description (1 line)
+                    </label>
+                    <input
+                      type="text"
+                      id="subcategoryDescription"
+                      value={editingSubcategory?.description || ''}
+                      onChange={(e) => setEditingSubcategory({ ...editingSubcategory, description: e.target.value })}
+                      className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-socius-red focus:ring-socius-red sm:text-sm dark:bg-gray-700 dark:text-white p-2 border"
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="subcategoryStatus" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Status
+                    </label>
+                    <select
+                      id="subcategoryStatus"
+                      value={editingSubcategory?.isActive ? 'enabled' : 'disabled'}
+                      onChange={(e) => setEditingSubcategory({ ...editingSubcategory, isActive: e.target.value === 'enabled' })}
+                      className="w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-socius-red focus:ring-socius-red sm:text-sm dark:bg-gray-700 dark:text-white p-2 border"
+                    >
+                      <option value="enabled">Enabled</option>
+                      <option value="disabled">Disabled</option>
+                    </select>
+                  </div>
+                </>
+                ) : (
                 <>
                   <div>
                     <label htmlFor="categoryName" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -720,6 +947,7 @@ const ContentManagementPage = ({ initialTab = 'Categories' }) => {
                     ) : null}
                   </div>
                 </>
+                )}
             </div>
 
             {/* Footer Buttons */}

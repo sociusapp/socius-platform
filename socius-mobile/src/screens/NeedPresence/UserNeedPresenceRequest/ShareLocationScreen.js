@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 import { useResponsive } from '../../../utils/responsive';
-import { createPresenceRequest } from '../../../services/api/incident.api';
+import { createPresenceRequest } from '../../../services/api/needPresence.api';
 import { requestLocationPermission, getCurrentPosition, reverseGeocode, getNearbyPlaceName, formatLocationLabel } from '../../../services/location/geolocation.service';
 import { loadAuth, loadLastKnownLocation, saveLastKnownLocation } from '../../../services/storage/asyncStorage.service';
 import Button from '../../../components/common/Button';

@@ -79,6 +79,7 @@ export async function inferRecipientRoleForRequest(requestId) {
 function roleFromNotificationType(type) {
   const t = String(type || '').toLowerCase();
   if (t === 'help_session_time_ended_helper' || t === 'help_session_extended_helper') return 'helper';
+  if (t === 'borrow_item_request') return 'helper';
   if (t === 'request_completion_prompt') return 'requester';
   return null;
 }

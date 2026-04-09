@@ -32,6 +32,7 @@ const closureStatusSchema = new mongoose.Schema(
       noReplyAfterAccept: { type: Boolean, default: null },
       itemIssue: { type: Boolean, default: null },
       itemIssueDescription: { type: String, default: null, maxlength: 500 },
+      notes: { type: String, default: null, maxlength: 500 },
       evidencePhotos: [{ type: String }],
     },
     helperFeedback: {

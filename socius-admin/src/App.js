@@ -39,6 +39,12 @@ import TrackingLinksPage from './pages/TrackingLinksPage';
 import GallerySettingsPage from './pages/GallerySettingsPage';
 import BlogTypesPage from './pages/BlogTypesPage';
 import BlogsPage from './pages/BlogsPage';
+import PresenceCatalogPage from './pages/PresenceCatalogPage';
+import HelpCatalogPage from './pages/HelpCatalogPage';
+import PrepareCardsPage from './pages/PrepareCardsPage';
+import PrepareCardEditorPage from './pages/PrepareCardEditorPage';
+import PrepareLearnPage from './pages/PrepareLearnPage';
+import CommunitySurveyPage from './pages/CommunitySurveyPage';
 
 const PublicRoute = ({ children }) => {
   const { user } = useAuth();
@@ -153,6 +159,13 @@ function App() {
             <Route path="/content/scenario-config" element={<ScenarioConfigPage />} />
             <Route path="/blog-types" element={<BlogTypesPage />} />
             <Route path="/blogs" element={<BlogsPage />} />
+            <Route path="/community-survey" element={<CommunitySurveyPage />} />
+            <Route path="/presence-catalog" element={<PresenceCatalogPage />} />
+            <Route path="/help-catalog" element={<HelpCatalogPage />} />
+            <Route path="/prepare-cards" element={<PrepareCardsPage />} />
+            <Route path="/prepare-cards/new" element={<PrepareCardEditorPage />} />
+            <Route path="/prepare-cards/edit/:id" element={<PrepareCardEditorPage />} />
+            <Route path="/prepare-learn" element={<PrepareLearnPage />} />
             <Route path="/account-settings" element={<AccountSettingsPage />} />
           </Route>
 

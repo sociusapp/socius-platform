@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../../components/common/Header';
@@ -8,11 +8,13 @@ import Button from '../../../components/common/Button';
 import CustomAlert from '../../../components/common/CustomAlert';
 import MotionView from '../../../components/common/MotionView';
 import { useResponsive } from '../../../utils/responsive';
-import { cancelHelpRequest } from '../../../services/api/incident.api';
+import { cancelHelpRequest } from '../../../services/api/dailyHelp.api';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
+import { sociusRefreshProps, useStaticPullRefresh } from '../../../utils/sociusRefreshControl';
 
 const CancelRequestScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
+  const { refreshing, onRefresh } = useStaticPullRefresh();
   const [submitting, setSubmitting] = useState(false);
   const requestId = route?.params?.requestId;
 
@@ -154,6 +156,7 @@ const CancelRequestScreen = ({ navigation, route }) => {
       <ScrollView
         contentContainerStyle={[styles.scrollContent, { alignItems: 'center' }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} {...sociusRefreshProps} />}
       >
         <View style={{ width: contentWidth }}>
           {/* Dialog Card */}

@@ -1,11 +1,14 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../../components/common/Header';
 import { useResponsive } from '../../../utils/responsive';
+import { sociusRefreshProps, useStaticPullRefresh } from '../../../utils/sociusRefreshControl';
 
 const RequestConfirmationScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
+  const { refreshing, onRefresh } = useStaticPullRefresh();
   const requestId = route?.params?.requestId;
 
   const handleKeepActive = () => {
@@ -34,6 +37,7 @@ const RequestConfirmationScreen = ({ navigation, route }) => {
           alignItems: 'center'
         }]} 
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} {...sociusRefreshProps} />}
       >
         <View style={{ width: contentWidth }}>
           <View style={[styles.statusCard, {

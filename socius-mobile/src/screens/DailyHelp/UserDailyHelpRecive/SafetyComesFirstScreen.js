@@ -9,17 +9,20 @@ import {
   Alert,
   Image,
   Modal,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useResponsive } from '../../../utils/responsive';
 import Header from '../../../components/common/Header';
-import { acceptHelpRequest } from '../../../services/api/incident.api';
-import { loadAuth } from '../../../services/storage/asyncStorage.service';
+import { acceptHelpRequest } from '../../../services/api/dailyHelp.api';
+import { loadAuth, saveDailyHelpSafetyGuideSeen } from '../../../services/storage/asyncStorage.service';
+import { sociusRefreshProps, useStaticPullRefresh } from '../../../utils/sociusRefreshControl';
 
 const SafetyComesFirstScreen = ({ navigation, route }) => {
   const { requestId } = route.params || {};
   const { ms, scale, spacing, vscale } = useResponsive();
+  const { refreshing, onRefresh } = useStaticPullRefresh();
   const [loading, setLoading] = useState(false);
   const [confirmModalVisible, setConfirmModalVisible] = useState(false);
 
@@ -92,6 +95,7 @@ const SafetyComesFirstScreen = ({ navigation, route }) => {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} {...sociusRefreshProps} />}
       >
         <View style={styles.content}>
           <Text style={[styles.title, { fontSize: ms(24), marginTop: vscale(20) }]}>
@@ -140,8 +144,13 @@ const SafetyComesFirstScreen = ({ navigation, route }) => {
 
       <View style={styles.footer}>
         <TouchableOpacity
-          onPress={() => {
-            console.log('Continue pressed');
+          onPress={async () => {
+            try {
+              const auth = await loadAuth();
+              if (auth?.userId) {
+                await saveDailyHelpSafetyGuideSeen(auth.userId);
+              }
+            } catch (_) {}
             showAcceptConfirmation();
           }}
           style={[styles.continueBtn, { backgroundColor: loading ? '#E2E8F0' : '#D84D42' }]}

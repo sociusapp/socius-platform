@@ -11,6 +11,7 @@ const BlogTypesPage = () => {
     name: '',
     slug: '',
     description: '',
+    iconName: '',
     color: '#C84D59',
     sortOrder: 0,
     isActive: true,
@@ -42,6 +43,7 @@ const BlogTypesPage = () => {
         name: type.name,
         slug: type.slug,
         description: type.description || '',
+        iconName: type.iconName || '',
         color: type.color || '#C84D59',
         sortOrder: type.sortOrder || 0,
         isActive: type.isActive,
@@ -54,6 +56,7 @@ const BlogTypesPage = () => {
         name: '',
         slug: '',
         description: '',
+        iconName: '',
         color: '#C84D59',
         sortOrder: 0,
         isActive: true,
@@ -124,7 +127,12 @@ const BlogTypesPage = () => {
   return (
     <div className="p-8">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Blog Types</h1>
+        <div>
+          <h1 className="text-2xl font-bold">Blog Types</h1>
+          <p className="text-sm text-gray-600 mt-1 max-w-xl">
+            These appear as <strong>Daily Help topics</strong> on the mobile Community screen (only types marked Active). Add matching articles under <strong>Blogs</strong> so each topic opens content when tapped.
+          </p>
+        </div>
         <button
           onClick={() => handleOpenModal()}
           className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
@@ -245,7 +253,19 @@ const BlogTypesPage = () => {
               </div>
 
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Icon</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Mobile icon (optional)</label>
+                <input
+                  type="text"
+                  value={formData.iconName}
+                  onChange={(e) => setFormData({ ...formData, iconName: e.target.value })}
+                  className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g. hand-heart (MaterialCommunityIcons)"
+                />
+                <p className="text-xs text-gray-500 mt-1">Used on the app when no image icon is uploaded.</p>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Icon image</label>
                 <input
                   type="file"
                   accept="image/*"

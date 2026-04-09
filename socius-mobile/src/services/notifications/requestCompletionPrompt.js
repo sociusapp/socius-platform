@@ -59,6 +59,8 @@ function showExtendPicker(requestId) {
 export async function displayRequestCompletionPrompt(data) {
   const requestId = data.requestId || data.request_id;
   if (!requestId) return;
+  const role = String(data?.recipientRole || data?.userRole || '').toLowerCase();
+  if (role && role !== 'requester') return;
 
   await initNotifeeChannels();
 

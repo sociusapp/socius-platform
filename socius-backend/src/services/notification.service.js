@@ -108,12 +108,16 @@ const notifyMultipleUsers = async (userIds, { title, body, data = {}, priority =
  * @param {Object} helpRequest - The help request object
  */
 const sendHelpRequestAlert = async (helpers, helpRequest) => {
+  const requesterId = String(helpRequest?.requesterId || '')
   // If helpers is just an array of IDs (backward compatibility or error case)
   if (helpers.length > 0 && typeof helpers[0] === 'string') {
-    const r = await notifyMultipleUsers(helpers, {
+    const helperIds = helpers.filter((id) => String(id) !== requesterId)
+    if (helperIds.length === 0) return { deliveredHelperIds: [], result: null }
+    const r = await notifyMultipleUsers(helperIds, {
       data: {
         type: NOTIFICATION_TYPE.HELP_REQUEST_ALERT,
         requestId: String(helpRequest._id || ''),
+        requesterId,
         category: helpRequest.category || '',
         categoryName: helpRequest.categoryName || '',
         categoryIcon: helpRequest.categoryIcon || '',
@@ -133,6 +137,7 @@ const sendHelpRequestAlert = async (helpers, helpRequest) => {
 
   // Send individual notifications with distance
   for (const helper of helpers) {
+    if (String(helper?._id) === requesterId) continue
     const distance = helper.distanceMeters ? Math.round(helper.distanceMeters) : 0
     // eslint-disable-next-line no-await-in-loop
     const r = await notifyUser(String(helper._id), {
@@ -142,6 +147,7 @@ const sendHelpRequestAlert = async (helpers, helpRequest) => {
       data: {
         type: NOTIFICATION_TYPE.HELP_REQUEST_DATA,
         requestId: String(helpRequest._id),
+        requesterId,
         category: helpRequest.category || '',
         categoryName: helpRequest.categoryName || '',
         categoryIcon: helpRequest.categoryIcon || '',
@@ -511,6 +517,26 @@ const sendHelperSessionExtendedNotification = async (
   })
 }
 
+const sendBorrowItemRequestNotification = async (helperId, payload = {}) => {
+  const itemName = String(payload.itemName || 'Requested item').trim()
+  const mins = Number(payload.requestedMinutes || 0)
+  const note = String(payload.note || '').trim()
+  return notifyUser(String(helperId), {
+    data: {
+      type: NOTIFICATION_TYPE.BORROW_ITEM_REQUEST,
+      requestId: String(payload.requestId || ''),
+      borrowId: String(payload.borrowId || ''),
+      requesterName: String(payload.requesterName || ''),
+      recipientRole: 'helper',
+      itemName,
+      note,
+      requestedMinutes: String(mins || ''),
+      imageUrl: String(payload.imageUrl || ''),
+    },
+    priority: NOTIFICATION_PRIORITY.HIGH,
+  })
+}
+
 const sendRequestRematchedToHelpers = async (helpers, helpRequest, { wave = '2', reason = 'rematch' } = {}) => {
   if (!helpers?.length) return
   if (typeof helpers[0] === 'string') {
@@ -534,6 +560,7 @@ const sendRequestRematchedToHelpers = async (helpers, helpRequest, { wave = '2',
       data: {
         type: NOTIFICATION_TYPE.REQUEST_REMATCHED,
         requestId: String(helpRequest._id),
+        requesterId: String(helpRequest?.requesterId || ''),
         category: helpRequest.category || '',
         categoryName: helpRequest.categoryName || '',
         categoryIcon: helpRequest.categoryIcon || '',
@@ -581,5 +608,6 @@ module.exports = {
   sendRequestCompletionPromptNotification,
   sendHelperSessionTimeEndedNotification,
   sendHelperSessionExtendedNotification,
+  sendBorrowItemRequestNotification,
   invalidateToken,
 }

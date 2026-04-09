@@ -182,6 +182,30 @@ const closePresenceRequest = (token, id) => {
     .then((response) => response.data);
 };
 
+const submitReport = (token, payload) => {
+  return api
+    .post('/reports', payload, authConfig(token))
+    .then((response) => response.data);
+};
+
+const getMyReports = (token, params) => {
+  return api
+    .get('/reports/me', { ...(authConfig(token) || {}), params })
+    .then((response) => response.data);
+};
+
+const updateMyReport = (token, reportId, payload) => {
+  return api
+    .patch(`/reports/${encodeURIComponent(reportId)}`, payload, authConfig(token))
+    .then((response) => response.data);
+};
+
+const deleteMyReport = (token, reportId) => {
+  return api
+    .delete(`/reports/${encodeURIComponent(reportId)}`, authConfig(token))
+    .then((response) => response.data);
+};
+
 export {
   getMyActiveHelpRequest,
   getHelpRequestById,
@@ -210,4 +234,8 @@ export {
   declinePresence,
   cancelPresenceRequest,
   closePresenceRequest,
+  submitReport,
+  getMyReports,
+  updateMyReport,
+  deleteMyReport,
 };

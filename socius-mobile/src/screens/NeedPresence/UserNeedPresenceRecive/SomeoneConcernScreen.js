@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../../components/common/Header';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useResponsive } from '../../../utils/responsive';
-import { acceptPresence } from '../../../services/api/incident.api';
+import { acceptPresence } from '../../../services/api/needPresence.api';
 import { loadAuth, saveActivePresenceAssignmentId } from '../../../services/storage/asyncStorage.service';
 import CustomAlert from '../../../components/common/CustomAlert';
 

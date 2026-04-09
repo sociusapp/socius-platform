@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../../components/common/Header';
 import Button from '../../../components/common/Button';
 import { useResponsive } from '../../../utils/responsive';
+import { sociusRefreshProps, useStaticPullRefresh } from '../../../utils/sociusRefreshControl';
 
 const RequestAutoClosedScreen = ({ navigation }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
+  const { refreshing, onRefresh } = useStaticPullRefresh();
   const [completion, setCompletion] = useState(null);
 
   const handleSettings = () => {
@@ -48,6 +50,7 @@ const RequestAutoClosedScreen = ({ navigation }) => {
       <ScrollView
         contentContainerStyle={[styles.scroll, { alignItems: 'center', paddingHorizontal: spacing(20), paddingTop: vscale(24), paddingBottom: vscale(40) }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} {...sociusRefreshProps} />}
       >
         <View style={{ width: contentWidth }}>
           <View style={[styles.headerCard, { borderRadius: scale(18), borderWidth: scale(1), paddingHorizontal: spacing(18), paddingVertical: vscale(16), marginBottom: vscale(18), shadowOffset: { width: 0, height: vscale(2) }, shadowRadius: scale(6), elevation: scale(2) }]}>

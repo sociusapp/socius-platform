@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -17,13 +17,18 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Header from '../../components/common/Header';
 import MotionView from '../../components/common/MotionView';
 import { useResponsive } from '../../utils/responsive';
-import { getBlogsByType } from '../../services/api/blog.api';
+import { getBlogsByType, getPublicMediaUrl } from '../../services/api/blog.api';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const BlogListScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
   const { blogType } = route?.params || {};
+  const typeId = useMemo(() => blogType?._id || blogType?.id || null, [blogType]);
+  const hasValidTypeId = useMemo(
+    () => !!typeId && /^[0-9a-fA-F]{24}$/.test(String(typeId)),
+    [typeId]
+  );
   
   const [blogs, setBlogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -31,12 +36,17 @@ const BlogListScreen = ({ navigation, route }) => {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [pagination, setPagination] = useState(null);
+  const didAutoOpenSingle = useRef(false);
 
   const fetchBlogs = useCallback(async (pageNum = 1, isRefresh = false) => {
-    if (!blogType?._id && !blogType?.id) return;
+    if (!hasValidTypeId) {
+      setBlogs([]);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     
     try {
-      const typeId = blogType._id || blogType.id;
       const response = await getBlogsByType(typeId, pageNum, 10);
       
       if (isRefresh || pageNum === 1) {
@@ -53,11 +63,19 @@ const BlogListScreen = ({ navigation, route }) => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [blogType]);
+  }, [hasValidTypeId, typeId]);
 
   useEffect(() => {
     fetchBlogs(1, true);
   }, [fetchBlogs]);
+
+  useEffect(() => {
+    if (didAutoOpenSingle.current) return;
+    if (!hasValidTypeId || loading || refreshing) return;
+    if (blogs.length !== 1) return;
+    didAutoOpenSingle.current = true;
+    navigation.replace('BlogDetail', { blog: blogs[0], blogType });
+  }, [hasValidTypeId, loading, refreshing, blogs, blogType, navigation]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -77,15 +95,8 @@ const BlogListScreen = ({ navigation, route }) => {
     navigation.navigate('BlogDetail', { blog, blogType });
   };
 
-  const getFullImageUrl = (imagePath) => {
-    if (!imagePath) return null;
-    if (imagePath.startsWith('http')) return imagePath;
-    const baseUrl = 'http://192.168.1.74:48080';
-    return `${baseUrl}${imagePath.startsWith('/') ? '' : '/'}${imagePath}`;
-  };
-
   const renderBlogCard = ({ item: blog, index }) => {
-    const imageUrl = getFullImageUrl(blog.featuredImage);
+    const imageUrl = getPublicMediaUrl(blog.featuredImageUrl || blog.featuredImage);
     const delay = (index % 10) * 50;
 
     return (
@@ -147,10 +158,10 @@ const BlogListScreen = ({ navigation, route }) => {
         <Icon name="file-document-outline" size={scale(40)} color="#CCC" />
       </View>
       <Text style={[styles.emptyTitle, { fontSize: ms(16), marginBottom: vscale(8) }]}>
-        No articles yet
+        {hasValidTypeId ? 'No articles yet' : 'Content type unavailable'}
       </Text>
       <Text style={[styles.emptyText, { fontSize: ms(14) }]}>
-        Check back later for {blogType?.name} content
+        {hasValidTypeId ? `Check back later for ${blogType?.name} content` : 'This item is not linked to a valid blog type yet.'}
       </Text>
     </View>
   );
@@ -184,7 +195,7 @@ const BlogListScreen = ({ navigation, route }) => {
         <View style={styles.typeInfo}>
           {blogType?.iconUrl ? (
             <Image
-              source={{ uri: getFullImageUrl(blogType.iconUrl) }}
+              source={{ uri: getPublicMediaUrl(blogType.iconUrl) }}
               style={[styles.typeIcon, { width: scale(48), height: scale(48), borderRadius: scale(12) }]}
             />
           ) : (

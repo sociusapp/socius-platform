@@ -1,13 +1,19 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../components/common/Header';
 import { useResponsive } from '../../utils/responsive';
+import { getPresenceCategories } from '../../services/api/needPresence.api';
+import { loadAuth } from '../../services/storage/asyncStorage.service';
+import { sociusRefreshProps } from '../../utils/sociusRefreshControl';
 
 const CommunityAroundScreen = ({ navigation }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
-  const presenceTypes = [
+  const [token, setToken] = useState(null);
+  const [apiCategories, setApiCategories] = useState([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const presenceTypesFallback = [
     { label: 'Calm presence', icon: 'meditation', color: '#5A6F7D', bg: '#EEF3F6' },
     { label: 'Care & support', icon: 'hand-heart', color: '#8B6F47', bg: '#F1EEE8' },
     { label: 'Medical awareness', icon: 'medical-bag', color: '#C94D4D', bg: '#F8EAEA' },
@@ -15,6 +21,7 @@ const CommunityAroundScreen = ({ navigation }) => {
     { label: 'Elder assistance', icon: 'human-greeting-proximity', color: '#C94D4D', bg: '#F8EAEA' },
     { label: 'Community upkeep', icon: 'home-heart', color: '#8B6F47', bg: '#F1EEE8' },
   ];
+  const iconFallbacks = ['meditation', 'hand-heart', 'medical-bag', 'translate', 'human-greeting-proximity', 'home-heart'];
 
   const guidelines = [
     'Voluntary participation',
@@ -26,6 +33,57 @@ const CommunityAroundScreen = ({ navigation }) => {
   const handleReadGuidelines = () => {
     navigation.navigate('CommunityPrinciples');
   };
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const auth = await loadAuth();
+        if (mounted) setToken(auth?.accessToken || null);
+      } catch {
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const loadCategories = useCallback(
+    async ({ useCache = true } = {}) => {
+      if (!token) return;
+      try {
+        const res = await getPresenceCategories(token, { cacheTtlMs: useCache ? 60000 : 0 });
+        const items = Array.isArray(res?.data?.items) ? res.data.items : Array.isArray(res?.items) ? res.items : [];
+        if (items.length > 0) setApiCategories(items);
+      } catch {
+        // Keep fallback static list if API fails.
+      }
+    },
+    [token]
+  );
+
+  useEffect(() => {
+    loadCategories({ useCache: true });
+  }, [loadCategories]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadCategories({ useCache: false });
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadCategories]);
+
+  const presenceTypes = useMemo(() => {
+    if (!apiCategories.length) return presenceTypesFallback;
+    return apiCategories.map((cat, idx) => ({
+      label: cat?.title || 'Presence',
+      icon: cat?.iconName || iconFallbacks[idx % iconFallbacks.length],
+      color: '#5A6F7D',
+      bg: '#EEF3F6',
+    }));
+  }, [apiCategories]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -39,6 +97,7 @@ const CommunityAroundScreen = ({ navigation }) => {
           alignItems: 'center'
         }]} 
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} {...sociusRefreshProps} />}
       >
         <View style={{ width: contentWidth }}>
           <Text style={[styles.pageTitle, { fontSize: ms(24), marginBottom: vscale(6) }]}>Community Around You</Text>

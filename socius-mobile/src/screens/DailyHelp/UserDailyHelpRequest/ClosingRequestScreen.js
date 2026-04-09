@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Button from '../../../components/common/Button';
@@ -7,17 +7,20 @@ import Header from '../../../components/common/Header';
 import CustomAlert from '../../../components/common/CustomAlert';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useResponsive } from '../../../utils/responsive';
-import { submitClosure } from '../../../services/api/incident.api';
+import { submitClosure } from '../../../services/api/dailyHelp.api';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
+import { sociusRefreshProps, useStaticPullRefresh } from '../../../utils/sociusRefreshControl';
 
 const ClosingRequestScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
+  const { refreshing, onRefresh } = useStaticPullRefresh();
   const [starRating, setStarRating] = useState(0);
   const [providedHelp, setProvidedHelp] = useState(null);
   const [cancelledAfterAccept, setCancelledAfterAccept] = useState(false);
   const [noReplyAfterAccept, setNoReplyAfterAccept] = useState(false);
   const [itemIssue, setItemIssue] = useState(false);
   const [itemIssueDescription, setItemIssueDescription] = useState('');
+  const [closureNotes, setClosureNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const requestId = route?.params?.requestId;
 
@@ -101,6 +104,7 @@ const ClosingRequestScreen = ({ navigation, route }) => {
           noReplyAfterAccept,
           itemIssue,
           itemIssueDescription: itemIssue && itemIssueDescription.trim().length > 0 ? itemIssueDescription.trim() : null,
+          notes: closureNotes && closureNotes.trim().length > 0 ? closureNotes.trim() : null,
           evidencePhotos: [],
         }
       };
@@ -175,6 +179,7 @@ const ClosingRequestScreen = ({ navigation, route }) => {
       <ScrollView
         contentContainerStyle={[styles.scroll, { alignItems: 'center' }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} {...sociusRefreshProps} />}
       >
         <View style={{ width: contentWidth }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: vscale(12) }}>
@@ -212,30 +217,26 @@ const ClosingRequestScreen = ({ navigation, route }) => {
               <Text style={[styles.sectionHeading, { fontSize: ms(14) }]}>Did the helper provide help?</Text>
             </View>
             <View style={[styles.rowButtons, { marginBottom: 0 }]}>
-              <View style={{ flex: 1, marginRight: spacing(10) }}>
-                <Button
-                  title="Yes"
-                  onPress={() => setProvidedHelp(true)}
-                  variant={providedHelp === true ? 'primary' : 'outline'}
-                  size="large"
-                  fullWidth
-                  textStyle={{ color: providedHelp === true ? '#FFFFFF' : '#DC5C69' }}
-                  icon={<Icon name="thumb-up-outline" size={scale(18)} color={providedHelp === true ? '#FFFFFF' : '#DC5C69'} />}
-                  accessibilityLabel="Yes, help was provided"
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Button
-                  title="No"
-                  onPress={() => setProvidedHelp(false)}
-                  variant={providedHelp === false ? 'primary' : 'outline'}
-                  size="large"
-                  fullWidth
-                  textStyle={{ color: providedHelp === false ? '#FFFFFF' : '#DC5C69' }}
-                  icon={<Icon name="thumb-down-outline" size={scale(18)} color={providedHelp === false ? '#FFFFFF' : '#DC5C69'} />}
-                  accessibilityLabel="No, help was not provided"
-                />
-              </View>
+              <TouchableOpacity
+                style={[styles.resolutionOption, { marginRight: spacing(10) }, providedHelp === true && styles.resolutionOptionSelected]}
+                onPress={() => setProvidedHelp(true)}
+                activeOpacity={0.9}
+                accessibilityRole="button"
+                accessibilityLabel="Yes, help was provided"
+              >
+                <Icon name="thumb-up-outline" size={scale(18)} color={providedHelp === true ? '#FFFFFF' : '#DC5C69'} />
+                <Text style={[styles.resolutionOptionText, providedHelp === true && styles.resolutionOptionTextSelected]}>Yes</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.resolutionOption, providedHelp === false && styles.resolutionOptionSelected]}
+                onPress={() => setProvidedHelp(false)}
+                activeOpacity={0.9}
+                accessibilityRole="button"
+                accessibilityLabel="No, help was not provided"
+              >
+                <Icon name="thumb-down-outline" size={scale(18)} color={providedHelp === false ? '#FFFFFF' : '#DC5C69'} />
+                <Text style={[styles.resolutionOptionText, providedHelp === false && styles.resolutionOptionTextSelected]}>No</Text>
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -268,7 +269,7 @@ const ClosingRequestScreen = ({ navigation, route }) => {
                 <Text style={[styles.sectionHeading, { fontSize: ms(14) }]}>What happened?</Text>
               </View>
               <TouchableOpacity
-                style={[styles.checkboxRow, { marginBottom: vscale(8) }]}
+                style={[styles.checkboxRow, cancelledAfterAccept && styles.checkboxRowSelected, { marginBottom: vscale(8) }]}
                 onPress={() => setCancelledAfterAccept(!cancelledAfterAccept)}
                 activeOpacity={0.85}
                 accessibilityRole="button"
@@ -283,11 +284,11 @@ const ClosingRequestScreen = ({ navigation, route }) => {
                 }, cancelledAfterAccept && styles.checkboxChecked]}>
                   {cancelledAfterAccept && <Icon name="check" size={scale(16)} color="#FFFFFF" />}
                 </View>
-                <Icon name="close-circle-outline" size={scale(18)} color="#9CA3AF" style={{ marginRight: spacing(8) }} />
-                <Text style={[styles.checkboxText, { fontSize: ms(14) }]}>Cancelled after accepting</Text>
+                <Icon name="close-circle-outline" size={scale(18)} color={cancelledAfterAccept ? '#B4234F' : '#9CA3AF'} style={{ marginRight: spacing(8) }} />
+                <Text style={[styles.checkboxText, cancelledAfterAccept && styles.checkboxTextSelected, { fontSize: ms(14) }]}>Cancelled after accepting</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.checkboxRow, { marginBottom: vscale(8) }]}
+                style={[styles.checkboxRow, noReplyAfterAccept && styles.checkboxRowSelected, { marginBottom: vscale(8) }]}
                 onPress={() => setNoReplyAfterAccept(!noReplyAfterAccept)}
                 activeOpacity={0.85}
                 accessibilityRole="button"
@@ -302,11 +303,11 @@ const ClosingRequestScreen = ({ navigation, route }) => {
                 }, noReplyAfterAccept && styles.checkboxChecked]}>
                   {noReplyAfterAccept && <Icon name="check" size={scale(16)} color="#FFFFFF" />}
                 </View>
-                <Icon name="message-alert-outline" size={scale(18)} color="#9CA3AF" style={{ marginRight: spacing(8) }} />
-                <Text style={[styles.checkboxText, { fontSize: ms(14) }]}>No reply after accepting</Text>
+                <Icon name="message-alert-outline" size={scale(18)} color={noReplyAfterAccept ? '#B4234F' : '#9CA3AF'} style={{ marginRight: spacing(8) }} />
+                <Text style={[styles.checkboxText, noReplyAfterAccept && styles.checkboxTextSelected, { fontSize: ms(14) }]}>No reply after accepting</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.checkboxRow, { marginBottom: vscale(8) }]}
+                style={[styles.checkboxRow, itemIssue && styles.checkboxRowSelected, { marginBottom: vscale(8) }]}
                 onPress={() => setItemIssue(!itemIssue)}
                 activeOpacity={0.85}
                 accessibilityRole="button"
@@ -321,8 +322,8 @@ const ClosingRequestScreen = ({ navigation, route }) => {
                 }, itemIssue && styles.checkboxChecked]}>
                   {itemIssue && <Icon name="check" size={scale(16)} color="#FFFFFF" />}
                 </View>
-                <Icon name="package-variant-closed" size={scale(18)} color="#9CA3AF" style={{ marginRight: spacing(8) }} />
-                <Text style={[styles.checkboxText, { fontSize: ms(14) }]}>Issue with item</Text>
+                <Icon name="package-variant-closed" size={scale(18)} color={itemIssue ? '#B4234F' : '#9CA3AF'} style={{ marginRight: spacing(8) }} />
+                <Text style={[styles.checkboxText, itemIssue && styles.checkboxTextSelected, { fontSize: ms(14) }]}>Issue with item</Text>
               </TouchableOpacity>
               <Text style={[styles.helperText, { fontSize: ms(12), marginTop: vscale(6) }]}>This helps build trust for future requests.</Text>
             </View>
@@ -344,6 +345,23 @@ const ClosingRequestScreen = ({ navigation, route }) => {
               />
             </View>
           )}
+
+          <View style={[styles.section, styles.shareSection, { marginBottom: vscale(14), paddingTop: vscale(12) }]}>
+            <Text style={[styles.shareHeading, { fontSize: ms(16), marginBottom: vscale(10) }]}>
+              Anything you want to share? <Text style={styles.shareHeadingOptional}>(optional)</Text>
+            </Text>
+            <TextInput
+              style={[styles.shareInput, { borderRadius: scale(14), paddingHorizontal: spacing(14), paddingVertical: vscale(12), fontSize: ms(14) }]}
+              placeholder="Short feedback helps improve the platform"
+              placeholderTextColor="#9CA3AF"
+              value={closureNotes}
+              onChangeText={setClosureNotes}
+              maxLength={500}
+            />
+            <Text style={[styles.shareHint, { fontSize: ms(12), marginTop: vscale(8) }]}>
+              Please avoid names or accusations.
+            </Text>
+          </View>
 
           <View style={[styles.section, { marginBottom: vscale(14) }]}>
             <Text style={[styles.sectionHeading, { fontSize: ms(14), marginBottom: vscale(10) }]}>Need to report a concern?</Text>
@@ -477,12 +495,50 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
+  resolutionOption: {
+    flex: 1,
+    minHeight: 56,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: '#DC5C69',
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  resolutionOptionSelected: {
+    backgroundColor: '#DC5C69',
+    shadowColor: '#DC5C69',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  resolutionOptionText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#DC5C69',
+  },
+  resolutionOptionTextSelected: {
+    color: '#FFFFFF',
+  },
   halfButton: {
     flex: 1,
   },
   checkboxRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#ECEFF3',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  checkboxRowSelected: {
+    borderColor: '#F3B6C0',
+    backgroundColor: '#FFF5F7',
   },
   checkbox: {
     width: 22,
@@ -502,9 +558,38 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#111827',
   },
+  checkboxTextSelected: {
+    color: '#B4234F',
+    fontWeight: '700',
+  },
   helperText: {
     fontSize: 12,
     color: '#6B7280',
+  },
+  shareSection: {
+    borderTopWidth: 1,
+    borderTopColor: '#ECEFF3',
+  },
+  shareHeading: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#2C3E50',
+  },
+  shareHeadingOptional: {
+    fontWeight: '500',
+    color: '#9CA3AF',
+  },
+  shareInput: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    backgroundColor: '#FFFFFF',
+    minHeight: 52,
+    color: '#111827',
+  },
+  shareHint: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontStyle: 'italic',
   },
   reactionPill: {
     flexDirection: 'row',

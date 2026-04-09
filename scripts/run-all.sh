@@ -81,11 +81,16 @@ else
   echo "   ✅ MongoDB already running at 127.0.0.1:27017"
 fi
 
-echo -e "${GREEN}1. Starting Node Backend (Port ${API_PORT})...${NC}"
+echo -e "${GREEN}1. Starting Node Backend (Port ${API_PORT}, nodemon auto-restart)...${NC}"
 kill_if_port_in_use "${API_PORT}"
 pushd socius-backend >/dev/null
 if [[ ! -d node_modules ]]; then
   echo "   📦 Installing Backend dependencies..."
+  npm install >/dev/null 2>&1
+fi
+# Ensure dev tools (e.g. nodemon) exist after package.json changes
+if [[ ! -f node_modules/.bin/nodemon ]]; then
+  echo "   📦 Refreshing backend dev dependencies..."
   npm install >/dev/null 2>&1
 fi
 # Fallback envs if .env not present
@@ -95,10 +100,10 @@ fi
 if [[ -z "${DB_NAME:-}" ]]; then
   export DB_NAME="${DB_NAME_DEFAULT}"
 fi
-PORT="${API_PORT}" npm run dev > ../backend.log 2>&1 &
+PORT="${API_PORT}" NODE_ENV=development ./node_modules/.bin/nodemon server.js > ../backend.log 2>&1 &
 BACKEND_PID=$!
 popd >/dev/null
-echo "   ✅ Backend running (PID: ${BACKEND_PID}) at http://${API_HOST}:${API_PORT}"
+echo "   ✅ Backend running (PID: ${BACKEND_PID}, restarts on src/*.js changes) at http://${API_HOST}:${API_PORT}"
 
 echo -e "${GREEN}2. Starting React Admin (Port ${ADMIN_PORT})...${NC}"
 kill_if_port_in_use "${ADMIN_PORT}"

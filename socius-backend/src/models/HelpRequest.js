@@ -15,6 +15,18 @@ const helpRequestSchema = new mongoose.Schema(
       lowercase: true,
       required: true,
     },
+    categoryId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'HelpCategory',
+      default: null,
+      index: true,
+    },
+    subcategoryId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'HelpSubcategory',
+      default: null,
+      index: true,
+    },
     description: {
       type: String,
       trim: true,

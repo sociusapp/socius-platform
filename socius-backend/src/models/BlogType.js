@@ -6,6 +6,8 @@ const blogTypeSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true, maxlength: 60 },
     description: { type: String, default: null, trim: true, maxlength: 140 },
     iconPath: { type: String, default: null }, // URL to icon image
+    /** Optional: react-native-vector-icons MaterialCommunityIcons name (mobile) when no iconPath */
+    iconName: { type: String, default: null, trim: true, maxlength: 64 },
     iconType: { type: String, enum: ['image', 'svg', 'emoji'], default: 'image' },
     color: { type: String, default: '#C84D59', trim: true, maxlength: 16 },
     sortOrder: { type: Number, default: 0, index: true },

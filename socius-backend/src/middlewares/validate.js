@@ -113,6 +113,8 @@ const schemas = {
   // Help request
   createHelpRequest: Joi.object({
     category: Joi.string().trim().max(60).required(),
+    categoryId: Joi.string().trim().length(24).optional(),
+    subcategoryId: Joi.string().trim().length(24).optional().allow('', null),
     description: Joi.string().trim().max(500).optional().allow(''),
     time: Joi.string().trim().max(60).optional().allow(''),
     location: Joi.object({
@@ -126,6 +128,8 @@ const schemas = {
 
   updateHelpRequest: Joi.object({
     category: Joi.string().trim().max(60).optional(),
+    categoryId: Joi.string().trim().length(24).optional(),
+    subcategoryId: Joi.string().trim().length(24).optional().allow('', null),
     description: Joi.string().trim().max(500).optional().allow(''),
     time: Joi.string().trim().max(60).optional().allow(''),
     location: Joi.object({
@@ -153,6 +157,21 @@ const schemas = {
     description: Joi.string().trim().max(140).optional().allow(''),
     color: Joi.string().trim().max(16).optional().allow(''),
     sortOrder: Joi.number().integer().min(0).max(10000).optional(),
+    isActive: Joi.boolean().truthy('true').falsy('false').optional(),
+  }).min(1),
+
+  // Admin: Help sub-categories
+  adminCreateHelpSubcategory: Joi.object({
+    parentCategoryId: Joi.string().trim().length(24).required(),
+    title: Joi.string().trim().min(2).max(80).required(),
+    description: Joi.string().trim().min(2).max(160).required(),
+    isActive: Joi.boolean().truthy('true').falsy('false').optional(),
+  }),
+
+  adminUpdateHelpSubcategory: Joi.object({
+    parentCategoryId: Joi.string().trim().length(24).optional(),
+    title: Joi.string().trim().min(2).max(80).optional(),
+    description: Joi.string().trim().min(2).max(160).optional(),
     isActive: Joi.boolean().truthy('true').falsy('false').optional(),
   }).min(1),
 
@@ -311,6 +330,17 @@ const schemas = {
     }),
   }),
 
+  borrowItemCreate: Joi.object({
+    itemName: Joi.string().trim().min(2).max(120).required(),
+    note: Joi.string().trim().max(400).optional().allow(''),
+    requestedMinutes: Joi.number().integer().min(5).max(1440).required(),
+    imageUrl: Joi.string().trim().max(400).optional().allow(''),
+  }),
+
+  borrowItemRespond: Joi.object({
+    action: Joi.string().valid('accept', 'decline').required(),
+  }),
+
   // Close request
   closeRequest: Joi.object({
     wasResolved: Joi.boolean().required(),
@@ -364,6 +394,15 @@ const schemas = {
       .required(),
     details: Joi.string().trim().max(1000).optional().allow(''),
   }),
+  updateReport: Joi.object({
+    category: Joi.string()
+      .valid(
+        'felt_uncomfortable', 'personal_boundaries_crossed',
+        'misuse_of_platform', 'false_unnecessary_request', 'something_else'
+      )
+      .optional(),
+    details: Joi.string().trim().max(1000).optional().allow(''),
+  }).or('category', 'details'),
 
   // Emergency contacts
   addEmergencyContact: Joi.object({

@@ -133,7 +133,7 @@ const CommunityGuidelinesScreen = ({ navigation }) => {
 
         {/* Final Note */}
         <View style={styles.finalNoteCard}>
-          <Icon name="quote-left" size={20} color={COLORS.PRIMARY} style={styles.quoteIcon} />
+          <Icon name="format-quote-open" size={20} color={COLORS.PRIMARY} style={styles.quoteIcon} />
           <Text style={styles.finalNoteText}>
             Socius works only when people act with restraint, empathy, and responsibility.
           </Text>

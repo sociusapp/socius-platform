@@ -1,110 +1,348 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  RefreshControl,
+  ActivityIndicator,
+  TouchableOpacity,
+  useColorScheme,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../components/common/Header';
 import { useResponsive } from '../../utils/responsive';
+import PrepareStayReadyCard from '../../components/Prepare/PrepareStayReadyCard';
+import { SkeletonBox, SkeletonCircle } from '../../components/common/Skeleton';
+import {
+  fetchPrepareCards,
+  savePrepareCardsCache,
+  loadPrepareCardsCache,
+} from '../../services/api/prepareCards.api';
+import { fetchPrepareLearn } from '../../services/api/prepareLearn.api';
+
+const FALLBACK_LEARN = {
+  section_title: 'Learn more',
+  footer_text: 'Preparation reduces harm and misunderstanding.',
+  items: [
+    { id: 'fb-0', label: 'Understanding stress & fear', icon: 'brain', navigate_to: 'SafetyTips', content: '' },
+    { id: 'fb-1', label: 'Cultural sensitivity & respect', icon: 'earth', navigate_to: 'SafetyTips', content: '' },
+    { id: 'fb-2', label: 'Helping without overstepping', icon: 'handshake', navigate_to: 'SafetyTips', content: '' },
+  ],
+};
+
+const navigateLearnChip = (navigation, chip) => {
+  const article = typeof chip?.content === 'string' ? chip.content.trim() : '';
+  if (article) {
+    try {
+      navigation.navigate('PrepareLearnArticle', {
+        title: chip.label || 'Learn more',
+        content: chip.content || '',
+      });
+      return;
+    } catch {
+      /* fall through to named screen */
+    }
+  }
+  const name =
+    typeof chip?.navigate_to === 'string' && chip.navigate_to.trim()
+      ? chip.navigate_to.trim()
+      : 'SafetyTips';
+  try {
+    navigation.navigate(name);
+  } catch {
+    try {
+      navigation.navigate('SafetyTips');
+    } catch {
+      /* ignore */
+    }
+  }
+};
 
 const PrepareStayReadyScreen = ({ navigation }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
-  const items = [
-    {
-      icon: { name: 'message-outline', color: '#5A6F7D', bg: '#EEF3F6' },
-      title: 'When to ask for presence',
-      subtitle: "Early signs that it's okay to share awareness.",
-      route: 'WhenToAskPresence',
-    },
-    {
-      icon: { name: 'block-helper', color: '#C94D4D', bg: '#F8EAEA' },
-      title: 'When not to use Socius',
-      subtitle: 'Situations better handled by authorities or trusted contacts.',
-      route: 'SafetyTips',
-    },
-    {
-      icon: { name: 'shield-check', color: '#8B6F47', bg: '#F1EEE8' },
-      title: 'Staying safe while helping',
-      subtitle: 'Boundaries, distance, and personal safety.',
-      route: 'SafetyTips',
-    },
-    {
-      icon: { name: 'hand-peace', color: '#5A6F7D', bg: '#EEF3F6' },
-      title: 'De-escalation basics',
-      subtitle: 'How calm presence can reduce tension.',
-      route: 'SafetyTips',
-    },
-    {
-      icon: { name: 'medical-bag', color: '#C94D4D', bg: '#F8EAEA' },
-      title: 'Emergency first steps',
-      subtitle: 'What to do before professional help arrives.',
-      route: 'SafetyTips',
-    },
-  ];
+  const isDark = useColorScheme() === 'dark';
 
-  const chips = [
-    { label: 'Understanding stress & fear', icon: 'brain' },
-    { label: 'Cultural sensitivity & respect', icon: 'earth' },
-    { label: 'Helping without overstepping', icon: 'handshake' },
-  ];
+  const colors = useMemo(
+    () => ({
+      screenBg: isDark ? '#0F172A' : '#FFFFFF',
+      pageTitle: isDark ? '#F1F5F9' : '#2C3E50',
+      pageSubtitle: isDark ? '#94A3B8' : '#666666',
+      learnTitle: isDark ? '#E2E8F0' : '#2C3E50',
+      divider: isDark ? '#334155' : '#E8EAED',
+      chipBg: isDark ? '#1E293B' : '#F5F1ED',
+      chipBorder: isDark ? '#334155' : '#E8EAED',
+      chipText: isDark ? '#E2E8F0' : '#2C3E50',
+      footerText: isDark ? '#94A3B8' : '#888888',
+      cardBg: isDark ? '#111827' : '#FFFFFF',
+      cardBorder: isDark ? '#334155' : '#E8EAED',
+      title: isDark ? '#F1F5F9' : '#2C3E50',
+      desc: isDark ? '#94A3B8' : '#666666',
+      chevron: isDark ? '#64748B' : '#999999',
+      shadowOpacity: isDark ? 0.35 : 0.06,
+      iconImageBg: isDark ? '#1E293B' : '#F1F5F9',
+      empty: isDark ? '#94A3B8' : '#666666',
+      err: isDark ? '#FCA5A5' : '#B91C1C',
+    }),
+    [isDark]
+  );
+
+  const [cards, setCards] = useState([]);
+  const [learnBlock, setLearnBlock] = useState(FALLBACK_LEARN);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
+
+  const loadCards = useCallback(async (opts = {}) => {
+    const { isRefresh = false, showCacheFirst = false } = opts;
+    if (showCacheFirst) {
+      const cached = await loadPrepareCardsCache();
+      if (cached?.data?.length) {
+        setCards(cached.data);
+        setError(null);
+      }
+    }
+
+    if (!isRefresh) setLoading(true);
+    setError(null);
+
+    try {
+      try {
+        const list = await fetchPrepareCards();
+        setCards(list);
+        await savePrepareCardsCache(list);
+      } catch (e) {
+        const msg = e?.response?.data?.message || e?.message || 'Could not load topics.';
+        setError(msg);
+        const cached = await loadPrepareCardsCache();
+        if (cached?.data?.length) {
+          setCards(cached.data);
+        } else {
+          setCards([]);
+        }
+      }
+
+      try {
+        const learn = await fetchPrepareLearn();
+        if (learn && Array.isArray(learn.items) && learn.items.length > 0) {
+          setLearnBlock({
+            section_title: learn.section_title || FALLBACK_LEARN.section_title,
+            footer_text: learn.footer_text != null ? learn.footer_text : FALLBACK_LEARN.footer_text,
+            items: learn.items.map((it, i) => ({
+              id: it.id != null ? String(it.id) : `learn-${i}`,
+              label: it.label || '',
+              icon: it.icon || 'help-circle-outline',
+              navigate_to: it.navigate_to || 'SafetyTips',
+              content: it.content != null ? String(it.content) : '',
+            })),
+          });
+        } else if (learn && Array.isArray(learn.items) && learn.items.length === 0) {
+          setLearnBlock({
+            section_title: learn.section_title || FALLBACK_LEARN.section_title,
+            footer_text: learn.footer_text != null ? learn.footer_text : '',
+            items: [],
+          });
+        } else {
+          setLearnBlock(FALLBACK_LEARN);
+        }
+      } catch {
+        setLearnBlock(FALLBACK_LEARN);
+      }
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      await loadCards({ showCacheFirst: true });
+    })();
+  }, [loadCards]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadCards({ isRefresh: true });
+  }, [loadCards]);
+
+  const openDetail = useCallback(
+    (item) => {
+      navigation.navigate('CardDetailScreen', { card: item, id: item.id });
+    },
+    [navigation]
+  );
+
+  const renderShimmer = () => (
+    <View style={{ paddingBottom: vscale(8) }}>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <View
+          key={i}
+          style={[
+            styles.shimmerRow,
+            {
+              borderRadius: scale(16),
+              padding: spacing(14),
+              marginBottom: vscale(10),
+              borderWidth: StyleSheet.hairlineWidth,
+              borderColor: colors.cardBorder,
+              backgroundColor: colors.cardBg,
+            },
+          ]}
+        >
+          <SkeletonCircle size={scale(56)} style={{ marginRight: spacing(14) }} backgroundColor={isDark ? '#334155' : '#E5E7EB'} />
+          <View style={{ flex: 1 }}>
+            <SkeletonBox height={14} radius={8} style={{ marginBottom: 8 }} backgroundColor={isDark ? '#334155' : '#E5E7EB'} />
+            <SkeletonBox height={10} radius={8} width="80%" backgroundColor={isDark ? '#334155' : '#E5E7EB'} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+
+  const ListHeader = useMemo(
+    () => (
+      <>
+        <Text style={[styles.pageTitle, { fontSize: ms(24), marginBottom: vscale(6), color: colors.pageTitle }]}>
+          Prepare & Stay Ready
+        </Text>
+        <Text style={[styles.pageSubtitle, { fontSize: ms(14), marginBottom: vscale(18), color: colors.pageSubtitle }]}>
+          Knowing what to do — and when not to.
+        </Text>
+        {error ? (
+          <Text style={[styles.errorBanner, { fontSize: ms(13), marginBottom: vscale(10), color: colors.err }]}>
+            {error}
+            {' — '}
+            showing saved copy if available.
+          </Text>
+        ) : null}
+      </>
+    ),
+    [colors, error, ms, vscale]
+  );
+
+  const ListFooter = useMemo(
+    () => (
+      <View style={{ marginTop: vscale(8) }}>
+        <Text style={[styles.learnTitle, { fontSize: ms(14), marginTop: vscale(6), color: colors.learnTitle }]}>
+          {learnBlock.section_title || 'Learn more'}
+        </Text>
+        <View style={[styles.divider, { height: scale(1), marginVertical: vscale(12), backgroundColor: colors.divider }]} />
+
+        <View style={[styles.chipsRow, { gap: spacing(10), marginBottom: vscale(12) }]}>
+          {(learnBlock.items || []).map((chip) => (
+            <TouchableOpacity
+              key={chip.id}
+              style={[
+                styles.chip,
+                {
+                  gap: spacing(8),
+                  borderRadius: scale(18),
+                  paddingHorizontal: spacing(12),
+                  paddingVertical: vscale(8),
+                  borderWidth: scale(1),
+                  backgroundColor: colors.chipBg,
+                  borderColor: colors.chipBorder,
+                  shadowOpacity: colors.shadowOpacity,
+                },
+              ]}
+              onPress={() => navigateLearnChip(navigation, chip)}
+              activeOpacity={0.85}
+            >
+              <Icon name={chip.icon} size={scale(22)} color={colors.chipText} />
+              <Text style={[styles.chipText, { fontSize: ms(13), color: colors.chipText }]}>{chip.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {learnBlock.footer_text ? (
+          <Text style={[styles.footerText, { fontSize: ms(13), marginTop: vscale(6), color: colors.footerText }]}>
+            {learnBlock.footer_text}
+          </Text>
+        ) : null}
+      </View>
+    ),
+    [colors, learnBlock, ms, navigation, scale, spacing, vscale]
+  );
+
+  if (loading && cards.length === 0) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.screenBg }]}>
+        <Header title="" onBackPress={() => navigation.goBack()} style={{ borderBottomWidth: 0 }} />
+        <FlatList
+          data={[]}
+          renderItem={null}
+          ListHeaderComponent={
+            <View style={{ width: contentWidth, alignSelf: 'center', paddingHorizontal: spacing(20) }}>
+              {ListHeader}
+              {renderShimmer()}
+            </View>
+          }
+          contentContainerStyle={{ paddingBottom: vscale(30) }}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#DC5C69" colors={['#DC5C69']} />
+          }
+        />
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <Header 
-        title="" 
-        onBackPress={() => navigation.goBack()} 
-        style={{ borderBottomWidth: 0 }}
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.screenBg }]}>
+      <Header title="" onBackPress={() => navigation.goBack()} style={{ borderBottomWidth: 0 }} />
+
+      <FlatList
+        data={cards}
+        keyExtractor={(item, index) => (item.id != null ? String(item.id) : `c-${index}`)}
+        contentContainerStyle={[
+          styles.listContent,
+          {
+            paddingHorizontal: spacing(20),
+            paddingBottom: vscale(30),
+            flexGrow: 1,
+          },
+        ]}
+        style={{ flex: 1 }}
+        ListHeaderComponent={<View style={{ width: contentWidth, alignSelf: 'center' }}>{ListHeader}</View>}
+        ListFooterComponent={<View style={{ width: contentWidth, alignSelf: 'center' }}>{ListFooter}</View>}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#DC5C69" colors={['#DC5C69']} />
+        }
+        renderItem={({ item, index }) => (
+          <View style={{ width: contentWidth, alignSelf: 'center', marginBottom: vscale(10) }}>
+            <PrepareStayReadyCard
+              item={item}
+              index={index}
+              scale={scale}
+              ms={ms}
+              spacing={spacing}
+              vscale={vscale}
+              colors={{
+                cardBg: colors.cardBg,
+                cardBorder: colors.cardBorder,
+                title: colors.title,
+                desc: colors.desc,
+                chevron: colors.chevron,
+                shadowOpacity: colors.shadowOpacity,
+                iconImageBg: colors.iconImageBg,
+              }}
+              onPress={() => openDetail(item)}
+            />
+          </View>
+        )}
+        ListEmptyComponent={
+          !loading ? (
+            <View style={{ paddingVertical: vscale(40), alignItems: 'center', width: contentWidth, alignSelf: 'center' }}>
+              <Icon name="playlist-remove" size={scale(40)} color={colors.empty} />
+              <Text style={{ marginTop: vscale(12), fontSize: ms(15), color: colors.empty, textAlign: 'center' }}>
+                No topics available yet.
+              </Text>
+            </View>
+          ) : (
+            <ActivityIndicator style={{ marginTop: vscale(24) }} color="#DC5C69" />
+          )
+        }
       />
-
-      <ScrollView 
-        contentContainerStyle={[styles.scrollContent, { paddingHorizontal: spacing(20), paddingBottom: vscale(30) }]}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={{ width: contentWidth, alignSelf: 'center' }}>
-          {/* Title */}
-          <Text style={[styles.pageTitle, { fontSize: ms(24), marginBottom: vscale(6) }]}>Prepare & Stay Ready</Text>
-          <Text style={[styles.pageSubtitle, { fontSize: ms(14), marginBottom: vscale(18) }]}>
-            Knowing what to do — and when not to.
-          </Text>
-
-          {/* List Cards */}
-          <View style={[styles.listContainer, { marginBottom: vscale(20), gap: vscale(10) }]}>
-            {items.map((item, idx) => (
-              <TouchableOpacity 
-                key={idx} 
-                style={[styles.listCard, { borderRadius: scale(16), paddingHorizontal: spacing(14), paddingVertical: vscale(12), borderWidth: scale(1), shadowOffset: { width: 0, height: vscale(2) }, shadowRadius: scale(8), elevation: scale(2) }]}
-                activeOpacity={0.85}
-                onPress={() => navigation.navigate(item.route)}
-              >
-                <View style={[styles.iconCircle, { backgroundColor: item.icon.bg, width: scale(36), height: scale(36), borderRadius: scale(18), marginRight: spacing(12) }]}>
-                  <Icon name={item.icon.name} size={scale(24)} color={item.icon.color} />
-                </View>
-                <View style={styles.listText}>
-                  <Text style={[styles.listTitle, { fontSize: ms(15), marginBottom: vscale(4) }]}>{item.title}</Text>
-                  <Text style={[styles.listSubtitle, { fontSize: ms(13), lineHeight: ms(20) }]}>{item.subtitle}</Text>
-                </View>
-                <Icon name="chevron-right" size={scale(24)} color="#999999" />
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* Learn more */}
-          <Text style={[styles.learnTitle, { fontSize: ms(14), marginTop: vscale(6) }]}>Learn more</Text>
-          <View style={[styles.divider, { height: scale(1), marginVertical: vscale(12) }]} />
-
-          <View style={[styles.chipsRow, { gap: spacing(10), marginBottom: vscale(12) }]}>
-            {chips.map((chip, idx) => (
-              <View key={idx} style={[styles.chip, { gap: spacing(8), borderRadius: scale(18), paddingHorizontal: spacing(12), paddingVertical: vscale(8), borderWidth: scale(1), shadowOffset: { width: 0, height: vscale(2) }, shadowRadius: scale(6), elevation: scale(2) }]}>
-                <Icon name={chip.icon} size={scale(18)} color="#2C3E50" />
-                <Text style={[styles.chipText, { fontSize: ms(13) }]}>{chip.label}</Text>
-              </View>
-            ))}
-          </View>
-
-          {/* Footer text */}
-          <Text style={[styles.footerText, { fontSize: ms(13), marginTop: vscale(6) }]}>
-            Preparation reduces harm and misunderstanding.
-          </Text>
-        </View>
-      </ScrollView>
     </SafeAreaView>
   );
 };
@@ -112,71 +350,43 @@ const PrepareStayReadyScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
   },
-  scrollContent: {
-    flexGrow: 1,
-  },
+  listContent: {},
   pageTitle: {
     fontWeight: '700',
-    color: '#2C3E50',
     textAlign: 'center',
   },
   pageSubtitle: {
-    color: '#666666',
     textAlign: 'center',
   },
-  listContainer: {
-  },
-  listCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E8EAED',
-    shadowColor: '#000000',
-    shadowOpacity: 0.06,
-  },
-  iconCircle: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  listText: {
-    flex: 1,
-  },
-  listTitle: {
-    fontWeight: '700',
-    color: '#2C3E50',
-  },
-  listSubtitle: {
-    color: '#666666',
+  errorBanner: {
+    textAlign: 'center',
   },
   learnTitle: {
     fontWeight: '600',
-    color: '#2C3E50',
     textAlign: 'center',
   },
-  divider: {
-    backgroundColor: '#E8EAED',
-  },
+  divider: {},
   chipsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent:"center"
+    justifyContent: 'center',
   },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F5F1ED',
-    borderColor: '#E8EAED',
-    shadowColor: '#000000',
-    shadowOpacity: 0.06,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+    elevation: 2,
   },
-  chipText: {
-    color: '#2C3E50',
-  },
+  chipText: {},
   footerText: {
-    color: '#888888',
     textAlign: 'center',
+  },
+  shimmerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
 });
 

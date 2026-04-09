@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, Linking, Alert, Dimensions, ScrollView, Image, Animated, NativeModules } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, Linking, Alert, Dimensions, ScrollView, Image, Animated, NativeModules, Modal, TextInput, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -7,9 +7,12 @@ import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import Header from '../../../components/common/Header';
 import Button from '../../../components/common/Button';
 import { useResponsive } from '../../../utils/responsive';
-import { getHelpRequestById, closeHelpRequest } from '../../../services/api/incident.api';
+import { getBorrowItems, getHelpRequestById, respondBorrowItemRequest } from '../../../services/api/dailyHelp.api';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
 import { baseURL } from '../../../services/api/client';
+import { resolveBorrowImageUri, formatBorrowDateTime } from '../../../utils/borrowDisplay';
+import { parseMinutesFromDurationLabel, formatMinutesAsDurationLabel } from '../../../utils/durationLabel';
+import { sociusRefreshProps } from '../../../utils/sociusRefreshControl';
 
 const { width, height } = Dimensions.get('window');
 
@@ -17,6 +20,7 @@ import { getSocket, connectSocket, appEvents } from '../../../services/socket/so
 import { getSessionByRequest, getMessages, markMessagesRead } from '../../../services/api/chat.api';
 import ChatModal from '../../../components/common/ChatModal';
 import CustomAlert from '../../../components/common/CustomAlert';
+import NativeCallService from '../../../services/notifications/NativeCallService';
 import { buildClosureInitiatedCopy, buildRequestClosedCopy } from '../../../utils/closureMessages';
 import {
   ROUTES,
@@ -27,6 +31,7 @@ import {
   isTerminalHelpStatus,
   normalizeHelpStatus,
 } from '../../../utils/helpRequestFlow';
+import { submitReport, getMyReports, updateMyReport, deleteMyReport } from '../../../services/api/incident.api';
 
 const getMessageSenderId = (m) => {
   const s = m?.senderId;
@@ -56,6 +61,25 @@ const MatchingMapScreen = ({ navigation, route }) => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [sessionId, setSessionId] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
+  const [activeBottomTab, setActiveBottomTab] = useState('overview');
+  const [countdownText, setCountdownText] = useState('');
+  const [delayHistory, setDelayHistory] = useState([]);
+  const [reportCategory, setReportCategory] = useState('felt_uncomfortable');
+  const [reportDetails, setReportDetails] = useState('');
+  const [reportInnerTab, setReportInnerTab] = useState('new');
+  const [isReporting, setIsReporting] = useState(false);
+  const [reportHistory, setReportHistory] = useState([]);
+  const [isReportHistoryLoading, setIsReportHistoryLoading] = useState(false);
+  const [editingReportId, setEditingReportId] = useState('');
+  const [offerHistory, setOfferHistory] = useState([]);
+  const [borrowIncoming, setBorrowIncoming] = useState(null);
+  const [respondingBorrowId, setRespondingBorrowId] = useState('');
+  const [borrowImageFailed, setBorrowImageFailed] = useState(false);
+  const [offerThumbFailed, setOfferThumbFailed] = useState({});
+  const [pullRefreshing, setPullRefreshing] = useState(false);
+  const prevSessionEndRef = useRef(null);
+  const delayHistoryRequestIdRef = useRef(null);
+  const dismissedBorrowIdsRef = useRef(new Set());
 
   // Custom Alert State
   const [alertVisible, setAlertVisible] = useState(false);
@@ -109,6 +133,37 @@ const MatchingMapScreen = ({ navigation, route }) => {
       }),
     ]).start();
   };
+
+  const reportCategoryLabel = useCallback((value) => {
+    const map = {
+      felt_uncomfortable: 'Felt uncomfortable or unsafe',
+      personal_boundaries_crossed: 'Personal boundaries crossed',
+      misuse_of_platform: 'Misuse of the platform',
+      false_unnecessary_request: 'False or unnecessary request',
+      something_else: 'Something else',
+    };
+    return map[String(value || '')] || 'Report';
+  }, []);
+
+  const loadReportHistory = useCallback(async () => {
+    try {
+      if (!requestId) return;
+      setIsReportHistoryLoading(true);
+      const auth = await loadAuth();
+      if (!auth?.accessToken) return;
+      const res = await getMyReports(auth.accessToken, {
+        reportedRequestId: requestId,
+        reportedRequestType: 'HelpRequest',
+        reporterRole: 'helper',
+      });
+      const rows = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+      setReportHistory(rows);
+    } catch (e) {
+      setReportHistory([]);
+    } finally {
+      setIsReportHistoryLoading(false);
+    }
+  }, [requestId]);
   
   const mapRef = useRef(null);
   const chatVisibleRef = useRef(chatVisible);
@@ -183,7 +238,6 @@ const MatchingMapScreen = ({ navigation, route }) => {
     const apiRoot = baseURL.replace(/\/api\/?$/, '');
     const cleanPath = path.startsWith('/') ? path : `/${path}`;
     const uri = `${apiRoot}${cleanPath}`;
-    console.log('Profile Image URI (Receive):', uri, 'from path:', path);
     return { uri };
   };
 
@@ -325,14 +379,16 @@ const MatchingMapScreen = ({ navigation, route }) => {
     let socket;
 
     const handleNewMessage = (data) => {
-      console.log('New message received via socket (Receive):', {
-        incomingSessionId: data.sessionId,
-        currentSessionId: sessionId,
-        incomingSenderId: data.message?.senderId,
-        myUserId: currentUserId,
-        isChatVisible: chatVisibleRef.current
-      });
-      
+      if (__DEV__) {
+        console.log('New message received via socket (Receive):', {
+          incomingSessionId: data.sessionId,
+          currentSessionId: sessionId,
+          incomingSenderId: data.message?.senderId,
+          myUserId: currentUserId,
+          isChatVisible: chatVisibleRef.current,
+        });
+      }
+
       if (String(data.sessionId) === String(sessionId)) {
         const message = data.message || {};
         const senderId = getMessageSenderId(message);
@@ -500,6 +556,601 @@ const MatchingMapScreen = ({ navigation, route }) => {
   const isChatAllowed = isChatAllowedForStatus(statusForChat);
   const showMeetingActions = canStayOnMeetingMap(statusForChat);
   const inClosure = isClosingStatus(statusForChat);
+  const requesterTrustSignals = request?.requesterTrustSignals || {};
+  const trustSignalItems = [
+    { key: 'returns_on_time', label: 'Returns items', icon: 'check-decagram', color: '#28C76F' },
+    { key: 'also_helps_others', label: 'Helps others', icon: 'hand-heart', color: '#F5A623' },
+    { key: 'new_user', label: 'New user', icon: 'alert-circle', color: '#FF9500' },
+  ];
+  const requestedDurationMinsRaw = Number(
+    request?.requestedDurationMinutes ?? request?.requestedMinutes ?? request?.durationMinutes ?? 0
+  );
+  const requestedDurationMins =
+    requestedDurationMinsRaw > 0
+      ? requestedDurationMinsRaw
+      : parseMinutesFromDurationLabel(request?.requestedDurationLabel);
+  const requestedDurationLabel =
+    requestedDurationMins > 0
+      ? formatMinutesAsDurationLabel(requestedDurationMins)
+      : String(request?.requestedDurationLabel || '').trim() || 'Not set';
+  const sessionEndsAtIso = request?.sessionEndsAt ? new Date(request.sessionEndsAt).toISOString() : null;
+  const distanceLabel = (() => {
+    const raw = Number(request?.distanceMeters || 0);
+    if (!Number.isFinite(raw) || raw <= 0) return 'Nearby';
+    if (raw < 1000) return `${Math.round(raw)} meters away`;
+    return `${(raw / 1000).toFixed(1)} km away`;
+  })();
+
+  useEffect(() => {
+    if (!sessionEndsAtIso) {
+      setCountdownText('No active timer');
+      prevSessionEndRef.current = null;
+      return;
+    }
+    const tick = () => {
+      const endMs = new Date(sessionEndsAtIso).getTime();
+      const nowMs = Date.now();
+      const diff = Math.max(0, endMs - nowMs);
+      if (diff <= 0) {
+        setCountdownText('Time finished');
+        return;
+      }
+      const mins = Math.floor(diff / 60000);
+      const secs = Math.floor((diff % 60000) / 1000);
+      setCountdownText(`${mins}m ${secs.toString().padStart(2, '0')}s left`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [sessionEndsAtIso]);
+
+  useEffect(() => {
+    if (!sessionEndsAtIso) return;
+    const current = new Date(sessionEndsAtIso).getTime();
+    const prev = prevSessionEndRef.current;
+    if (prev && current > prev) {
+      const diffMin = Math.max(1, Math.round((current - prev) / 60000));
+      setDelayHistory((prevRows) => [
+        { id: `ext_${Date.now()}`, text: `Requester extended by ${diffMin} min`, at: new Date().toISOString() },
+        ...prevRows,
+      ]);
+    }
+    prevSessionEndRef.current = current;
+  }, [sessionEndsAtIso]);
+
+  useEffect(() => {
+    prevSessionEndRef.current = null;
+  }, [requestId]);
+
+  useEffect(() => {
+    if (!requestId || !request) return;
+    const fromApi = Number(
+      request?.requestedDurationMinutes ?? request?.requestedMinutes ?? request?.durationMinutes ?? 0
+    );
+    const fromLabel = parseMinutesFromDurationLabel(request?.requestedDurationLabel);
+    const mins = Math.max(1, fromApi || fromLabel || 30);
+    const labelFromApi = String(request?.requestedDurationLabel || '').trim();
+    const initialText = labelFromApi
+      ? `Requested window: ${labelFromApi}`
+      : `Requested window: ~${formatMinutesAsDurationLabel(mins)}`;
+
+    if (delayHistoryRequestIdRef.current !== requestId) {
+      delayHistoryRequestIdRef.current = requestId;
+      setDelayHistory([
+        {
+          id: 'initial_window',
+          text: initialText,
+          at: request?.matchedAt || request?.createdAt || new Date().toISOString(),
+        },
+      ]);
+      return;
+    }
+
+    setDelayHistory((prev) => {
+      if (prev.length > 0) return prev;
+      return [
+        {
+          id: 'initial_window',
+          text: initialText,
+          at: request?.matchedAt || request?.createdAt || new Date().toISOString(),
+        },
+      ];
+    });
+  }, [
+    requestId,
+    request?._id,
+    request?.createdAt,
+    request?.matchedAt,
+    request?.requestedDurationMinutes,
+    request?.requestedMinutes,
+    request?.durationMinutes,
+    request?.requestedDurationLabel,
+  ]);
+
+  const loadOfferHistory = useCallback(async () => {
+    try {
+      if (!requestId) return;
+      const auth = await loadAuth();
+      if (!auth?.accessToken) return;
+      const res = await getBorrowItems(auth.accessToken, requestId);
+      const list = Array.isArray(res?.data?.items)
+        ? res.data.items
+        : Array.isArray(res?.items)
+          ? res.items
+          : [];
+      setOfferHistory(list);
+    } catch (e) {
+      // ignore
+    }
+  }, [requestId]);
+
+  useEffect(() => {
+    loadOfferHistory();
+  }, [loadOfferHistory]);
+
+  const handlePullRefresh = useCallback(async () => {
+    setPullRefreshing(true);
+    try {
+      await refreshRequestDetails();
+      await loadOfferHistory();
+    } finally {
+      setPullRefreshing(false);
+    }
+  }, [refreshRequestDetails, loadOfferHistory]);
+
+  useEffect(() => {
+    dismissedBorrowIdsRef.current = new Set();
+  }, [requestId]);
+
+  useEffect(() => {
+    if (!requestId || borrowIncoming) return;
+    const pending = (offerHistory || []).find((r) => String(r?.status || '').toLowerCase() === 'pending');
+    if (!pending?._id) return;
+    const bid = String(pending._id);
+    if (dismissedBorrowIdsRef.current.has(bid)) return;
+    setBorrowIncoming({
+      borrowId: bid,
+      _id: bid,
+      requestId: String(requestId),
+      itemName: pending.itemName,
+      note: pending.note || '',
+      requestedMinutes: pending.requestedMinutes,
+      imageUrl: pending.imageUrl || '',
+    });
+  }, [requestId, offerHistory, borrowIncoming]);
+
+  useEffect(() => {
+    setBorrowImageFailed(false);
+  }, [borrowIncoming?.borrowId, borrowIncoming?.imageUrl]);
+
+  useEffect(() => {
+    let socket;
+    const setup = async () => {
+      socket = await connectSocket();
+      if (!socket) return;
+      const onBorrowRequested = (payload) => {
+        if (String(payload?.requestId || '') !== String(requestId || '')) return;
+        try { NativeCallService.startHelpRequestRingtone(); } catch (e) {}
+        setBorrowIncoming(payload || null);
+        loadOfferHistory();
+      };
+      const onBorrowResponse = (payload) => {
+        if (String(payload?.requestId || '') !== String(requestId || '')) return;
+        loadOfferHistory();
+      };
+      socket.on('help:borrow_requested', onBorrowRequested);
+      socket.on('help:borrow_response', onBorrowResponse);
+    };
+    setup();
+    return () => {
+      if (!socket) return;
+      socket.off('help:borrow_requested');
+      socket.off('help:borrow_response');
+    };
+  }, [requestId, loadOfferHistory]);
+
+  useEffect(() => {
+    const onBorrowRequestedLocal = (payload) => {
+      if (payload == null) {
+        setBorrowIncoming(null);
+        return;
+      }
+      if (String(payload?.requestId || '') !== String(requestId || '')) return;
+      try { NativeCallService.startHelpRequestRingtone(); } catch (e) {}
+      setBorrowIncoming(payload || null);
+      loadOfferHistory();
+    };
+    appEvents.on('help:borrow_requested_local', onBorrowRequestedLocal);
+    return () => appEvents.off('help:borrow_requested_local', onBorrowRequestedLocal);
+  }, [requestId, loadOfferHistory]);
+
+  const dismissBorrowModal = useCallback(() => {
+    try {
+      NativeCallService.stopRingtone();
+    } catch (e) {}
+    const bid = String(borrowIncoming?.borrowId || borrowIncoming?._id || '');
+    if (bid) dismissedBorrowIdsRef.current.add(bid);
+    setBorrowIncoming(null);
+  }, [borrowIncoming]);
+
+  const handleBorrowDecision = useCallback(async (borrowId, action) => {
+    try {
+      if (!borrowId || !requestId) return;
+      setRespondingBorrowId(String(borrowId));
+      const auth = await loadAuth();
+      if (!auth?.accessToken) throw new Error('No auth');
+      await respondBorrowItemRequest(auth.accessToken, requestId, borrowId, action);
+      try { NativeCallService.stopRingtone(); } catch (e) {}
+      await loadOfferHistory();
+      if (String(borrowIncoming?._id || '') === borrowId || String(borrowIncoming?.borrowId || '') === borrowId) {
+        setBorrowIncoming(null);
+      }
+    } catch (e) {
+      showAlert('Unable to update', 'Please try again.', [{ text: 'OK', onPress: closeAlert }]);
+    } finally {
+      setRespondingBorrowId('');
+    }
+  }, [requestId, loadOfferHistory, borrowIncoming]);
+
+  const handleSubmitRequestReport = useCallback(async () => {
+    try {
+      if (!requestId) return;
+      setIsReporting(true);
+      const auth = await loadAuth();
+      if (!auth?.accessToken) throw new Error('No auth');
+      if (editingReportId) {
+        await updateMyReport(auth.accessToken, editingReportId, {
+          category: reportCategory,
+          details: String(reportDetails || '').trim(),
+        });
+      } else {
+        await submitReport(auth.accessToken, {
+          reportedRequestId: requestId,
+          reportedRequestType: 'HelpRequest',
+          reporterRole: 'helper',
+          category: reportCategory,
+          details: String(reportDetails || '').trim(),
+        });
+      }
+      setReportDetails('');
+      setEditingReportId('');
+      await loadReportHistory();
+      showAlert(
+        editingReportId ? 'Report updated' : 'Report submitted',
+        editingReportId ? 'Your report has been updated.' : 'Your report has been sent for review.',
+        [{ text: 'OK', onPress: closeAlert, style: 'primary' }],
+        'check-circle',
+        '#28C76F'
+      );
+    } catch (e) {
+      showAlert('Report failed', 'Could not submit report right now.', [{ text: 'OK', onPress: closeAlert }]);
+    } finally {
+      setIsReporting(false);
+    }
+  }, [requestId, reportCategory, reportDetails, editingReportId, loadReportHistory]);
+
+  const handleDeleteReport = useCallback(async (reportId) => {
+    try {
+      const auth = await loadAuth();
+      if (!auth?.accessToken) throw new Error('No auth');
+      await deleteMyReport(auth.accessToken, reportId);
+      if (editingReportId === reportId) {
+        setEditingReportId('');
+        setReportDetails('');
+      }
+      await loadReportHistory();
+      showAlert('Report deleted', 'The report has been removed.', [{ text: 'OK', onPress: closeAlert }], 'check-circle', '#28C76F');
+    } catch (e) {
+      showAlert('Delete failed', 'Could not delete this report.', [{ text: 'OK', onPress: closeAlert }]);
+    }
+  }, [editingReportId, loadReportHistory]);
+
+  const handleEditReport = useCallback((row) => {
+    setReportInnerTab('new');
+    setEditingReportId(String(row?._id || row?.id || ''));
+    setReportCategory(String(row?.category || 'felt_uncomfortable'));
+    setReportDetails(String(row?.details || ''));
+  }, []);
+
+  useEffect(() => {
+    if (activeBottomTab === 'report') {
+      loadReportHistory();
+    }
+  }, [activeBottomTab, loadReportHistory]);
+
+  const renderBottomTabContent = () => {
+    if (activeBottomTab === 'offer') {
+      return (
+        <View style={[styles.bottomPanelCard, styles.bottomPanelScreen]}>
+          <Text style={styles.bottomPanelTitle}>Offer Item</Text>
+          <Text style={styles.bottomPanelMuted}>Borrow requests sent by requester are listed here.</Text>
+          {offerHistory.slice(0, 10).map((row) => {
+            const id = String(row?._id || '');
+            const isPending = String(row?.status || '').toLowerCase() === 'pending';
+            const thumbUri = resolveBorrowImageUri(row?.imageUrl);
+            const showThumb = thumbUri && !offerThumbFailed[id];
+            const sentAt = formatBorrowDateTime(row?.createdAt);
+            const actedAt = formatBorrowDateTime(row?.actedAt);
+            return (
+              <View key={id || `offer_${row?.createdAt}`} style={styles.offerHistoryRow}>
+                {showThumb ? (
+                  <Image
+                    source={{ uri: thumbUri }}
+                    style={styles.offerHistoryThumb}
+                    onError={() => setOfferThumbFailed((p) => ({ ...p, [id]: true }))}
+                  />
+                ) : (
+                  <View style={[styles.offerHistoryThumb, styles.offerHistoryThumbPlaceholder]}>
+                    <Icon name="image-outline" size={22} color="#9CA3AF" />
+                  </View>
+                )}
+                <View style={styles.offerHistoryMain}>
+                  <View style={styles.offerHistoryTitleRow}>
+                    <Text style={styles.offerHistoryTitle} numberOfLines={2}>
+                      {String(row?.itemName || 'Item')}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.offerStatusPill,
+                        row?.status === 'accepted' && styles.offerStatusPillAccepted,
+                        row?.status === 'declined' && styles.offerStatusPillDeclined,
+                        isPending && styles.offerStatusPillPending,
+                      ]}
+                    >
+                      {String(row?.status || 'pending')}
+                    </Text>
+                  </View>
+                  <Text style={styles.offerHistoryMeta}>
+                    {Number(row?.requestedMinutes || 0)} min
+                    {sentAt ? ` · Sent ${sentAt}` : ''}
+                  </Text>
+                  {!!row?.note ? <Text style={styles.offerHistoryNote}>Note: {String(row.note)}</Text> : null}
+                  {actedAt && !isPending ? (
+                    <Text style={styles.offerHistoryMetaSmall}>
+                      {row?.status === 'accepted' ? 'Accepted' : 'Declined'} {actedAt}
+                    </Text>
+                  ) : null}
+                  {isPending ? (
+                    <View style={styles.offerActionButtonsRow}>
+                      <TouchableOpacity
+                        style={[styles.offerMiniBtn, styles.offerAcceptBtn]}
+                        onPress={() => handleBorrowDecision(id, 'accept')}
+                        disabled={respondingBorrowId === id}
+                      >
+                        <Text style={styles.offerMiniBtnText}>Accept</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.offerMiniBtn, styles.offerDeclineBtn]}
+                        onPress={() => handleBorrowDecision(id, 'decline')}
+                        disabled={respondingBorrowId === id}
+                      >
+                        <Text style={[styles.offerMiniBtnText, { color: '#374151' }]}>Decline</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+            );
+          })}
+          {!offerHistory.length ? <Text style={styles.bottomPanelMuted}>No borrow requests yet.</Text> : null}
+        </View>
+      );
+    }
+    if (activeBottomTab === 'delay') {
+      const latestDelayAt = delayHistory?.[0]?.at
+        ? new Date(delayHistory[0].at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : null;
+      return (
+        <View style={[styles.bottomPanelCard, styles.bottomPanelScreen]}>
+          <View style={styles.delayHeroCard}>
+            <View style={styles.delayHeroTop}>
+              <View style={styles.delayHeroIcon}>
+                <Icon name="clock-outline" size={18} color="#DC5C69" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.delayHeroTitle}>Delay and time updates</Text>
+                <Text style={styles.delayHeroSub}>Track extension updates from requester</Text>
+              </View>
+            </View>
+            <View style={styles.delayStatsRow}>
+              <View style={styles.delayStatCard}>
+                <Text style={styles.delayStatLabel}>Requested time</Text>
+                <Text style={styles.delayStatValue}>{requestedDurationLabel}</Text>
+              </View>
+              <View style={styles.delayStatCard}>
+                <Text style={styles.delayStatLabel}>Session status</Text>
+                <Text style={styles.delayStatValue}>{countdownText}</Text>
+              </View>
+            </View>
+            {!!latestDelayAt ? (
+              <Text style={styles.delayLatestText}>Last update at {latestDelayAt}</Text>
+            ) : (
+              <Text style={styles.delayLatestText}>No delay update yet</Text>
+            )}
+          </View>
+
+          <View style={styles.delayInfoBox}>
+            <Icon name="information-outline" size={16} color="#7C3AED" />
+            <Text style={styles.delayInfoText}>
+              Requester can add extra minutes from their Extend tab. You can send a quick message to coordinate meanwhile.
+            </Text>
+          </View>
+
+          <View style={styles.borrowHistoryWrap}>
+            <Text style={styles.borrowHistoryTitle}>Extension history</Text>
+            {delayHistory.slice(0, 6).map((row, index) => (
+              <View key={String(row?.id || `d_hist_${index}`)} style={styles.borrowHistoryRow}>
+                <Text style={styles.borrowHistoryText}>{String(row?.text || 'Extension update')}</Text>
+                <Text style={styles.borrowStatusText}>
+                  {new Date(row?.at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </Text>
+              </View>
+            ))}
+            {!delayHistory.length ? (
+              <Text style={styles.bottomPanelMuted}>No extension updates yet.</Text>
+            ) : null}
+          </View>
+        </View>
+      );
+    }
+    if (activeBottomTab === 'report') {
+      const reportOptions = [
+        { id: 'felt_uncomfortable', label: 'Felt uncomfortable or unsafe', icon: 'emoticon-sad-outline' },
+        { id: 'personal_boundaries_crossed', label: 'Personal boundaries crossed', icon: 'account-off-outline' },
+        { id: 'misuse_of_platform', label: 'Misuse of the platform', icon: 'alert-rhombus-outline' },
+        { id: 'false_unnecessary_request', label: 'False or unnecessary request', icon: 'alert-circle-outline' },
+        { id: 'something_else', label: 'Something else', icon: 'message-question-outline' },
+      ];
+      return (
+        <View style={[styles.bottomPanelCard, styles.bottomPanelScreen]}>
+          <Text style={styles.reportScreenTitle}>Report a Concern</Text>
+          <Text style={styles.reportScreenSubtitle}>Share any concerns about this interaction so we can improve safety and fairness.</Text>
+
+          <View style={styles.reportTabSwitch}>
+            <TouchableOpacity
+              style={[styles.reportTabBtn, reportInnerTab === 'new' && styles.reportTabBtnActive]}
+              onPress={() => setReportInnerTab('new')}
+            >
+              <Text style={[styles.reportTabBtnText, reportInnerTab === 'new' && styles.reportTabBtnTextActive]}>New</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.reportTabBtn, reportInnerTab === 'history' && styles.reportTabBtnActive]}
+              onPress={() => setReportInnerTab('history')}
+            >
+              <Text style={[styles.reportTabBtnText, reportInnerTab === 'history' && styles.reportTabBtnTextActive]}>Your Reports</Text>
+            </TouchableOpacity>
+          </View>
+
+          {reportInnerTab === 'new' ? (
+          <>
+          <View style={styles.reportOptionsWrap}>
+            {reportOptions.map((c) => (
+              <TouchableOpacity
+                key={c.id}
+                style={[styles.reportOptionCard, reportCategory === c.id && styles.reportOptionCardActive]}
+                onPress={() => setReportCategory(c.id)}
+                activeOpacity={0.9}
+              >
+                <View style={[styles.reportOptionIconWrap, reportCategory === c.id && styles.reportOptionIconWrapActive]}>
+                  <Icon
+                    name={c.icon}
+                    size={18}
+                    color={reportCategory === c.id ? '#DC5C69' : '#64748B'}
+                  />
+                </View>
+                <Text style={[styles.reportOptionLabel, reportCategory === c.id && styles.reportOptionLabelActive]}>{c.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <TextInput
+            value={reportDetails}
+            onChangeText={setReportDetails}
+            placeholder="Add report details (optional)"
+            placeholderTextColor="#9CA3AF"
+            style={styles.reportDetailsInput}
+            multiline
+            textAlignVertical="top"
+          />
+
+          <Text style={styles.reportDisclaimerText}>
+            Reports are reviewed after incidents are closed. They are not monitored in real time.
+          </Text>
+
+          <TouchableOpacity style={[styles.reportSubmitButton, isReporting && styles.chipDisabled]} onPress={handleSubmitRequestReport} disabled={isReporting}>
+            <Text style={styles.reportSubmitButtonText}>
+              {isReporting ? 'Submitting...' : editingReportId ? 'Update Report' : 'Submit Report'}
+            </Text>
+          </TouchableOpacity>
+
+          <Text style={styles.reportFooterText}>Reports help improve safety and accountability.</Text>
+          </>
+          ) : null}
+
+          {reportInnerTab === 'history' ? (
+          <View style={styles.reportHistoryWrap}>
+            <Text style={styles.reportHistoryTitle}>Your report history</Text>
+            {isReportHistoryLoading ? (
+              <Text style={styles.reportHistoryMuted}>Loading reports...</Text>
+            ) : null}
+            {!isReportHistoryLoading && reportHistory.length === 0 ? (
+              <Text style={styles.reportHistoryMuted}>No report submitted for this request yet.</Text>
+            ) : null}
+            {reportHistory.map((row, idx) => {
+              const rowId = String(row?._id || row?.id || `r_${idx}`);
+              const status = String(row?.status || 'pending').replace(/_/g, ' ');
+              return (
+                <View key={rowId} style={styles.reportHistoryCard}>
+                  <View style={styles.reportHistoryTop}>
+                    <Text style={styles.reportHistoryCategory}>{reportCategoryLabel(row?.category)}</Text>
+                    <Text style={styles.reportHistoryStatus}>{status}</Text>
+                  </View>
+                  {!!row?.details ? <Text style={styles.reportHistoryDetails}>{String(row.details)}</Text> : null}
+                  <Text style={styles.reportHistoryDate}>
+                    {new Date(row?.updatedAt || row?.createdAt || Date.now()).toLocaleString()}
+                  </Text>
+                  <View style={styles.reportHistoryActions}>
+                    <TouchableOpacity style={styles.reportHistoryBtn} onPress={() => handleEditReport(row)}>
+                      <Text style={styles.reportHistoryBtnText}>Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.reportHistoryBtn, styles.reportHistoryBtnDanger]} onPress={() => handleDeleteReport(rowId)}>
+                      <Text style={[styles.reportHistoryBtnText, styles.reportHistoryBtnDangerText]}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+          ) : null}
+        </View>
+      );
+    }
+    return (
+      <View style={[styles.bottomPanelCard, styles.bottomPanelScreen]}>
+        <Text style={styles.moreScreenTitle}>More options</Text>
+        <Text style={styles.moreScreenSubtitle}>Quick controls for this help session.</Text>
+
+        <View style={styles.moreHeroCard}>
+          <View style={styles.moreHeroRow}>
+            <Icon name="hand-heart-outline" size={20} color="#DC5C69" />
+            <Text style={styles.moreHeroTitle}>Helper actions</Text>
+          </View>
+          <Text style={styles.moreHeroText}>
+            Stay coordinated with requester, manage borrow offers, and close safely when done.
+          </Text>
+        </View>
+
+        <TouchableOpacity style={styles.moreActionButton} onPress={() => setActiveBottomTab('offer')}>
+          <View style={styles.moreActionLeft}>
+            <Icon name="briefcase-outline" size={18} color="#DC5C69" />
+            <Text style={styles.moreActionLabel}>Open Offer Item</Text>
+          </View>
+          <Icon name="chevron-right" size={20} color="#9CA3AF" />
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.moreActionButton} onPress={() => setActiveBottomTab('report')}>
+          <View style={styles.moreActionLeft}>
+            <Icon name="alert-decagram-outline" size={18} color="#DC5C69" />
+            <Text style={styles.moreActionLabel}>Open Report tab</Text>
+          </View>
+          <Icon name="chevron-right" size={20} color="#9CA3AF" />
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.moreActionButton} onPress={() => handleOpenChat()}>
+          <View style={styles.moreActionLeft}>
+            <Icon name="message-text-outline" size={18} color="#DC5C69" />
+            <Text style={styles.moreActionLabel}>Message requester</Text>
+          </View>
+          <Icon name="chevron-right" size={20} color="#9CA3AF" />
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.morePrimaryCta} onPress={() => navigation.navigate(ROUTES.helperClosure, { requestId })}>
+          <Icon name="check-circle-outline" size={18} color="#FFFFFF" />
+          <Text style={styles.morePrimaryCtaText}>Complete and close session</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -537,14 +1188,18 @@ const MatchingMapScreen = ({ navigation, route }) => {
       />
       <ScrollView 
         style={{flex: 1}} 
-        contentContainerStyle={{flexGrow: 1, paddingBottom: scale(24)}}
+        contentContainerStyle={{flexGrow: 1, paddingBottom: scale(120)}}
         alwaysBounceVertical={true}
         bounces={true}
         overScrollMode="always"
         showsVerticalScrollIndicator={true}
+        refreshControl={
+          <RefreshControl refreshing={pullRefreshing} onRefresh={handlePullRefresh} {...sociusRefreshProps} />
+        }
       >
         <View style={styles.contentContainer}>
-
+        {activeBottomTab === 'overview' ? (
+        <>
         {inClosure && (
           <View style={styles.closureBanner}>
             <Icon name="file-document-edit-outline" size={scale(20)} color="#92400E" style={{ marginRight: scale(8) }} />
@@ -580,14 +1235,14 @@ const MatchingMapScreen = ({ navigation, route }) => {
                     title="Help Request"
                     description={request.description}
                   >
-                    <Icon name="map-marker" size={40} color="#DC5C69" />
+                    <Icon name="map-marker-radius" size={42} color="#DC5C69" />
                   </Marker>
                 )}
               </MapView>
             )}
             {/* Distance Badge */}
             <View style={styles.distanceBadge}>
-              <Text style={styles.distanceText}>120 meters away</Text>
+              <Text style={styles.distanceText}>{distanceLabel}</Text>
             </View>
           </View>
         </View>
@@ -597,51 +1252,47 @@ const MatchingMapScreen = ({ navigation, route }) => {
           <Text style={styles.openNavText}>Open Navigation</Text>
         </TouchableOpacity>
 
-        {/* Profile Card */}
-        <View style={styles.profileSection}>
-          <View style={styles.profileImageWrapper}>
+        {/* Profile + Request Card */}
+        <View style={styles.helperMainCard}>
+          <View style={styles.helperAvatarFloating}>
             {(() => {
               const img = request?.requesterId?.profileImage || request?.user?.profileImage;
               return img ? (
-                <Image 
-                  source={getProfileImage(img)} 
+                <Image
+                  source={getProfileImage(img)}
                   style={styles.profileImageLarge}
                   resizeMode="cover"
                 />
               ) : (
-                <Icon name="account" size={80} color="#9CA3AF" />
+                <Icon name="account" size={74} color="#9CA3AF" />
               );
             })()}
           </View>
-          <Text style={styles.profileNameLarge}>
-            {request?.requesterId?.fullName || request?.user?.name || "Riya Sharma"}
-          </Text>
-          <Text style={styles.profileStatus}>Waiting nearby</Text>
-        </View>
+          <View style={styles.helperMainBody}>
+            <Text style={styles.profileNameLarge}>
+              {request?.requesterId?.fullName || request?.user?.name || "Riya Sharma"}
+            </Text>
+            <Text style={styles.profileStatus}>Waiting nearby</Text>
+            <Text style={styles.requestDescriptionText}>
+              {request?.description || "I need help with one print copy."}
+            </Text>
+            <View style={styles.helperSignalsDivider} />
+          </View>
 
-        {/* Request Description */}
-        <View style={styles.requestDescriptionCard}>
-          <Text style={styles.requestDescriptionText}>
-            {request?.description || "I need help with one print copy."}
-          </Text>
+          <View style={styles.trustSignalsContainer}>
+            {trustSignalItems.map((s) => {
+              const active = !!requesterTrustSignals?.[s.key];
+              return (
+                <View key={s.key} style={[styles.trustSignalItem, !active && styles.trustSignalItemInactive]}>
+                  <Icon name={s.icon} size={22} color={active ? s.color : '#CBD5E1'} />
+                  <Text style={[styles.trustSignalText, !active && styles.trustSignalTextInactive]}>{s.label}</Text>
+                </View>
+              );
+            })}
+          </View>
+          <View style={styles.helperSignalsDividerBottom} />
+          <Text style={styles.trustSignalInfo}>Signals help you understand past participation.</Text>
         </View>
-
-        {/* Trust Signals */}
-        <View style={styles.trustSignalsContainer}>
-          <View style={styles.trustSignalItem}>
-            <Icon name="check-circle" size={20} color="#28C76F" />
-            <Text style={styles.trustSignalText}>Returns items</Text>
-          </View>
-          <View style={styles.trustSignalItem}>
-            <Icon name="handshake" size={20} color="#F5A623" />
-            <Text style={styles.trustSignalText}>Helps others</Text>
-          </View>
-          <View style={styles.trustSignalItem}>
-            <Icon name="alert" size={20} color="#FF9500" />
-            <Text style={styles.trustSignalText}>New user</Text>
-          </View>
-        </View>
-        <Text style={styles.trustSignalInfo}>Signals help you understand past participation.</Text>
 
         {/* Quick Message Input */}
         <TouchableOpacity
@@ -687,19 +1338,36 @@ const MatchingMapScreen = ({ navigation, route }) => {
             <Text style={styles.safetySubtitle}>You can step away anytime if something feels uncomfortable.</Text>
           </View>
         </View>
-
-        {/* Close Request — helper uses ThankYouClosing (helper closure payload). */}
-        <TouchableOpacity
-          style={[styles.closeRequestButton, !showMeetingActions && styles.closeRequestButtonDisabled]}
-          onPress={() => navigation.navigate(ROUTES.helperClosure, { requestId })}
-          disabled={!showMeetingActions}
-        >
-          <Text style={styles.closeRequestText}>
-            {inClosure ? 'Complete closure' : 'Close Request'}
-          </Text>
-        </TouchableOpacity>
+        </>
+        ) : (
+          renderBottomTabContent()
+        )}
       </View>
       </ScrollView>
+
+      {/* Fixed bottom action bar */}
+      <View style={styles.bottomActionsBar}>
+        <TouchableOpacity style={[styles.bottomActionItem, activeBottomTab === 'overview' && styles.bottomActionItemActive]} onPress={() => setActiveBottomTab('overview')}>
+          <Icon name="map-outline" size={scale(22)} color={activeBottomTab === 'overview' ? '#DC5C69' : '#6B7280'} />
+          <Text style={[styles.bottomActionText, activeBottomTab === 'overview' && styles.bottomActionTextActive]}>Overview</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.bottomActionItem, activeBottomTab === 'offer' && styles.bottomActionItemActive]} onPress={() => setActiveBottomTab('offer')}>
+          <Icon name="briefcase-outline" size={scale(22)} color={activeBottomTab === 'offer' ? '#DC5C69' : '#6B7280'} />
+          <Text style={[styles.bottomActionText, activeBottomTab === 'offer' && styles.bottomActionTextActive]}>Offer Item</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.bottomActionItem, activeBottomTab === 'delay' && styles.bottomActionItemActive]} onPress={() => setActiveBottomTab('delay')}>
+          <Icon name="clock-fast" size={scale(22)} color={activeBottomTab === 'delay' ? '#DC5C69' : '#6B7280'} />
+          <Text style={[styles.bottomActionText, activeBottomTab === 'delay' && styles.bottomActionTextActive]}>Delay</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.bottomActionItem, activeBottomTab === 'report' && styles.bottomActionItemActive]} onPress={() => setActiveBottomTab('report')}>
+          <Icon name="alert-decagram-outline" size={scale(22)} color={activeBottomTab === 'report' ? '#DC5C69' : '#6B7280'} />
+          <Text style={[styles.bottomActionText, activeBottomTab === 'report' && styles.bottomActionTextActive]}>Report</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.bottomActionItem, activeBottomTab === 'more' && styles.bottomActionItemActive]} onPress={() => setActiveBottomTab('more')}>
+          <Icon name="dots-horizontal-circle-outline" size={scale(22)} color={activeBottomTab === 'more' ? '#DC5C69' : '#6B7280'} />
+          <Text style={[styles.bottomActionText, activeBottomTab === 'more' && styles.bottomActionTextActive]}>More</Text>
+        </TouchableOpacity>
+      </View>
 
       <ChatModal
         visible={chatVisible}
@@ -712,6 +1380,52 @@ const MatchingMapScreen = ({ navigation, route }) => {
         prefillMessage={prefillMessage}
         autoFocus={true}
       />
+      <Modal visible={!!borrowIncoming} transparent animationType="fade" onRequestClose={dismissBorrowModal}>
+        <View style={styles.borrowModalBackdrop}>
+          <View style={styles.borrowModalCard}>
+            <TouchableOpacity style={styles.borrowModalClose} onPress={dismissBorrowModal}>
+              <Icon name="close" size={24} color="#6B7280" />
+            </TouchableOpacity>
+            <View style={styles.borrowModalAvatarWrap}>
+              {request?.requesterId?.profileImage ? (
+                <Image source={getProfileImage(request?.requesterId?.profileImage)} style={styles.borrowModalAvatar} />
+              ) : (
+                <Icon name="account-circle" size={74} color="#9CA3AF" />
+              )}
+            </View>
+            <Text style={styles.borrowModalName}>{request?.requesterId?.fullName || 'Requester'}</Text>
+            <View style={styles.borrowModalDivider} />
+            <Text style={styles.borrowMetaLine}><Text style={styles.borrowMetaLabel}>Item:</Text> {String(borrowIncoming?.itemName || '-')}</Text>
+            <Text style={styles.borrowMetaLine}><Text style={styles.borrowMetaLabel}>Note:</Text> "{String(borrowIncoming?.note || 'No note')}"</Text>
+            <Text style={styles.borrowMetaLine}><Text style={styles.borrowMetaLabel}>Time:</Text> {String(borrowIncoming?.requestedMinutes || '')} min</Text>
+            <Image
+              source={(() => {
+                const resolved = resolveBorrowImageUri(borrowIncoming?.imageUrl);
+                const fallback = 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=600&q=60';
+                if (!resolved || borrowImageFailed) return { uri: fallback };
+                return { uri: resolved };
+              })()}
+              style={styles.borrowModalItemImage}
+              resizeMode="cover"
+              onError={() => setBorrowImageFailed(true)}
+            />
+            <View style={styles.borrowModalActions}>
+              <TouchableOpacity
+                style={[styles.borrowModalBtn, styles.borrowModalAccept]}
+                onPress={() => handleBorrowDecision(String(borrowIncoming?.borrowId || borrowIncoming?._id || ''), 'accept')}
+              >
+                <Text style={styles.borrowModalAcceptText}>Accept</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.borrowModalBtn, styles.borrowModalDecline]}
+                onPress={() => handleBorrowDecision(String(borrowIncoming?.borrowId || borrowIncoming?._id || ''), 'decline')}
+              >
+                <Text style={styles.borrowModalDeclineText}>Decline</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       <CustomAlert
         visible={alertVisible}
         title={alertConfig.title}
@@ -794,10 +1508,61 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  helperMainCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    marginTop: 23,
+    marginBottom: 12,
+    paddingTop: 60,
+    paddingHorizontal: 14,
+    paddingBottom: 10,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#E8EAED',
+  },
+  helperAvatarFloating: {
+    position: 'absolute',
+    top: -30,
+    width: 86,
+    height: 86,
+    borderRadius: 43,
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+    backgroundColor: '#F0F0F0',
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  helperMainBody: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  helperSignalsDivider: {
+    width: '100%',
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginBottom: 10,
+  },
+  helperSignalsDividerBottom: {
+    width: '100%',
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginBottom: 8,
+  },
   profileSection: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 14,
+    padding: 16,
     marginBottom: 10,
     alignItems: 'center',
     shadowColor: '#000',
@@ -828,18 +1593,18 @@ const styles = StyleSheet.create({
   profileNameLarge: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#333',
-    marginBottom: 2,
+    color: '#1F2937',
+    marginBottom: 4,
   },
   profileStatus: {
-    fontSize: 12,
-    color: '#888',
+    fontSize: 13,
+    color: '#667085',
     fontWeight: '500',
   },
   requestDescriptionCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 14,
+    padding: 14,
     marginBottom: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -848,30 +1613,40 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   requestDescriptionText: {
-    fontSize: 13,
-    color: '#444',
+    fontSize: 16,
+    color: '#1F2937',
     textAlign: 'center',
     fontWeight: '500',
+    marginBottom: 10,
   },
   trustSignalsContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 24,
+    gap: 16,
     marginBottom: 8,
   },
   trustSignalItem: {
     alignItems: 'center',
+    minWidth: 86,
+  },
+  trustSignalItemInactive: {
+    opacity: 0.65,
   },
   trustSignalText: {
-    fontSize: 11,
-    color: '#666',
-    marginTop: 2,
+    fontSize: 12,
+    color: '#667085',
+    marginTop: 3,
+    fontWeight: '500',
+  },
+  trustSignalTextInactive: {
+    color: '#94A3B8',
   },
   trustSignalInfo: {
-    fontSize: 11,
-    color: '#888',
+    fontSize: 13,
+    color: '#6B7280',
     textAlign: 'center',
-    marginBottom: 8,
+    marginBottom: 2,
+    fontStyle: 'italic',
   },
   quickMessageInput: {
     backgroundColor: '#FFFFFF',
@@ -883,7 +1658,7 @@ const styles = StyleSheet.create({
     borderColor: '#E0E0E0',
   },
   quickMessagePlaceholder: {
-    fontSize: 13,
+    fontSize: 15,
     color: '#999',
   },
   quickMessageDisabled: {
@@ -892,17 +1667,19 @@ const styles = StyleSheet.create({
   chipsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 10,
+    gap: 5,
+    marginBottom: 12,
   },
   chip: {
-    backgroundColor: '#F0F0F0',
+    backgroundColor: '#F7F7F8',
     paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 16,
+    paddingVertical: 7,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#ECEFF3',
   },
   chipText: {
-    fontSize: 11,
+    fontSize: 13,
     color: '#555',
     fontWeight: '500',
   },
@@ -924,22 +1701,22 @@ const styles = StyleSheet.create({
     marginLeft: 10,
   },
   safetyTitle: {
-    fontSize: 12,
+    fontSize: 15,
     fontWeight: '600',
     color: '#333',
     marginBottom: 1,
   },
   safetySubtitle: {
-    fontSize: 11,
+    fontSize: 13,
     color: '#666',
-    lineHeight: 15,
+    lineHeight: 18,
   },
   openNavButton: {
     backgroundColor: '#DC5C69',
     borderRadius: 24,
     paddingVertical: 14,
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 14,
     shadowColor: '#DC5C69',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -967,6 +1744,230 @@ const styles = StyleSheet.create({
   },
   closeRequestButtonDisabled: {
     opacity: 0.45,
+  },
+  bottomPanelCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#E8EAED',
+  },
+  bottomPanelScreen: {
+    minHeight: Math.max(320, height * 0.62),
+    justifyContent: 'flex-start',
+  },
+  bottomPanelTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#2C3E50',
+    marginBottom: 8,
+  },
+  bottomPanelLine: {
+    fontSize: 13,
+    color: '#374151',
+    marginBottom: 4,
+  },
+  bottomPanelMuted: {
+    fontSize: 12,
+    color: '#6B7280',
+    lineHeight: 18,
+  },
+  delayHeroCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#FFDDE2',
+    backgroundColor: '#FFF5F6',
+    padding: 12,
+    marginBottom: 10,
+  },
+  delayHeroTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 10,
+  },
+  delayHeroIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#FFE5E9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  delayHeroTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  delayHeroSub: {
+    marginTop: 2,
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  delayStatsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  delayStatCard: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#F1D3D8',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  delayStatLabel: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    fontWeight: '600',
+  },
+  delayStatValue: {
+    marginTop: 3,
+    fontSize: 13,
+    color: '#1F2937',
+    fontWeight: '700',
+  },
+  delayLatestText: {
+    marginTop: 8,
+    fontSize: 11,
+    color: '#B4234F',
+    fontWeight: '600',
+  },
+  delayInfoBox: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E9D5FF',
+    backgroundColor: '#FAF5FF',
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  delayInfoText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#5B21B6',
+  },
+  moreScreenTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  moreScreenSubtitle: {
+    marginTop: 4,
+    marginBottom: 10,
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  moreHeroCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#F8D1D6',
+    backgroundColor: '#FFF7F8',
+    padding: 12,
+    marginBottom: 10,
+  },
+  moreHeroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  moreHeroTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  moreHeroText: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#6B7280',
+  },
+  moreActionButton: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  moreActionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  moreActionLabel: {
+    fontSize: 13,
+    color: '#374151',
+    fontWeight: '700',
+  },
+  morePrimaryCta: {
+    marginTop: 8,
+    borderRadius: 12,
+    backgroundColor: '#DC5C69',
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  morePrimaryCtaText: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    fontWeight: '800',
+  },
+  reportButton: {
+    marginTop: 10,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 18,
+    backgroundColor: '#DC5C69',
+  },
+  reportButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  bottomActionsBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+  },
+  bottomActionItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  bottomActionItemActive: {
+    backgroundColor: '#FFF1F3',
+  },
+  bottomActionText: {
+    fontSize: 11,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  bottomActionTextActive: {
+    color: '#DC5C69',
+    fontWeight: '700',
   },
   toastContainer: {
     position: 'absolute',
@@ -1019,7 +2020,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   mapPreviewContainer: {
-    height: 135,
+    height: 150,
     width: '100%',
     position: 'relative',
   },
@@ -1234,6 +2235,490 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 10,
     fontWeight: 'bold',
+  },
+  offerHistoryRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#ECEFF3',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 8,
+    backgroundColor: '#FFFFFF',
+    gap: 10,
+  },
+  offerHistoryThumb: {
+    width: 56,
+    height: 56,
+    borderRadius: 10,
+    backgroundColor: '#F3F4F6',
+  },
+  offerHistoryThumbPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  offerHistoryMain: {
+    flex: 1,
+    minWidth: 0,
+  },
+  offerHistoryTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  offerHistoryTitle: {
+    flex: 1,
+    fontSize: 14,
+    color: '#111827',
+    fontWeight: '700',
+  },
+  offerHistoryMeta: {
+    marginTop: 4,
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  offerHistoryMetaSmall: {
+    marginTop: 2,
+    fontSize: 11,
+    color: '#9CA3AF',
+  },
+  offerHistoryNote: {
+    marginTop: 6,
+    fontSize: 12,
+    color: '#374151',
+    lineHeight: 18,
+  },
+  offerStatusPill: {
+    textTransform: 'capitalize',
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#4B5563',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: '#EEF2F7',
+    overflow: 'hidden',
+  },
+  offerStatusPillAccepted: {
+    color: '#16A34A',
+    backgroundColor: '#E8F7EE',
+  },
+  offerStatusPillDeclined: {
+    color: '#DC2626',
+    backgroundColor: '#FDECEC',
+  },
+  offerStatusPillPending: {
+    color: '#B45309',
+    backgroundColor: '#FEF3C7',
+  },
+  offerActionButtonsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 10,
+    flexWrap: 'wrap',
+  },
+  offerMiniBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  offerAcceptBtn: {
+    backgroundColor: '#F04E4E',
+  },
+  offerDeclineBtn: {
+    backgroundColor: '#E5E7EB',
+  },
+  offerMiniBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  durationRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 10,
+  },
+  durationChip: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#FFFFFF',
+  },
+  durationChipActive: {
+    borderColor: '#DC5C69',
+    backgroundColor: '#FFF1F3',
+  },
+  durationChipText: {
+    color: '#374151',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  durationChipTextActive: {
+    color: '#DC5C69',
+  },
+  borrowHistoryWrap: {
+    marginTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#ECEFF3',
+    paddingTop: 10,
+    gap: 8,
+  },
+  borrowHistoryTitle: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '700',
+  },
+  borrowHistoryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#ECEFF3',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  borrowHistoryText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#374151',
+    marginRight: 8,
+  },
+  borrowStatusText: {
+    textTransform: 'capitalize',
+    fontSize: 12,
+    color: '#4B5563',
+    fontWeight: '700',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: '#EEF2F7',
+  },
+  reportContextCard: {
+    borderWidth: 1,
+    borderColor: '#ECEFF3',
+    borderRadius: 10,
+    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    marginBottom: 10,
+    gap: 5,
+  },
+  reportContextLine: {
+    fontSize: 13,
+    color: '#374151',
+  },
+  reportContextLabel: {
+    fontWeight: '700',
+    color: '#111827',
+  },
+  reportScreenTitle: {
+    fontSize: 25,
+    fontWeight: '800',
+    color: '#1F2937',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  reportScreenSubtitle: {
+    fontSize: 15,
+    color: '#6B7280',
+    lineHeight: 22,
+    marginBottom: 14,
+  },
+  reportTabSwitch: {
+    flexDirection: 'row',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 12,
+    gap: 4,
+  },
+  reportTabBtn: {
+    flex: 1,
+    minHeight: 38,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reportTabBtnActive: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#F3B6C0',
+  },
+  reportTabBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  reportTabBtnTextActive: {
+    color: '#B4234F',
+    fontWeight: '800',
+  },
+  reportOptionsWrap: {
+    gap: 10,
+    marginBottom: 12,
+  },
+  reportOptionCard: {
+    minHeight: 58,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  reportOptionCardActive: {
+    borderColor: '#DC5C69',
+    backgroundColor: '#FFF8F9',
+  },
+  reportOptionIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  reportOptionIconWrapActive: {
+    backgroundColor: '#FEECEF',
+  },
+  reportOptionLabel: {
+    flex: 1,
+    fontSize: 17,
+    color: '#374151',
+    fontWeight: '500',
+  },
+  reportOptionLabelActive: {
+    color: '#1F2937',
+    fontWeight: '700',
+  },
+  reportDetailsInput: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#111827',
+    backgroundColor: '#FFFFFF',
+    minHeight: 104,
+    marginBottom: 10,
+  },
+  reportDisclaimerText: {
+    fontSize: 13,
+    color: '#6B7280',
+    lineHeight: 19,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  reportSubmitButton: {
+    backgroundColor: '#DC5C69',
+    borderRadius: 999,
+    minHeight: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  reportSubmitButtonText: {
+    color: '#FFFFFF',
+    fontSize: 26,
+    fontWeight: '800',
+  },
+  reportFooterText: {
+    textAlign: 'center',
+    fontSize: 13,
+    color: '#9CA3AF',
+  },
+  reportHistoryWrap: {
+    marginTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#ECEFF3',
+    paddingTop: 10,
+    gap: 8,
+  },
+  reportHistoryTitle: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '700',
+  },
+  reportHistoryMuted: {
+    fontSize: 12,
+    color: '#9CA3AF',
+  },
+  reportHistoryCard: {
+    borderWidth: 1,
+    borderColor: '#ECEFF3',
+    borderRadius: 12,
+    backgroundColor: '#F9FAFB',
+    padding: 10,
+    gap: 6,
+  },
+  reportHistoryTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  reportHistoryCategory: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  reportHistoryStatus: {
+    fontSize: 11,
+    textTransform: 'capitalize',
+    fontWeight: '700',
+    color: '#4B5563',
+    backgroundColor: '#E5E7EB',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  reportHistoryDetails: {
+    fontSize: 12,
+    color: '#374151',
+    lineHeight: 18,
+  },
+  reportHistoryDate: {
+    fontSize: 11,
+    color: '#9CA3AF',
+  },
+  reportHistoryActions: {
+    marginTop: 2,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  reportHistoryBtn: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#FFFFFF',
+  },
+  reportHistoryBtnText: {
+    fontSize: 12,
+    color: '#374151',
+    fontWeight: '700',
+  },
+  reportHistoryBtnDanger: {
+    borderColor: '#F3B6C0',
+    backgroundColor: '#FFF5F7',
+  },
+  reportHistoryBtnDangerText: {
+    color: '#B4234F',
+  },
+  panelInput: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    fontSize: 15,
+    color: '#111827',
+    backgroundColor: '#FFFFFF',
+    marginBottom: 10,
+  },
+  borrowModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(17,24,39,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  borrowModalCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    padding: 16,
+  },
+  borrowModalClose: {
+    position: 'absolute',
+    right: 12,
+    top: 10,
+    zIndex: 2,
+  },
+  borrowModalAvatarWrap: {
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  borrowModalAvatar: {
+    width: 82,
+    height: 82,
+    borderRadius: 41,
+  },
+  borrowModalName: {
+    marginTop: 8,
+    textAlign: 'center',
+    fontSize: 34,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  borrowModalDivider: {
+    marginTop: 8,
+    marginBottom: 10,
+    height: 1,
+    backgroundColor: '#E5E7EB',
+  },
+  borrowMetaLine: {
+    fontSize: 18,
+    color: '#374151',
+    marginBottom: 8,
+  },
+  borrowMetaLabel: {
+    fontWeight: '700',
+    color: '#111827',
+  },
+  borrowModalItemImage: {
+    width: '100%',
+    height: 170,
+    borderRadius: 12,
+    marginTop: 6,
+    marginBottom: 14,
+    backgroundColor: '#F3F4F6',
+  },
+  borrowModalActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  borrowModalBtn: {
+    flex: 1,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  borrowModalAccept: {
+    backgroundColor: '#F04E4E',
+  },
+  borrowModalDecline: {
+    backgroundColor: '#E5E7EB',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+  },
+  borrowModalAcceptText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  borrowModalDeclineText: {
+    color: '#1F2937',
+    fontWeight: '700',
+    fontSize: 15,
   },
 });
 

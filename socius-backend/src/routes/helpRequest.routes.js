@@ -11,6 +11,9 @@ const {
   markAsDelivered,
   getNearbyRequests,
   sessionAction,
+  createBorrowItem,
+  getBorrowItems,
+  respondBorrowItem,
 } = require('../controllers/helpRequest.controller')
 const { authenticate, requireActive } = require('../middlewares/auth')
 const { validate, schemas } = require('../middlewares/validate')
@@ -67,5 +70,10 @@ router.patch('/:id/cancel', authenticate, cancelRequest)
 
 // PATCH /api/help-request/:id/close
 router.patch('/:id/close', authenticate, validate(schemas.closeRequest), closeRequest)
+
+// Borrow item flow (requester <-> matched helper)
+router.get('/:id/borrow-items', authenticate, getBorrowItems)
+router.post('/:id/borrow', authenticate, requireActive, validate(schemas.borrowItemCreate), createBorrowItem)
+router.patch('/:id/borrow/:borrowId', authenticate, requireActive, validate(schemas.borrowItemRespond), respondBorrowItem)
 
 module.exports = router

@@ -1,14 +1,15 @@
 import { getMessaging, setBackgroundMessageHandler } from '@react-native-firebase/messaging';
 import notifee, { AndroidStyle, EventType } from '@notifee/react-native';
-import { CHANNELS, handleIncomingCallMessage, initNotifeeChannels } from './SociusNotificationService';
+import { CHANNELS, handleIncomingCallMessage, initNotifeeChannels, displayBorrowItemActionNotification } from './SociusNotificationService';
 import { buildClosureInitiatedCopy, buildRequestClosedCopy } from '../../utils/closureMessages';
 import {
   displayRequestCompletionPrompt,
   handleCompletionPromptNotifeeAction,
 } from './requestCompletionPrompt';
 import { handleChatMessageFcm } from '../chat/chatNotificationSync';
-import { loadAuth } from '../storage/asyncStorage.service';
+import { loadAuth, savePendingBorrowItemOpen, clearPendingBorrowItemOpen } from '../storage/asyncStorage.service';
 import { declineHelpAsVolunteer, declinePresenceAsVolunteer } from '../api/volunteer.api';
+import { respondBorrowItemRequest } from '../api/dailyHelp.api';
 
 const messaging = getMessaging();
 
@@ -18,9 +19,19 @@ setBackgroundMessageHandler(messaging, async remoteMessage => {
   const type = String(data.type || '').toLowerCase();
 
   // Handle requester completion prompt first so it never gets short-circuited.
-  if (type === 'request_completion_prompt' && data.requestId) {
+  if (
+    type === 'request_completion_prompt' &&
+    data.requestId &&
+    (!data.recipientRole || String(data.recipientRole).toLowerCase() === 'requester')
+  ) {
     await initNotifeeChannels();
     await displayRequestCompletionPrompt(data);
+    return;
+  }
+
+  if (type === 'borrow_item_request' && data.requestId && data.borrowId) {
+    await initNotifeeChannels();
+    await displayBorrowItemActionNotification(data);
     return;
   }
 
@@ -110,6 +121,14 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
     if (handled) return;
     const actionId = String(pressAction?.id || 'default').toLowerCase();
     const data = notification?.data || {};
+    const isBorrowTap =
+      String(data.type || '').toLowerCase() === 'borrow_item_request' &&
+      data.requestId &&
+      data.borrowId &&
+      (actionId === 'borrow_view' || actionId === 'default');
+    if (isBorrowTap) {
+      await savePendingBorrowItemOpen(data);
+    }
     if ((actionId === 'decline_help' || actionId === 'decline_presence') && data?.requestId) {
       try {
         const auth = await loadAuth();
@@ -122,6 +141,22 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
         }
       } catch (e) {
         console.log('[Notifee] background decline action failed', e);
+      }
+    }
+    if ((actionId === 'borrow_accept' || actionId === 'borrow_decline') && data?.requestId && data?.borrowId) {
+      try {
+        await clearPendingBorrowItemOpen();
+        const auth = await loadAuth();
+        if (auth?.accessToken) {
+          await respondBorrowItemRequest(
+            auth.accessToken,
+            String(data.requestId),
+            String(data.borrowId),
+            actionId === 'borrow_accept' ? 'accept' : 'decline'
+          );
+        }
+      } catch (e) {
+        console.log('[Notifee] background borrow action failed', e);
       }
     }
     await notifee.cancelNotification(notification.id);

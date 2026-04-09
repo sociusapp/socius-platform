@@ -64,6 +64,7 @@ import HelpSupportScreen from '../screens/Home/HelpSupportScreen';
 import ConnectionIssueScreen from '../screens/Home/ConnectionIssueScreen';
 import ReportConcernScreen from '../screens/Home/ReportConcernScreen';
 import PrepareStayReadyScreen from '../screens/Home/PrepareStayReadyScreen';
+import PrepareCardDetailScreen from '../screens/Home/PrepareCardDetailScreen';
 import LocationMapScreen from '../screens/Home/LocationMapScreen';
 
 // ==================== CALL SCREENS ====================
@@ -71,6 +72,7 @@ import P2PCallScreen from '../screens/Call/P2PCallScreen';
 
 // ==================== PREPARE TAB SCREENS ====================
 import SafetyTipsScreen from '../screens/Prepare/SafetyTipsScreen';
+import PrepareLearnArticleScreen from '../screens/Prepare/PrepareLearnArticleScreen';
 import WhenToAskPresenceScreen from '../screens/Prepare/WhenToAskPresenceScreen';
 
 // ==================== BLOG SCREENS ====================
@@ -80,6 +82,7 @@ import BlogDetailScreen from '../screens/Blogs/BlogDetailScreen';
 // ==================== COMMUNITY SCREENS (20) ====================
 import CommunityAroundScreen from '../screens/DailyHelp/CommunityAroundScreen';
 import HelpTypeScreen from '../screens/DailyHelp/UserDailyHelpRequest/HelpTypeScreen';
+import DailyHelpReasonScreen from '../screens/DailyHelp/UserDailyHelpRequest/DailyHelpReasonScreen';
 import AddDetailsScreen from '../screens/DailyHelp/UserDailyHelpRequest/AddDetailsScreen';
 import ReviewRequestScreen from '../screens/DailyHelp/UserDailyHelpRequest/ReviewRequestScreen';
 import RequestActiveScreen from '../screens/DailyHelp/UserDailyHelpRequest/RequestActiveScreen';
@@ -216,14 +219,17 @@ const StackNavigator = () => {
       <Stack.Screen name="ConnectionIssue" component={ConnectionIssueScreen} />
       <Stack.Screen name="ReportConcern" component={ReportConcernScreen} />
       <Stack.Screen name="PrepareStayReady" component={PrepareStayReadyScreen} />
+      <Stack.Screen name="CardDetailScreen" component={PrepareCardDetailScreen} />
 
       {/* ==================== PREPARE TAB SCREENS ==================== */}
       <Stack.Screen name="SafetyTips" component={SafetyTipsScreen} />
+      <Stack.Screen name="PrepareLearnArticle" component={PrepareLearnArticleScreen} />
       <Stack.Screen name="WhenToAskPresence" component={WhenToAskPresenceScreen} />
 
       {/* ==================== COMMUNITY FLOW SCREENS ==================== */}
       <Stack.Screen name="CommunityAround" component={CommunityAroundScreen} />
       <Stack.Screen name="HelpType" component={HelpTypeScreen} />
+      <Stack.Screen name="DailyHelpReason" component={DailyHelpReasonScreen} />
       <Stack.Screen name="AddDetails" component={AddDetailsScreen} />
       <Stack.Screen name="ReviewRequest" component={ReviewRequestScreen} />
       <Stack.Screen name="RequestActive" component={RequestActiveScreen} />

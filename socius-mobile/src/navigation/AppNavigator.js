@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { NavigationContainer, createNavigationContainerRef, CommonActions } from '@react-navigation/native';
 import notifee, { AndroidStyle, EventType } from '@notifee/react-native';
 import { AppState, NativeEventEmitter, NativeModules, Platform } from 'react-native';
@@ -11,14 +11,22 @@ import {
   initNotifeeChannels,
   displaySociusUpdateNotification,
   displayAndroidForegroundIncomingHeadsUp,
+  displayBorrowItemActionNotification,
 } from '../services/notifications/SociusNotificationService';
 import { connectSocket, emitStatusUpdate, appEvents } from '../services/socket/socket.service';
 import CustomAlert from '../components/common/CustomAlert';
 import DailyHelpIncomingModal from '../components/DailyHelp/modals/DailyHelpIncomingModal';
 import IncomingPresenceAlarmModal from '../components/notifications/IncomingPresenceAlarmModal';
-import { loadAuth } from '../services/storage/asyncStorage.service';
-import { declineHelpAsVolunteer, declinePresenceAsVolunteer } from '../services/api/volunteer.api';
+import {
+  loadAuth,
+  loadActiveHelpRequestId,
+  savePendingBorrowItemOpen,
+  loadPendingBorrowItemOpen,
+  clearPendingBorrowItemOpen,
+} from '../services/storage/asyncStorage.service';
+import { declinePresenceAsVolunteer } from '../services/api/volunteer.api';
 import { markRequestDelivered } from '../services/api/incident.api';
+import { getHelpRequestById, respondBorrowItemRequest } from '../services/api/dailyHelp.api';
 import {
   displayRequestCompletionPrompt,
   handleCompletionPromptNotifeeAction,
@@ -29,6 +37,7 @@ import { buildClosureInitiatedCopy, buildRequestClosedCopy, buildRequestAccepted
 import NativeCallService from '../services/notifications/NativeCallService';
 import { getFcmToken } from '../services/firebase/config';
 import { updateDeviceToken } from '../services/api/auth.api';
+import { getNearbyHelpRequests } from '../services/api/dailyHelp.api';
 import {
   navigateToHelpMeeting,
   isUserOnHelpMeetingScreen,
@@ -69,13 +78,75 @@ const ackHelpNotificationDelivered = async (requestId, tokenOverride = null) => 
   }
 };
 
+const resolveCurrentUserId = (auth) =>
+  String(auth?.user?._id || auth?.user?.id || auth?.userId || '').trim();
+
+const shouldIgnoreIncomingHelpAlert = async ({ requestId, data = {}, authOverride = null }) => {
+  if (!requestId) return true;
+
+  const auth = authOverride || (await loadAuth().catch(() => null));
+  const myUserId = resolveCurrentUserId(auth);
+  const payloadRequesterId = String(
+    data?.requesterId || data?.requester_id || data?.fromUserId || data?.senderId || ''
+  ).trim();
+  const recipientRole = String(
+    data?.recipientRole || data?.recipient_role || data?.userRole || data?.user_role || ''
+  )
+    .trim()
+    .toLowerCase();
+
+  if (recipientRole === 'requester') return true;
+  if (myUserId && payloadRequesterId && myUserId === payloadRequesterId) return true;
+
+  const activeRequesterRequestId = await loadActiveHelpRequestId().catch(() => null);
+  if (activeRequesterRequestId && String(activeRequesterRequestId) === String(requestId)) {
+    return true;
+  }
+
+  return false;
+};
+
 const handleNotifeeNavigation = async (navRef, notification, pressAction) => {
+  const data = notification?.data || {};
+  const earlyType = String(data.type || '').toLowerCase();
+  const actionId = String(pressAction?.id || 'default').toLowerCase();
+
+  if (earlyType === 'borrow_item_request' && data.requestId && data.borrowId) {
+    if (actionId === 'borrow_accept' || actionId === 'borrow_decline') {
+      return;
+    }
+    if (!navRef.isReady()) {
+      await savePendingBorrowItemOpen(data);
+      return;
+    }
+    appEvents.emit('help:borrow_requested_local', data);
+    await navigateToHelpMeeting(navRef, {
+      requestId: String(data.requestId),
+      data: {
+        ...data,
+        recipientRole: data.recipientRole || 'helper',
+        type: 'borrow_item_request',
+      },
+    });
+    await clearPendingBorrowItemOpen();
+    if (notification?.id) {
+      try {
+        await notifee.cancelNotification(notification.id);
+      } catch (err) {
+        console.warn('[AppNavigator] Failed to cancel borrow notification', err);
+      }
+    }
+    return;
+  }
+
   if (!navRef.isReady()) return;
   const nav = navRef;
 
-  const data = notification.data || {};
-  const earlyType = String(data.type || '').toLowerCase();
-  if (earlyType === 'request_completion_prompt' && data.requestId) {
+  if (
+    earlyType === 'request_completion_prompt' &&
+    data.requestId &&
+    (!data.recipientRole || String(data.recipientRole).toLowerCase() === 'requester')
+  ) {
     await displayRequestCompletionPrompt(data);
     return;
   }
@@ -272,18 +343,124 @@ const AppNavigator = () => {
   const [incomingPresenceData, setIncomingPresenceData] = useState(null);
   const [incomingPresenceStatus, setIncomingPresenceStatus] = useState('notified');
   const incomingHelpDedupeRef = useRef({ id: null, t: 0 });
+  const appStateRef = useRef(AppState.currentState);
+  const suppressedHelpAlertIdsRef = useRef(new Set());
+  const SUPPRESSED_HELP_ALERTS_KEY = 'SUPPRESSED_HELP_ALERTS';
+  const suppressHelpAlert = useCallback(async (requestId) => {
+    try {
+      if (!requestId) return;
+      const id = String(requestId);
+      suppressedHelpAlertIdsRef.current.add(id);
+      await AsyncStorage.setItem(
+        SUPPRESSED_HELP_ALERTS_KEY,
+        JSON.stringify(Array.from(suppressedHelpAlertIdsRef.current))
+      );
+      await AsyncStorage.removeItem('PENDING_HELP_MODAL');
+    } catch (e) {}
+  }, []);
+  const isHelpAlertSuppressed = useCallback((requestId) => {
+    if (!requestId) return false;
+    return suppressedHelpAlertIdsRef.current.has(String(requestId));
+  }, []);
+  const persistPendingHelpAlert = useCallback(async (payload) => {
+    try {
+      if (!payload?.requestId) return;
+      await AsyncStorage.setItem(
+        'PENDING_HELP_MODAL',
+        JSON.stringify({ ...payload, _persistedAt: Date.now() })
+      );
+    } catch (e) {}
+  }, []);
+  const clearPendingHelpAlert = useCallback(async (requestId = null) => {
+    try {
+      const currentId = incomingHelpData?.requestId;
+      if (requestId) {
+        if (currentId && String(currentId) !== String(requestId)) return;
+        if (!currentId) {
+          const pendingRaw = await AsyncStorage.getItem('PENDING_HELP_MODAL');
+          if (pendingRaw) {
+            const pending = JSON.parse(pendingRaw);
+            const pendingId = pending?.requestId;
+            if (pendingId && String(pendingId) !== String(requestId)) return;
+          }
+        }
+      }
+      setIncomingHelpVisible(false);
+      setIncomingHelpData(null);
+      setIncomingHelpStatus('notified');
+      NativeCallService.stopRingtone();
+      await AsyncStorage.removeItem('PENDING_HELP_MODAL');
+    } catch (e) {}
+  }, [incomingHelpData?.requestId]);
+  const revivePendingHelpFromNearby = useCallback(async () => {
+    try {
+      if (incomingHelpData?.requestId && String(incomingHelpStatus || '').toLowerCase() === 'notified') {
+        return;
+      }
+      const auth = await loadAuth();
+      const token = auth?.accessToken;
+      if (!token) return;
+
+      const nearbyRes = await getNearbyHelpRequests(token).catch(() => null);
+      const list = Array.isArray(nearbyRes?.data)
+        ? nearbyRes.data
+        : Array.isArray(nearbyRes)
+          ? nearbyRes
+          : [];
+      if (!list.length) return;
+
+      const candidate = list.find((item) => !isHelpAlertSuppressed(item?._id || item?.id));
+      if (!candidate) return;
+      const reqId = candidate?._id || candidate?.id;
+      if (!reqId) return;
+
+      const payload = {
+        requestId: String(reqId),
+        category: candidate?.category || '',
+        categoryName: candidate?.categoryName || '',
+        categoryIcon: candidate?.categoryIcon || '',
+        requesterName: candidate?.requesterId?.fullName || candidate?.requesterName || 'Someone',
+        description: candidate?.description || '',
+        distanceMeters: Number(candidate?.distanceMeters || 0) || 0,
+        area: candidate?.location?.address || candidate?.area || '',
+        token,
+      };
+
+      await persistPendingHelpAlert(payload);
+      setIncomingHelpData(payload);
+      setIncomingHelpStatus('notified');
+      setIncomingHelpVisible(true);
+      NativeCallService.startHelpRequestRingtone();
+      if (appStateRef.current !== 'active') {
+        void displayAndroidForegroundIncomingHeadsUp('help', payload);
+      }
+    } catch (e) {}
+  }, [incomingHelpData?.requestId, incomingHelpStatus, persistPendingHelpAlert, isHelpAlertSuppressed]);
+  const ensurePendingIncomingRingtone = useCallback(() => {
+    try {
+      if (incomingHelpData?.requestId && String(incomingHelpStatus || '').toLowerCase() === 'notified') {
+        NativeCallService.startHelpRequestRingtone();
+      } else if (incomingPresenceData?.requestId && String(incomingPresenceStatus || '').toLowerCase() === 'notified') {
+        NativeCallService.startPresenceAlarmRingtone();
+      }
+    } catch (e) {}
+  }, [incomingHelpData?.requestId, incomingHelpStatus, incomingPresenceData?.requestId, incomingPresenceStatus]);
 
   // Persistence logic for Modals
   useEffect(() => {
     const persistModals = async () => {
       try {
-        if (incomingHelpVisible && incomingHelpData) {
+        const shouldPersistHelpPending =
+          !!incomingHelpData?.requestId && String(incomingHelpStatus || '').toLowerCase() === 'notified';
+        if (shouldPersistHelpPending) {
           await AsyncStorage.setItem('PENDING_HELP_MODAL', JSON.stringify(incomingHelpData));
         } else {
           await AsyncStorage.removeItem('PENDING_HELP_MODAL');
         }
 
-        if (incomingPresenceVisible && incomingPresenceData) {
+        const shouldPersistPresencePending =
+          !!incomingPresenceData?.requestId && String(incomingPresenceStatus || '').toLowerCase() === 'notified';
+        if (shouldPersistPresencePending) {
           await AsyncStorage.setItem('PENDING_PRESENCE_MODAL', JSON.stringify(incomingPresenceData));
         } else {
           await AsyncStorage.removeItem('PENDING_PRESENCE_MODAL');
@@ -293,32 +470,92 @@ const AppNavigator = () => {
       }
     };
     persistModals();
-  }, [incomingHelpVisible, incomingHelpData, incomingPresenceVisible, incomingPresenceData]);
+  }, [incomingHelpData, incomingHelpStatus, incomingPresenceData, incomingPresenceStatus]);
+
+  const restorePendingModals = useCallback(async () => {
+    try {
+      const pendingHelp = await AsyncStorage.getItem('PENDING_HELP_MODAL');
+      if (pendingHelp) {
+        const parsed = JSON.parse(pendingHelp);
+        const requestId = parsed?.requestId;
+        let shouldKeep = !!requestId;
+        if (requestId) {
+          try {
+            const auth = await loadAuth();
+            const token = auth?.accessToken;
+            if (!token) {
+              shouldKeep = false;
+            } else {
+              const res = await getHelpRequestById(token, requestId, { cacheTtlMs: 0 });
+              const payload = res?.data || {};
+              const req = payload?.request || payload;
+              const match = payload?.match || null;
+              const reqStatus = String(req?.status || '').toLowerCase();
+              const matchStatus = String(match?.status || '').toLowerCase();
+              const closedReqStates = ['matched', 'active', 'accepted', 'in_progress', 'arrived', 'cancelled', 'closed', 'auto_closed'];
+              const closedMatchStates = ['accepted', 'declined', 'not_available', 'cancelled', 'completed'];
+              if (closedReqStates.includes(reqStatus) || closedMatchStates.includes(matchStatus)) {
+                shouldKeep = false;
+              }
+            }
+          } catch (e) {
+            // Network/temporary failure: keep pending so user does not lose incoming alert.
+            shouldKeep = true;
+          }
+        }
+        if (shouldKeep && !isHelpAlertSuppressed(parsed?.requestId)) {
+          setIncomingHelpData(parsed);
+          setIncomingHelpStatus('notified');
+          setIncomingHelpVisible(true);
+          ensurePendingIncomingRingtone();
+        } else {
+          await AsyncStorage.removeItem('PENDING_HELP_MODAL');
+        }
+      }
+
+      const pendingPresence = await AsyncStorage.getItem('PENDING_PRESENCE_MODAL');
+      if (pendingPresence) {
+        setIncomingPresenceData(JSON.parse(pendingPresence));
+        setIncomingPresenceStatus('notified');
+        setIncomingPresenceVisible(true);
+        ensurePendingIncomingRingtone();
+      }
+
+      const pendingBorrow = await loadPendingBorrowItemOpen();
+      if (pendingBorrow?.requestId && pendingBorrow?.borrowId && navigationRef.isReady()) {
+        appEvents.emit('help:borrow_requested_local', pendingBorrow);
+        await navigateToHelpMeeting(navigationRef, {
+          requestId: String(pendingBorrow.requestId),
+          data: {
+            ...pendingBorrow,
+            recipientRole: pendingBorrow.recipientRole || 'helper',
+            type: 'borrow_item_request',
+          },
+        });
+        await clearPendingBorrowItemOpen();
+      }
+    } catch (e) {
+      console.log('[AppNavigator] Error restoring modal state', e);
+    }
+  }, [ensurePendingIncomingRingtone]);
 
   // Restore logic on app launch
   useEffect(() => {
-    const restoreModals = async () => {
-      try {
-        const pendingHelp = await AsyncStorage.getItem('PENDING_HELP_MODAL');
-        if (pendingHelp) {
-          setIncomingHelpData(JSON.parse(pendingHelp));
-          setIncomingHelpStatus('notified');
-          setIncomingHelpVisible(true);
-        }
+    restorePendingModals();
+  }, [restorePendingModals]);
 
-        const pendingPresence = await AsyncStorage.getItem('PENDING_PRESENCE_MODAL');
-        if (pendingPresence) {
-          setIncomingPresenceData(JSON.parse(pendingPresence));
-          setIncomingPresenceStatus('notified');
-          setIncomingPresenceVisible(true);
+  useEffect(() => {
+    const loadSuppressed = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(SUPPRESSED_HELP_ALERTS_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          suppressedHelpAlertIdsRef.current = new Set(parsed.map((v) => String(v)));
         }
-      } catch (e) {
-        console.log('[AppNavigator] Error restoring modal state', e);
-      }
+      } catch (e) {}
     };
-    
-    // Wait for navigation to be ready or just show them
-    restoreModals();
+    loadSuppressed();
   }, []);
 
   useEffect(() => {
@@ -339,7 +576,9 @@ const AppNavigator = () => {
               if (t === 'PRESENCE_ALARM' || t.includes('PRESENCE')) {
                 await declinePresenceAsVolunteer(token, uuid);
               } else {
-                await declineHelpAsVolunteer(token, uuid);
+                // Product decision: "Not available" should silence alerts, but request remains in Nearby Active.
+                await suppressHelpAlert(uuid);
+                await clearPendingHelpAlert(uuid);
               }
             }
           } catch (e) {
@@ -384,14 +623,47 @@ const AppNavigator = () => {
   }, []);
 
   useEffect(() => {
-    const appStateRef = { current: AppState.currentState };
     const appStateSub = AppState.addEventListener('change', (nextState) => {
+      const prevState = appStateRef.current;
       appStateRef.current = nextState;
       // Only treat true background as "dismiss"; `inactive` (e.g. brief Android focus loss) hides call UI incorrectly.
       if (nextState === 'background') {
+        if (incomingHelpData?.requestId && String(incomingHelpStatus || '').toLowerCase() === 'notified') {
+          void displayAndroidForegroundIncomingHeadsUp('help', incomingHelpData);
+        }
+        if (incomingPresenceData?.requestId && String(incomingPresenceStatus || '').toLowerCase() === 'notified') {
+          void displayAndroidForegroundIncomingHeadsUp('presence', incomingPresenceData);
+        }
         setIncomingHelpVisible(false);
         setIncomingPresenceVisible(false);
-        NativeCallService.stopRingtone();
+        const hasPendingIncoming =
+          (incomingHelpData?.requestId && String(incomingHelpStatus || '').toLowerCase() === 'notified') ||
+          (incomingPresenceData?.requestId && String(incomingPresenceStatus || '').toLowerCase() === 'notified');
+        if (!hasPendingIncoming) {
+          NativeCallService.stopRingtone();
+        }
+      }
+      if (
+        prevState !== 'active' &&
+        nextState === 'active' &&
+        incomingHelpData?.requestId &&
+        String(incomingHelpStatus || '').toLowerCase() === 'notified'
+      ) {
+        setIncomingHelpVisible(true);
+        ensurePendingIncomingRingtone();
+      }
+      if (prevState !== 'active' && nextState === 'active') {
+        void restorePendingModals();
+        void revivePendingHelpFromNearby();
+      }
+      if (
+        prevState !== 'active' &&
+        nextState === 'active' &&
+        incomingPresenceData?.requestId &&
+        String(incomingPresenceStatus || '').toLowerCase() === 'notified'
+      ) {
+        setIncomingPresenceVisible(true);
+        ensurePendingIncomingRingtone();
       }
     });
 
@@ -452,7 +724,11 @@ const AppNavigator = () => {
           return;
         }
 
-        if (type === 'request_completion_prompt' && data.requestId) {
+        if (
+          type === 'request_completion_prompt' &&
+          data.requestId &&
+          (!data.recipientRole || String(data.recipientRole).toLowerCase() === 'requester')
+        ) {
           displayRequestCompletionPrompt(data);
           return;
         }
@@ -474,6 +750,12 @@ const AppNavigator = () => {
           });
           return;
         }
+        if (type === 'borrow_item_request' && data.requestId) {
+          appEvents.emit('help:borrow_requested_local', data);
+          void displayBorrowItemActionNotification(data);
+          void navigateToHelpMeeting(navigationRef, { requestId: data.requestId, data });
+          return;
+        }
         if (type === 'review_decision') {
           navigateAfterReviewDecision(navigationRef, data.approved);
           return;
@@ -482,10 +764,19 @@ const AppNavigator = () => {
         if ((type.includes('help_request') || type === 'help_request_alert') && data.requestId) {
           loadAuth()
             .then((auth) => {
+              return shouldIgnoreIncomingHelpAlert({
+                requestId: data.requestId,
+                data,
+                authOverride: auth,
+              }).then((ignore) => ({ auth, ignore }));
+            })
+            .then(({ auth, ignore }) => {
+              if (ignore) return;
+              if (isHelpAlertSuppressed(data.requestId)) return;
               const token = auth?.accessToken || null;
               void ackHelpNotificationDelivered(data.requestId, token);
               NativeCallService.startHelpRequestRingtone();
-              setIncomingHelpData({
+              const pendingPayload = {
                 requestId: data.requestId,
                 category: data.category,
                 categoryName: data.categoryName,
@@ -495,7 +786,9 @@ const AppNavigator = () => {
                 distanceMeters: data.distanceMeters ? Number(data.distanceMeters) : 0,
                 area: data.area,
                 token,
-              });
+              };
+              void persistPendingHelpAlert(pendingPayload);
+              setIncomingHelpData(pendingPayload);
               setIncomingHelpVisible(true);
             })
             .catch(() => {});
@@ -511,6 +804,9 @@ const AppNavigator = () => {
           const status = String(data.status || '').toLowerCase();
           const rid = data.requestId;
           if (!rid) return;
+          if (['matched', 'accepted', 'taken', 'already_accepted', 'cancelled', 'closed', 'auto_closed'].includes(status)) {
+            void clearPendingHelpAlert(rid);
+          }
           if (status === 'matched' || status === 'accepted' || status === 'closing') {
             void navigateToHelpMeeting(navigationRef, { requestId: rid, data });
             return;
@@ -529,11 +825,36 @@ const AppNavigator = () => {
 
       const data = remoteMessage?.data || {};
       const lowerType = String(data.type || '').toLowerCase();
+      if (lowerType === 'cancel_alarm' && data.requestId) {
+        await clearPendingHelpAlert(data.requestId);
+        return;
+      }
       if (lowerType === 'review_decision') {
         showReviewDecisionAlert(data);
         return;
       }
-      if (lowerType === 'request_completion_prompt' && data.requestId) {
+      if (lowerType === 'borrow_item_request' && data.requestId && data.borrowId) {
+        appEvents.emit('help:borrow_requested_local', data);
+        if (Platform.OS === 'android') {
+          await displayBorrowItemActionNotification(data);
+        }
+        if (navigationRef.isReady()) {
+          await navigateToHelpMeeting(navigationRef, {
+            requestId: String(data.requestId),
+            data: {
+              ...data,
+              recipientRole: data.recipientRole || 'helper',
+              type: 'borrow_item_request',
+            },
+          });
+        }
+        return;
+      }
+      if (
+        lowerType === 'request_completion_prompt' &&
+        data.requestId &&
+        (!data.recipientRole || String(data.recipientRole).toLowerCase() === 'requester')
+      ) {
         await displayRequestCompletionPrompt(data);
         return;
       }
@@ -595,6 +916,15 @@ const AppNavigator = () => {
       if (isHelpRequest) {
         logIncomingAlert('FCM help → in-app modal + tray heads-up', { requestId: data.requestId });
         const auth = await loadAuth().catch(() => null);
+        if (
+          await shouldIgnoreIncomingHelpAlert({
+            requestId: data.requestId,
+            data,
+            authOverride: auth,
+          })
+        ) {
+          return;
+        }
         const token = auth?.accessToken || null;
         const now = Date.now();
         if (
@@ -647,6 +977,12 @@ const AppNavigator = () => {
       }
       
       if (dataType === 'request_status') {
+        if (data.requestId) {
+          const closedStates = ['matched', 'accepted', 'taken', 'already_accepted', 'cancelled', 'closed', 'auto_closed'];
+          if (closedStates.includes(status)) {
+            await clearPendingHelpAlert(data.requestId);
+          }
+        }
         if (['cancelled', 'closed', 'closing', 'auto_closed'].includes(status)) {
           stopActiveHelpSessionNotification().catch(() => {});
         }
@@ -882,7 +1218,11 @@ const AppNavigator = () => {
         }
 
         const lt = String(data.type || '').toLowerCase();
-        if (lt === 'request_completion_prompt' && data.requestId) {
+        if (
+          lt === 'request_completion_prompt' &&
+          data.requestId &&
+          (!data.recipientRole || String(data.recipientRole).toLowerCase() === 'requester')
+        ) {
           displayRequestCompletionPrompt(data);
           return;
         }
@@ -912,10 +1252,19 @@ const AppNavigator = () => {
         if ((lt.includes('help_request') || lt.includes('request_rematched')) && data.requestId) {
           loadAuth()
             .then((auth) => {
+              return shouldIgnoreIncomingHelpAlert({
+                requestId: data.requestId,
+                data,
+                authOverride: auth,
+              }).then((ignore) => ({ auth, ignore }));
+            })
+            .then(({ auth, ignore }) => {
+              if (ignore) return;
+              if (isHelpAlertSuppressed(data.requestId)) return;
               const token = auth?.accessToken || null;
               void ackHelpNotificationDelivered(data.requestId, token);
               NativeCallService.startHelpRequestRingtone();
-              setIncomingHelpData({
+              const pendingPayload = {
                 requestId: data.requestId,
                 category: data.category,
                 categoryName: data.categoryName,
@@ -924,7 +1273,9 @@ const AppNavigator = () => {
                 distanceMeters: data.distanceMeters ? Number(data.distanceMeters) : 0,
                 area: data.area,
                 token,
-              });
+              };
+              void persistPendingHelpAlert(pendingPayload);
+              setIncomingHelpData(pendingPayload);
               setIncomingHelpVisible(true);
             })
             .catch(() => {});
@@ -939,6 +1290,9 @@ const AppNavigator = () => {
           const status = String(data.status || '').toLowerCase();
           const rid = data.requestId;
           if (!rid) return;
+          if (['matched', 'accepted', 'taken', 'already_accepted', 'cancelled', 'closed', 'auto_closed'].includes(status)) {
+            void clearPendingHelpAlert(rid);
+          }
           if (status === 'matched' || status === 'accepted' || status === 'closing') {
             void navigateToHelpMeeting(navigationRef, { requestId: rid, data });
           } else if (status === 'cancelled' || status === 'closed') {
@@ -964,10 +1318,8 @@ const AppNavigator = () => {
       }
       if (actionId === 'decline_help' && notifData?.requestId) {
         try {
-          const auth = await loadAuth();
-          if (auth?.accessToken) {
-            await declineHelpAsVolunteer(auth.accessToken, notifData.requestId);
-          }
+          await suppressHelpAlert(notifData.requestId);
+          await clearPendingHelpAlert(notifData.requestId);
           if (notification?.id) await notifee.cancelNotification(notification.id);
         } catch (e) {
           console.log('[Notifee] decline_help failed', e);
@@ -986,14 +1338,87 @@ const AppNavigator = () => {
         }
         return;
       }
+      if (
+        actionId === 'borrow_view' &&
+        notifData?.requestId &&
+        notifData?.borrowId &&
+        String(notifData.type || '').toLowerCase() === 'borrow_item_request'
+      ) {
+        appEvents.emit('help:borrow_requested_local', notifData);
+        if (navigationRef.isReady()) {
+          await navigateToHelpMeeting(navigationRef, {
+            requestId: String(notifData.requestId),
+            data: {
+              ...notifData,
+              recipientRole: notifData.recipientRole || 'helper',
+              type: 'borrow_item_request',
+            },
+          });
+          await clearPendingBorrowItemOpen();
+        } else {
+          await savePendingBorrowItemOpen(notifData);
+        }
+        if (notification?.id) await notifee.cancelNotification(notification.id);
+        return;
+      }
+      if ((actionId === 'borrow_accept' || actionId === 'borrow_decline') && notifData?.requestId && notifData?.borrowId) {
+        try {
+          await clearPendingBorrowItemOpen();
+          const auth = await loadAuth();
+          if (auth?.accessToken) {
+            await respondBorrowItemRequest(
+              auth.accessToken,
+              String(notifData.requestId),
+              String(notifData.borrowId),
+              actionId === 'borrow_accept' ? 'accept' : 'decline'
+            );
+          }
+          appEvents.emit('help:borrow_requested_local', null);
+          if (notification?.id) await notifee.cancelNotification(notification.id);
+        } catch (e) {
+          console.log('[Notifee] borrow action failed', e);
+        }
+        return;
+      }
       handleNotifeeNavigation(navigationRef, notification, pressAction);
     });
 
-    notifee.getInitialNotification().then(initialNotification => {
-      if (!initialNotification) return;
-      const { notification, pressAction } = initialNotification;
-      handleNotifeeNavigation(navigationRef, notification, pressAction);
-    });
+    const flushPendingBorrowOpen = async () => {
+      const run = async () => {
+        const pending = await loadPendingBorrowItemOpen();
+        if (!pending?.requestId || !pending?.borrowId) return true;
+        if (!navigationRef.isReady()) return false;
+        appEvents.emit('help:borrow_requested_local', pending);
+        await navigateToHelpMeeting(navigationRef, {
+          requestId: String(pending.requestId),
+          data: {
+            ...pending,
+            recipientRole: pending.recipientRole || 'helper',
+            type: 'borrow_item_request',
+          },
+        });
+        await clearPendingBorrowItemOpen();
+        return true;
+      };
+      if (await run()) return;
+      setTimeout(run, 400);
+      setTimeout(run, 1600);
+    };
+
+    void (async () => {
+      try {
+        const initialNotification = await notifee.getInitialNotification();
+        if (initialNotification) {
+          const { notification, pressAction } = initialNotification;
+          await handleNotifeeNavigation(
+            navigationRef,
+            notification,
+            pressAction || { id: 'default' }
+          );
+        }
+      } catch (_) {}
+      await flushPendingBorrowOpen();
+    })();
 
     let socket;
     let mounted = true;
@@ -1200,6 +1625,7 @@ const AppNavigator = () => {
       socket.on('help:request_closed', (payload) => {
         const requestId = payload?.requestId;
         if (!requestId) return;
+        void clearPendingHelpAlert(requestId);
         if (isUserOnHelpMeetingScreen(navigationRef, requestId)) return;
         stopActiveHelpSessionNotification().catch(() => {});
         const recipientRole = payload?.userRole || payload?.role;
@@ -1224,6 +1650,7 @@ const AppNavigator = () => {
       socket.on('help:request_taken', (payload) => {
         const requestId = payload?.requestId;
         if (!requestId) return;
+        void clearPendingHelpAlert(requestId);
         const copy = buildRequestTakenCopy({
           requestType: payload?.requestType || 'Help request',
           volunteerName: payload?.volunteerName || payload?.volunteer?.fullName,
@@ -1246,6 +1673,19 @@ const AppNavigator = () => {
       socket.on('help:incoming_request', async (payload) => {
         const requestId = payload?.requestId;
         if (!requestId) return;
+        const auth = await loadAuth().catch(() => null);
+        if (
+          await shouldIgnoreIncomingHelpAlert({
+            requestId,
+            data: payload || {},
+            authOverride: auth,
+          })
+        ) {
+          return;
+        }
+        if (isHelpAlertSuppressed(requestId)) {
+          return;
+        }
         const rm = {
           data: {
             type: 'help_request',
@@ -1268,7 +1708,6 @@ const AppNavigator = () => {
         incomingHelpDedupeRef.current = { id: rm.data.requestId, t: now };
 
         try {
-          const auth = await loadAuth();
           if (auth?.accessToken) {
             markRequestDelivered(auth.accessToken, requestId).catch(() => {});
           }
@@ -1286,10 +1725,9 @@ const AppNavigator = () => {
           NativeCallService.startHelpRequestRingtone();
         } catch (e) {}
 
-        const auth = await loadAuth().catch(() => null);
         const token = auth?.accessToken || null;
         logIncomingAlert('socket help → in-app modal + tray heads-up', { requestId });
-        setIncomingHelpData({
+        const pendingPayload = {
           requestId: rm.data.requestId,
           category: rm.data.category,
           categoryName: rm.data.categoryName,
@@ -1299,7 +1737,9 @@ const AppNavigator = () => {
           distanceMeters: rm.data.distanceMeters ? Number(rm.data.distanceMeters) : 0,
           area: rm.data.area,
           token,
-        });
+        };
+        void persistPendingHelpAlert(pendingPayload);
+        setIncomingHelpData(pendingPayload);
         setIncomingHelpVisible(true);
         void displayAndroidForegroundIncomingHeadsUp('help', rm.data);
       });
@@ -1353,7 +1793,21 @@ const AppNavigator = () => {
         unsubscribeNotifeeForeground();
       }
     };
-  }, []);
+  }, [incomingHelpData, incomingHelpStatus, incomingPresenceData, incomingPresenceStatus, clearPendingHelpAlert, ensurePendingIncomingRingtone, restorePendingModals, revivePendingHelpFromNearby]);
+
+  // Fail-safe: if push/socket is missed, recover pending incoming from nearby list.
+  useEffect(() => {
+    let intervalId = null;
+    const run = async () => {
+      if (appStateRef.current !== 'active') return;
+      await revivePendingHelpFromNearby();
+    };
+    run();
+    intervalId = setInterval(run, 12000);
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [revivePendingHelpFromNearby]);
 
   return (
     <>
@@ -1369,36 +1823,21 @@ const AppNavigator = () => {
         onDecline={() => {
           const snapshot = incomingHelpData;
           const requestId = snapshot?.requestId;
-          const token = snapshot?.token;
+          if (requestId) {
+            void suppressHelpAlert(requestId);
+          }
           NativeCallService.stopRingtone();
           setIncomingHelpVisible(false);
           setIncomingHelpData(null);
           setIncomingHelpStatus('notified');
-          if (requestId) {
-            void (async () => {
-              try {
-                const auth = token ? { accessToken: token } : await loadAuth();
-                const accessToken = auth?.accessToken;
-                if (!accessToken) return;
-                await declineHelpAsVolunteer(accessToken, requestId);
-                if (__DEV__) {
-                  console.log('[IncomingHelpModal] declined', { requestId });
-                }
-              } catch (e) {
-                if (__DEV__) {
-                  console.log('[IncomingHelpModal] decline failed', {
-                    requestId,
-                    error: e?.message,
-                  });
-                }
-              }
-            })();
-          }
         }}
         onView={() => {
           setIncomingHelpStatus('accepted');
           const snapshot = incomingHelpData;
           const requestId = snapshot?.requestId;
+          if (requestId) {
+            void suppressHelpAlert(requestId);
+          }
           setTimeout(() => {
             setIncomingHelpVisible(false);
             setIncomingHelpData(null);

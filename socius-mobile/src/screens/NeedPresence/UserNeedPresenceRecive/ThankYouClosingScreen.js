@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Activi
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../../components/common/Header';
 import Button from '../../../components/common/Button';
-import { submitClosure } from '../../../services/api/incident.api';
+import { submitClosure } from '../../../services/api/needPresence.api';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
 import CustomAlert from '../../../components/common/CustomAlert';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';

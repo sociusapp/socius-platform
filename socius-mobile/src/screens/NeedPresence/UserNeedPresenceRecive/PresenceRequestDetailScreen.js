@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Marker } from 'react-native-maps';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useResponsive } from '../../../utils/responsive';
-import { getPresenceById, acceptPresence, declinePresence } from '../../../services/api/incident.api';
+import { getPresenceById, acceptPresence, declinePresence } from '../../../services/api/needPresence.api';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
 import { baseURL as apiBaseURL } from '../../../services/api/client';
 import CustomAlert from '../../../components/common/CustomAlert';

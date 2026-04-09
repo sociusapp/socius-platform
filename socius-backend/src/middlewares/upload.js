@@ -1,14 +1,11 @@
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
+const { resolveUploadDir } = require('../config/uploads');
 
 // Helper to create storage with dynamic destination
 const createStorage = (destFolder) => multer.diskStorage({
   destination: (req, file, cb) => {
-    const dir = path.join(__dirname, '../../', destFolder);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
+    const dir = resolveUploadDir(destFolder);
     cb(null, dir);
   },
   filename: (req, file, cb) => {
@@ -27,7 +24,7 @@ const fileFilter = (req, file, cb) => {
 
 // Generic uploader for issues
 const upload = multer({
-  storage: createStorage('uploads/issue-screenshots'),
+  storage: createStorage('issue-screenshots'),
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('audio/')) {
       cb(null, true);
@@ -41,14 +38,13 @@ const upload = multer({
 // Verification uploader (Gov ID to documents, Selfie to selfies)
 const verificationStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    let folder = 'uploads/documents';
+    let folder = 'documents';
     if (file.fieldname === 'selfie' || file.fieldname === 'updated_selfie') {
-      folder = 'uploads/selfies';
+      folder = 'selfies';
+    } else {
+      folder = 'documents';
     }
-    const dir = path.join(__dirname, '../../', folder);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
+    const dir = resolveUploadDir(folder);
     cb(null, dir);
   },
   filename: (req, file, cb) => {
@@ -74,16 +70,49 @@ const uploadReviewDocs = verificationUpload.fields([
 ]);
 
 const uploadClosureEvidence = multer({
-  storage: createStorage('uploads/closures'),
+  storage: createStorage('closures'),
   fileFilter: fileFilter,
   limits: { fileSize: 5 * 1024 * 1024 },
 }).array('evidence', 5);
 
 const uploadHelpCategoryIcon = multer({
-  storage: createStorage('uploads/help-categories'),
+  storage: createStorage('help-categories'),
   fileFilter: fileFilter,
   limits: { fileSize: 2 * 1024 * 1024 },
 }).single('icon');
+
+const uploadPresenceCategoryIcon = multer({
+  storage: createStorage('presence-categories'),
+  fileFilter: fileFilter,
+  limits: { fileSize: 2 * 1024 * 1024 },
+}).single('icon');
+
+const uploadPresenceItemIcon = multer({
+  storage: createStorage('presence-items'),
+  fileFilter: fileFilter,
+  limits: { fileSize: 2 * 1024 * 1024 },
+}).single('icon');
+
+const uploadHelpCatalogItemIcon = multer({
+  storage: createStorage('help-catalog-items'),
+  fileFilter: fileFilter,
+  limits: { fileSize: 2 * 1024 * 1024 },
+}).single('icon')
+
+const prepareCardImageFilter = (req, file, cb) => {
+  const ok = ['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)
+  if (ok) {
+    cb(null, true)
+    return
+  }
+  cb(new Error('Only JPG, PNG, or WebP images are allowed'), false)
+}
+
+const uploadPrepareCardImage = multer({
+  storage: createStorage('prepare-cards'),
+  fileFilter: prepareCardImageFilter,
+  limits: { fileSize: 3 * 1024 * 1024 },
+}).single('image');
 
 const chatMediaMimes = new Set([
   'image/jpeg',
@@ -110,7 +139,7 @@ const chatMediaFilter = (req, file, cb) => {
 }
 
 const uploadChatMedia = multer({
-  storage: createStorage('uploads/chat-media'),
+  storage: createStorage('chat-media'),
   fileFilter: chatMediaFilter,
   limits: { fileSize: 15 * 1024 * 1024 },
 }).single('file')
@@ -121,5 +150,9 @@ module.exports = {
   uploadReviewDocs, 
   uploadClosureEvidence,
   uploadHelpCategoryIcon,
+  uploadPresenceCategoryIcon,
+  uploadPresenceItemIcon,
+  uploadHelpCatalogItemIcon,
+  uploadPrepareCardImage,
   uploadChatMedia,
 };

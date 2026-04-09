@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, BackHandler, Modal, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, BackHandler, Modal, Animated, Easing, RefreshControl } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -8,10 +8,11 @@ import Header from '../../../components/common/Header';
 import Button from '../../../components/common/Button';
 import { SkeletonBox, SkeletonCircle, SkeletonSpacer } from '../../../components/common/Skeleton';
 import { useResponsive } from '../../../utils/responsive';
-import { getMyActiveHelpRequest, cancelHelpRequest } from '../../../services/api/incident.api';
+import { getMyActiveHelpRequest, cancelHelpRequest } from '../../../services/api/dailyHelp.api';
 import { clearActiveHelpRequestId, loadAuth, saveActiveHelpRequestId } from '../../../services/storage/asyncStorage.service';
 import { connectSocket, disconnectSocket, appEvents } from '../../../services/socket/socket.service';
 import CustomAlert from '../../../components/common/CustomAlert';
+import { sociusRefreshProps } from '../../../utils/sociusRefreshControl';
 
 const RequestSuccessScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
@@ -28,6 +29,8 @@ const RequestSuccessScreen = ({ navigation, route }) => {
   const [noHelpersModalVisible, setNoHelpersModalVisible] = useState(initialNoHelpers || false);
   const [cancelling, setCancelling] = useState(false);
   const requestRef = React.useRef(null);
+  const loadActiveRequestRef = useRef(async () => {});
+  const [pullRefreshing, setPullRefreshing] = useState(false);
 
   // Wave animation effect
   useEffect(() => {
@@ -398,6 +401,8 @@ const RequestSuccessScreen = ({ navigation, route }) => {
     
     appEvents.on('foreground:request_update', handleForegroundUpdate);
 
+    loadActiveRequestRef.current = loadActiveRequest;
+
     // Initial load
     loadActiveRequest();
     setupSocket();
@@ -417,6 +422,15 @@ const RequestSuccessScreen = ({ navigation, route }) => {
       appEvents.off('foreground:request_update', handleForegroundUpdate);
     };
   }, [navigation]);
+
+  const onPullRefreshActive = useCallback(async () => {
+    setPullRefreshing(true);
+    try {
+      await loadActiveRequestRef.current();
+    } finally {
+      setPullRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (['accepted', 'in_progress', 'matched', 'en_route', 'arrived', 'active'].includes(String(request?.status).toLowerCase())) {
@@ -704,51 +718,6 @@ const RequestSuccessScreen = ({ navigation, route }) => {
             <Text style={[styles.actionSubtitle, { fontSize: ms(13), lineHeight: ms(20) }]}>Change details if needed.</Text>
           </TouchableOpacity>
 
-          {/* Cancel Request Card */}
-          <TouchableOpacity 
-            style={[styles.actionCard, { 
-              borderRadius: scale(18),
-              borderWidth: scale(1),
-              paddingHorizontal: spacing(18),
-              paddingVertical: vscale(16),
-              marginBottom: vscale(12),
-              shadowOffset: { width: 0, height: vscale(2) },
-              shadowRadius: scale(6),
-              elevation: scale(2)
-            }]} 
-            onPress={handleCancelRequest} 
-            activeOpacity={0.85}
-          >
-            <Text style={[styles.actionTitle, { fontSize: ms(16), marginBottom: vscale(4) }]}>Cancel Request</Text>
-            <Text style={[styles.actionSubtitle, { fontSize: ms(13), lineHeight: ms(20) }]}>End this request at any time.</Text>
-          </TouchableOpacity>
-
-          {/* Close Request Card */}
-          <TouchableOpacity 
-            style={[styles.actionCard, { 
-              borderRadius: scale(18),
-              borderWidth: scale(1),
-              paddingHorizontal: spacing(18),
-              paddingVertical: vscale(16),
-              marginBottom: vscale(12),
-              shadowOffset: { width: 0, height: vscale(2) },
-              shadowRadius: scale(6),
-              elevation: scale(2)
-            }]} 
-            onPress={handleCloseRequest} 
-            activeOpacity={0.85}
-            accessibilityRole="button"
-            accessibilityLabel="Close request"
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <View style={{ flex: 1, marginRight: spacing(10) }}>
-            <Text style={[styles.actionTitle, { fontSize: ms(16), marginBottom: vscale(4) }]}>Close Request</Text>
-            <Text style={[styles.actionSubtitle, { fontSize: ms(13), lineHeight: ms(20) }]}>Mark this request as finished and share feedback.</Text>
-              </View>
-              <Icon name="chevron-right" size={scale(22)} color="#94A3B8" />
-            </View>
-          </TouchableOpacity>
-
           {/* Location Notice */}
           <Text style={[styles.locationNotice, { fontSize: ms(14), marginVertical: vscale(24), lineHeight: ms(22) }]}>Your location is shared only while this request is active.</Text>
 
@@ -797,6 +766,7 @@ const RequestSuccessScreen = ({ navigation, route }) => {
         <ScrollView
           contentContainerStyle={[styles.scrollContent, { alignItems: 'center' }]}
           showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={pullRefreshing} onRefresh={onPullRefreshActive} {...sociusRefreshProps} />}
         >
           <View style={{ width: contentWidth }}>
             <View style={{ alignItems: 'center', marginTop: vscale(10), marginBottom: vscale(18) }}>
@@ -835,6 +805,7 @@ const RequestSuccessScreen = ({ navigation, route }) => {
       <ScrollView 
         contentContainerStyle={[styles.scrollContent, { alignItems: 'center' }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={pullRefreshing} onRefresh={onPullRefreshActive} {...sociusRefreshProps} />}
       >
         {renderContent()}
       </ScrollView>

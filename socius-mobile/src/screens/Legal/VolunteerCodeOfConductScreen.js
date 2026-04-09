@@ -6,6 +6,10 @@ import Header from '../../components/common/Header';
 import StaticPageViewer from '../../components/common/StaticPageViewer';
 import { useResponsive } from '../../utils/responsive';
 
+const FALLBACK_HTML = `<h1>Volunteer code of conduct</h1>
+<p>Help with respect and clear boundaries. Do not harass, pressure, or take risks you cannot handle.</p>
+<p>Follow community guidelines and local law. You may stop participating at any time.</p>`;
+
 const VolunteerCodeOfConductScreen = ({ navigation, onAccept, onCancel }) => {
   const { ms, spacing, vscale, scale } = useResponsive();
   const [checkboxChecked, setCheckboxChecked] = useState(false);
@@ -59,7 +63,7 @@ const VolunteerCodeOfConductScreen = ({ navigation, onAccept, onCancel }) => {
       <View style={{ flex: 1, paddingHorizontal: isAcceptanceMode ? 0 : 16, paddingTop: 16 }}>
         {/* If in acceptance mode, maybe less padding or different layout */}
         <View style={{ flex: 1, paddingHorizontal: isAcceptanceMode ? 16 : 0 }}>
-             <StaticPageViewer slug="volunteer-code-of-conduct" />
+             <StaticPageViewer slug="volunteer-code-of-conduct" fallbackContent={FALLBACK_HTML} />
         </View>
       </View>
 

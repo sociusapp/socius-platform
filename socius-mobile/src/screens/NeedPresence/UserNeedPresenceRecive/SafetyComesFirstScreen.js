@@ -7,7 +7,7 @@ import Button from '../../../components/common/Button';
 import CustomAlert from '../../../components/common/CustomAlert';
 import { getSocket } from '../../../services/socket/socket.service';
 import { useResponsive } from '../../../utils/responsive';
-import { acceptPresence } from '../../../services/api/incident.api';
+import { acceptPresence } from '../../../services/api/needPresence.api';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
 import { saveActivePresenceAssignmentId } from '../../../services/storage/asyncStorage.service';
 

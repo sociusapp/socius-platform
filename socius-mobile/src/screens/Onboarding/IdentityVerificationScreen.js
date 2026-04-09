@@ -149,8 +149,7 @@ const IdentityVerificationScreen = ({ navigation }) => {
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
+        allowsEditing: false,
         quality: 1,
       });
 
@@ -249,19 +248,16 @@ const IdentityVerificationScreen = ({ navigation }) => {
   };
 
   const confirmSubmit = async () => {
-    setShowConfirmModal(false);
-    
+    if (isSubmitting) return;
     try {
       setIsSubmitting(true);
       const { accessToken } = await loadAuth();
       if (!accessToken) {
         console.log('[IdentityVerification] No token found');
         Alert.alert('Session expired', 'Please login again to continue.');
-        setIsSubmitting(false);
         return;
       }
 
-      // Check current verification status to determine which API to use
       console.log('[IdentityVerification] Checking verification status...');
       const statusResult = await getVerificationStatus(accessToken);
       const currentStatus = statusResult?.data?.status || 'not_submitted';
@@ -269,14 +265,12 @@ const IdentityVerificationScreen = ({ navigation }) => {
 
       let result;
       if (currentStatus === 'failed') {
-        // Use retry API for resubmission after rejection
         console.log('[IdentityVerification] Resubmitting documents after rejection...');
         result = await retryVerification(accessToken, {
           governmentIdUri: governmentIDImage,
           selfieUri: selfieImage,
         });
       } else {
-        // Use normal submit for first time submission
         console.log('[IdentityVerification] Submitting documents...');
         result = await submitVerificationDocuments(accessToken, {
           governmentIdUri: governmentIDImage,
@@ -291,18 +285,12 @@ const IdentityVerificationScreen = ({ navigation }) => {
           result?.message || 'Failed to submit documents for review.';
         console.log('[IdentityVerification] API error:', message);
         Alert.alert('Error', message);
-        setIsSubmitting(false);
         return;
       }
 
       console.log('[IdentityVerification] Success!');
-      setSuccessMessage(isResubmit ? 'Documents resubmitted successfully!' : 'Documents submitted successfully!');
-      
-      // Hide success message after 2 seconds and navigate
-      setTimeout(() => {
-        setSuccessMessage(null);
-        navigation.navigate('BeforeContinue');
-      }, 2000);
+      setShowConfirmModal(false);
+      navigation.navigate('BeforeContinue');
     } catch (error) {
       console.log('[IdentityVerification] Catch error:', error);
       const apiMessage =
@@ -312,7 +300,6 @@ const IdentityVerificationScreen = ({ navigation }) => {
         apiMessage || 'Something went wrong while submitting documents.';
       console.log('[IdentityVerification] Error message to display:', message);
       Alert.alert('Error', message);
-      setIsSubmitting(false);
     } finally {
       setIsSubmitting(false);
     }
@@ -377,54 +364,121 @@ const IdentityVerificationScreen = ({ navigation }) => {
         visible={showConfirmModal}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowConfirmModal(false)}
+        onRequestClose={() => {
+          if (!isSubmitting) setShowConfirmModal(false);
+        }}
       >
         <View style={styles.confirmModalOverlay}>
-          <View style={[styles.confirmModalContent, { padding: spacing(20), borderRadius: scale(24) }]}>
-            <Icon name="file-document-check" size={scale(48)} color="#E85555" />
-            <Text style={[styles.confirmModalTitle, { fontSize: titleFont(20), marginTop: vscale(16) }]}>
-              Ready to Submit?
-            </Text>
-            <Text style={[styles.confirmModalSubtitle, { fontSize: subtitleFont(14), marginTop: vscale(8) }]}>
-              Please review your documents before submitting
-            </Text>
-            
-            {/* Document Preview Summary */}
-            <View style={[styles.documentSummary, { marginTop: vscale(20), padding: spacing(16), borderRadius: scale(16) }]}>
-              <View style={styles.summaryRow}>
-                <Icon name="check-circle" size={scale(20)} color="#48BB78" />
-                <Text style={[styles.summaryText, { fontSize: bodyFont(14), marginLeft: spacing(10) }]}>
-                  Government ID uploaded
-                </Text>
-              </View>
-              <View style={[styles.summaryRow, { marginTop: vscale(12) }]}>
-                <Icon name="check-circle" size={scale(20)} color="#48BB78" />
-                <Text style={[styles.summaryText, { fontSize: bodyFont(14), marginLeft: spacing(10) }]}>
-                  Selfie captured
-                </Text>
-              </View>
-            </View>
+          <View
+            style={[
+              styles.confirmModalContent,
+              {
+                padding: spacing(20),
+                borderRadius: scale(24),
+                maxHeight: '88%',
+              },
+            ]}
+          >
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              style={{ width: '100%' }}
+              contentContainerStyle={{ alignItems: 'center', paddingBottom: vscale(8) }}
+            >
+              <Icon name="file-document-check" size={scale(48)} color="#E85555" />
+              <Text style={[styles.confirmModalTitle, { fontSize: titleFont(20), marginTop: vscale(16) }]}>
+                Ready to Submit?
+              </Text>
+              <Text style={[styles.confirmModalSubtitle, { fontSize: subtitleFont(14), marginTop: vscale(8) }]}>
+                Please review your documents before submitting
+              </Text>
 
-            {isResubmit && (
-              <View style={[styles.resubmitWarning, { marginTop: vscale(16), padding: spacing(12), borderRadius: scale(12) }]}>
-                <Text style={[styles.resubmitWarningText, { fontSize: smallFont(12) }]}>
-                  This is a resubmission. Your previous documents were rejected.
-                </Text>
-              </View>
-            )}
+              <View style={[styles.reviewPreviewSection, { marginTop: vscale(16), width: '100%' }]}>
+                <View style={[styles.reviewPreviewCard, { borderRadius: scale(16), padding: spacing(12) }]}>
+                  <View style={[styles.summaryRow, { marginBottom: vscale(8) }]}>
+                    <Icon name="check-circle" size={scale(18)} color="#48BB78" />
+                    <Text style={[styles.reviewPreviewLabel, { fontSize: bodyFont(13), marginLeft: spacing(8) }]}>
+                      Government ID
+                    </Text>
+                  </View>
+                  {governmentIDImage ? (
+                    <Image
+                      source={{ uri: governmentIDImage }}
+                      style={[
+                        styles.reviewPreviewImage,
+                        {
+                          height: vscale(140),
+                          borderRadius: scale(12),
+                        },
+                      ]}
+                      resizeMode="contain"
+                    />
+                  ) : null}
+                </View>
 
-            <View style={[styles.confirmModalButtons, { marginTop: vscale(24) }]}>
+                <View style={[styles.reviewPreviewCard, { borderRadius: scale(16), padding: spacing(12), marginTop: vscale(12) }]}>
+                  <View style={[styles.summaryRow, { marginBottom: vscale(8) }]}>
+                    <Icon name="check-circle" size={scale(18)} color="#48BB78" />
+                    <Text style={[styles.reviewPreviewLabel, { fontSize: bodyFont(13), marginLeft: spacing(8) }]}>
+                      Selfie
+                    </Text>
+                  </View>
+                  {selfieImage ? (
+                    <Image
+                      source={{ uri: selfieImage }}
+                      style={[
+                        styles.reviewPreviewImage,
+                        {
+                          height: vscale(140),
+                          borderRadius: scale(12),
+                        },
+                      ]}
+                      resizeMode="contain"
+                    />
+                  ) : null}
+                </View>
+              </View>
+
+              {isResubmit && (
+                <View style={[styles.resubmitWarning, { marginTop: vscale(16), padding: spacing(12), borderRadius: scale(12) }]}>
+                  <Text style={[styles.resubmitWarningText, { fontSize: smallFont(12) }]}>
+                    This is a resubmission. Your previous documents were rejected.
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+
+            <View style={[styles.confirmModalButtons, { marginTop: vscale(16) }]}>
               <TouchableOpacity
-                style={[styles.cancelButton, { paddingVertical: vscale(12), paddingHorizontal: spacing(24), borderRadius: scale(25) }]}
+                style={[styles.cancelButton, { paddingVertical: vscale(12), paddingHorizontal: spacing(20), borderRadius: scale(25), flex: 1 }]}
                 onPress={() => setShowConfirmModal(false)}
+                disabled={isSubmitting}
               >
-                <Text style={[styles.cancelButtonText, { fontSize: bodyFont(16) }]}>Review Again</Text>
+                <Text style={[styles.cancelButtonText, { fontSize: bodyFont(15) }]}>Review Again</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.confirmButton, { paddingVertical: vscale(12), paddingHorizontal: spacing(24), borderRadius: scale(25), marginLeft: spacing(12) }]}
+                style={[
+                  styles.confirmButton,
+                  {
+                    paddingVertical: vscale(12),
+                    paddingHorizontal: spacing(20),
+                    borderRadius: scale(25),
+                    marginLeft: spacing(12),
+                    flex: 1,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: isSubmitting ? 0.9 : 1,
+                  },
+                ]}
                 onPress={confirmSubmit}
+                disabled={isSubmitting}
               >
-                <Text style={[styles.confirmButtonText, { fontSize: bodyFont(16) }]}>Submit Now</Text>
+                {isSubmitting ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: spacing(8) }} />
+                ) : null}
+                <Text style={[styles.confirmButtonText, { fontSize: bodyFont(15) }]}>
+                  {isSubmitting ? 'Submitting…' : 'Submit Now'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1002,6 +1056,24 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#9AE6B4',
     width: '100%',
+  },
+  reviewPreviewSection: {
+    width: '100%',
+  },
+  reviewPreviewCard: {
+    backgroundColor: '#F7FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    width: '100%',
+  },
+  reviewPreviewLabel: {
+    fontFamily: 'Outfit-SemiBold',
+    color: '#2D3748',
+    flex: 1,
+  },
+  reviewPreviewImage: {
+    width: '100%',
+    backgroundColor: '#EDF2F7',
   },
   summaryRow: {
     flexDirection: 'row',

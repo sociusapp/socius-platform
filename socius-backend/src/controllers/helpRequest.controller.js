@@ -169,6 +169,38 @@ const sessionAction = async (req, res, next) => {
   }
 }
 
+const createBorrowItem = async (req, res, next) => {
+  try {
+    const result = await helpRequestService.createBorrowItemRequest(req.user._id, req.params.id, req.body)
+    return created(res, result, 'Borrow item request sent')
+  } catch (err) {
+    next(err)
+  }
+}
+
+const getBorrowItems = async (req, res, next) => {
+  try {
+    const result = await helpRequestService.getBorrowItems(req.user._id, req.params.id)
+    return success(res, result)
+  } catch (err) {
+    next(err)
+  }
+}
+
+const respondBorrowItem = async (req, res, next) => {
+  try {
+    const result = await helpRequestService.respondBorrowItemRequest(
+      req.user._id,
+      req.params.id,
+      req.params.borrowId,
+      req.body
+    )
+    return success(res, result, 'Borrow request updated')
+  } catch (err) {
+    next(err)
+  }
+}
+
 module.exports = {
   createRequest,
   updateRequest,
@@ -181,4 +213,7 @@ module.exports = {
   markAsDelivered,
   getNearbyRequests,
   sessionAction,
+  createBorrowItem,
+  getBorrowItems,
+  respondBorrowItem,
 }

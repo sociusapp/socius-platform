@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import * as Location from 'expo-location';
 import {
   View,
   Text,
@@ -16,8 +17,62 @@ import Button from '../../components/common/Button';
 import Header from '../../components/common/Header';
 import { updateProfile } from '../../services/api/user.api';
 import { loadAuth } from '../../services/storage/asyncStorage.service';
+import { getCurrentPosition, reverseGeocode } from '../../services/location/geolocation.service';
 
 const genderOptions = ['Male', 'Female', 'Other'];
+
+/** Map expo reverseGeocode result into profile address fields (best-effort by region). */
+const mapGeocodeToAddressFields = (place) => {
+  if (!place || typeof place !== 'object') return null;
+  const clean = (v) => (typeof v === 'string' ? v.trim() : '');
+  const city = clean(place.city || place.subLocality);
+  const region = clean(place.region);
+  const postalRaw = clean(place.postalCode);
+  const pinDigits = postalRaw.replace(/\D/g, '').slice(0, 10);
+
+  const street = [clean(place.streetNumber), clean(place.street)].filter(Boolean).join(' ').trim();
+
+  let line1 = street;
+  if (!line1) {
+    const name = clean(place.name);
+    if (name && city && name.toLowerCase() !== city.toLowerCase() && name.toLowerCase() !== region.toLowerCase()) {
+      line1 = name;
+    } else if (name && !city) {
+      line1 = name;
+    }
+  }
+  if (!line1 && place.formattedAddress) {
+    const parts = String(place.formattedAddress)
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    line1 = parts[0] || '';
+  }
+  if (!line1) {
+    line1 = city || region || clean(place.district) || clean(place.subregion) || '';
+  }
+
+  let line2 = '';
+  const district = clean(place.district || place.subregion);
+  if (district && city && district.toLowerCase() !== city.toLowerCase()) {
+    line2 = district;
+  }
+
+  let landmark = '';
+  const poi = clean(place.name);
+  if (poi && line1 && poi.toLowerCase() !== line1.toLowerCase()) {
+    landmark = poi;
+  }
+
+  return {
+    line1,
+    line2,
+    city: city || clean(place.subregion) || '',
+    state: region,
+    pin: pinDigits || postalRaw,
+    landmark,
+  };
+};
 
 const UserProfileScreen = ({ navigation, route }) => {
   // Check if update mode
@@ -30,7 +85,8 @@ const UserProfileScreen = ({ navigation, route }) => {
     const gender = existingProfile?.gender;
     if (gender === 'male') return 'Male';
     if (gender === 'female') return 'Female';
-    return 'Other';
+    if (gender === 'prefer_not_to_say') return 'Other';
+    return 'Male';
   });
   const [addressLine1, setAddressLine1] = useState('');
   const [addressLine2, setAddressLine2] = useState('');
@@ -41,6 +97,7 @@ const UserProfileScreen = ({ navigation, route }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [formError, setFormError] = useState('');
+  const [addressLookupLoading, setAddressLookupLoading] = useState(false);
 
   const [token, setToken] = useState(null);
 
@@ -50,6 +107,52 @@ const UserProfileScreen = ({ navigation, route }) => {
       setToken(accessToken || null);
     };
     loadToken();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const autofillAddressFromLocation = async () => {
+      try {
+        setAddressLookupLoading(true);
+        let { status } = await Location.getForegroundPermissionsAsync();
+        if (status !== 'granted' && !cancelled) {
+          const req = await Location.requestForegroundPermissionsAsync();
+          status = req.status;
+        }
+        if (status !== 'granted' || cancelled) return;
+
+        const pos = await getCurrentPosition({ timeoutMs: 12000, accuracy: Location.Accuracy.Balanced });
+        if (cancelled || !pos?.coords) return;
+
+        const place = await reverseGeocode({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+        });
+        if (cancelled || !place) return;
+
+        const mapped = mapGeocodeToAddressFields(place);
+        if (cancelled || !mapped) return;
+
+        setAddressLine1((prev) => (prev.trim() ? prev : mapped.line1));
+        setAddressLine2((prev) => (prev.trim() ? prev : mapped.line2));
+        setAddressCity((prev) => (prev.trim() ? prev : mapped.city));
+        setAddressState((prev) => (prev.trim() ? prev : mapped.state));
+        setAddressPincodeZip((prev) => (prev.trim() ? prev : mapped.pin));
+        setAddressLandmark((prev) => (prev.trim() ? prev : mapped.landmark));
+      } catch (e) {
+        if (__DEV__) {
+          console.warn('[ProfileInfo] Address autofill:', e?.message || e);
+        }
+      } finally {
+        if (!cancelled) setAddressLookupLoading(false);
+      }
+    };
+
+    autofillAddressFromLocation();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleContinue = async () => {
@@ -195,7 +298,12 @@ const UserProfileScreen = ({ navigation, route }) => {
         <ScrollView
           contentContainerStyle={[
             styles.scrollContent,
-            { alignItems: 'center', paddingHorizontal: spacing(16), paddingTop: vscale(16) },
+            {
+              alignItems: 'center',
+              paddingHorizontal: spacing(16),
+              paddingTop: vscale(16),
+              paddingBottom: vscale(120),
+            },
           ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -395,9 +503,14 @@ const UserProfileScreen = ({ navigation, route }) => {
                   },
                 ]}
               >
-                <Text style={[styles.fieldLabel, { fontSize: ms(14), marginBottom: vscale(7) }]}>
-                  Address
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: vscale(7) }}>
+                  <Text style={[styles.fieldLabel, { fontSize: ms(14), marginBottom: 0 }]}>
+                    Address
+                  </Text>
+                  {addressLookupLoading ? (
+                    <Text style={{ fontSize: ms(12), color: '#64748B', fontWeight: '500' }}>Locating…</Text>
+                  ) : null}
+                </View>
 
                 <View style={{ marginBottom: vscale(8) }}>
                   <TextInput
@@ -453,29 +566,6 @@ const UserProfileScreen = ({ navigation, route }) => {
                     value={addressLine2}
                     onChangeText={(text) => {
                       setAddressLine2(text);
-                    }}
-                    editable={!isLoading}
-                  />
-                </View>
-
-                <View style={{ marginBottom: vscale(8) }}>
-                  <TextInput
-                    style={[
-                      styles.input,
-                      {
-                        borderRadius: scale(11),
-                        paddingHorizontal: spacing(11),
-                        paddingVertical: vscale(9),
-                        fontSize: ms(14),
-                        height: vscale(45),
-                        borderWidth: scale(1),
-                      },
-                    ]}
-                    placeholder="Landmark / directions (optional)"
-                    placeholderTextColor="#CCCCCC"
-                    value={addressLandmark}
-                    onChangeText={(text) => {
-                      setAddressLandmark(text);
                     }}
                     editable={!isLoading}
                   />
@@ -553,7 +643,7 @@ const UserProfileScreen = ({ navigation, route }) => {
                   ) : null}
                 </View>
 
-                <View>
+                <View style={{ marginBottom: vscale(8) }}>
                   <TextInput
                     style={[
                       styles.input,
@@ -590,6 +680,29 @@ const UserProfileScreen = ({ navigation, route }) => {
                       {fieldErrors.addressPincodeZip}
                     </Text>
                   ) : null}
+                </View>
+
+                <View>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      {
+                        borderRadius: scale(11),
+                        paddingHorizontal: spacing(11),
+                        paddingVertical: vscale(9),
+                        fontSize: ms(14),
+                        height: vscale(45),
+                        borderWidth: scale(1),
+                      },
+                    ]}
+                    placeholder="Landmark / directions (optional)"
+                    placeholderTextColor="#CCCCCC"
+                    value={addressLandmark}
+                    onChangeText={(text) => {
+                      setAddressLandmark(text);
+                    }}
+                    editable={!isLoading}
+                  />
                 </View>
               </View>
             </View>

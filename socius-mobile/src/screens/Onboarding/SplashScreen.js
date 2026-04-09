@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useResponsive } from '../../utils/responsive';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loadActiveHelpRequestId, loadActivePresenceAssignmentId, loadAuth } from '../../services/storage/asyncStorage.service';
 import { getHome } from '../../services/api/user.api';
@@ -9,12 +10,14 @@ import notifee from '@notifee/react-native';
 import * as ExpoSplashScreen from 'expo-splash-screen';
 
 /**
- * App bootstrap: keeps native Expo/Android splash visible until we know the next route.
- * Do NOT duplicate branding here — that caused a "double splash" (native + identical RN view).
+ * App bootstrap: native splash is hidden ASAP so Android 12+ doesn’t keep the tiny system icon
+ * on screen for seconds; this screen shows larger branding while auth/route work runs.
  */
 const SplashScreen = () => {
   const navigation = useNavigation();
+  const { width, ms, vscale } = useResponsive();
   const navigatedRef = useRef(false);
+  const logoSize = Math.min(width * 0.72, 420);
   const [logs, setLogs] = useState([]);
   const addLog = (m) => {
     if (!__DEV__) return;
@@ -23,6 +26,8 @@ const SplashScreen = () => {
   };
 
   useEffect(() => {
+    ExpoSplashScreen.hideAsync().catch(() => {});
+
     const hideThenReset = async (routes) => {
       if (navigatedRef.current) return;
       navigatedRef.current = true;
@@ -153,8 +158,31 @@ const SplashScreen = () => {
           ]);
 
           if (helpRes.status === 'fulfilled' && helpRes.value?.success && helpRes.value?.data) {
-            let request = helpRes.value.data;
-            if (request.activeRequest) request = request.activeRequest;
+            const helpPayload = helpRes.value.data || {};
+            const requesterActive = helpPayload?.activeRequest || null;
+            const helperActive = helpPayload?.activeHelp || null;
+
+            // Helper accepted flow: app reopen should land directly on helper meeting map.
+            const helperRequest =
+              helperActive?.request ||
+              helperActive?.requestId ||
+              null;
+            const helperRequestId =
+              helperRequest?._id ||
+              helperRequest?.id ||
+              helperActive?.requestId?._id ||
+              helperActive?.requestId?.id ||
+              helperActive?.requestId ||
+              null;
+            const helperStatus = String(helperActive?.status || helperRequest?.status || '').toLowerCase();
+            const helperActiveStatuses = ['accepted', 'matched', 'active', 'in_progress', 'arrived', 'en_route'];
+            if (helperRequestId && helperActiveStatuses.includes(helperStatus)) {
+              clearTimeout(emergency);
+              await hideThenReset([{ name: 'MatchingMap', params: { requestId: helperRequestId } }]);
+              return;
+            }
+
+            const request = requesterActive;
             const status = String(request?.status || '').toLowerCase();
             const activeStatuses = ['open', 'matching', 'matched', 'active'];
 
@@ -234,6 +262,16 @@ const SplashScreen = () => {
 
   return (
     <View style={styles.container} pointerEvents="box-none">
+      <View style={styles.brandWrap} pointerEvents="none">
+        <Image
+          source={require('../../assets/icons/icon-03.png')}
+          resizeMode="contain"
+          style={{ width: logoSize, height: logoSize }}
+          accessibilityIgnoresInvertColors
+        />
+        <Text style={[styles.brandTitle, { fontSize: ms(34), marginTop: vscale(20) }]}>Socius</Text>
+        <Text style={[styles.brandTag, { fontSize: ms(18), marginTop: vscale(10) }]}>You're not alone.</Text>
+      </View>
       {__DEV__ && (
         <View style={styles.debugBox} pointerEvents="box-none">
           <ScrollView style={{ maxHeight: 120 }}>
@@ -275,6 +313,24 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+  },
+  brandWrap: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  brandTitle: {
+    fontWeight: '700',
+    color: '#1A1C1E',
+    textAlign: 'center',
+  },
+  brandTag: {
+    fontWeight: '400',
+    color: '#42474E',
+    textAlign: 'center',
+    lineHeight: 26,
+    paddingHorizontal: 16,
   },
   debugBox: {
     position: 'absolute',

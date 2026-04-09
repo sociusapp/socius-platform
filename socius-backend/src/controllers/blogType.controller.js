@@ -90,7 +90,7 @@ const createBlogType = async (req, res, next) => {
       await optimizeIconInPlace(req.file.path).catch(() => {})
     }
     
-    const { name, slug, description, color, sortOrder, isActive, iconType } = req.body
+    const { name, slug, description, color, sortOrder, isActive, iconType, iconName } = req.body
     
     const cleanName = String(name || '').trim()
     if (!cleanName) {
@@ -113,11 +113,17 @@ const createBlogType = async (req, res, next) => {
       throw err
     }
     
+    const cleanIconName =
+      typeof iconName === 'string' && String(iconName).trim()
+        ? String(iconName).trim().slice(0, 64)
+        : null
+
     const blogType = await BlogType.create({
       name: cleanName,
       slug: cleanSlug,
       description: typeof description === 'string' ? description.trim() || null : null,
       iconPath: req.file?.path || null,
+      iconName: cleanIconName,
       iconType: iconType || 'image',
       color: typeof color === 'string' ? color.trim() || '#C84D59' : '#C84D59',
       sortOrder: Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : 0,
@@ -145,7 +151,7 @@ const updateBlogType = async (req, res, next) => {
       await optimizeIconInPlace(req.file.path).catch(() => {})
     }
     
-    const { name, slug, description, color, sortOrder, isActive, iconType } = req.body
+    const { name, slug, description, color, sortOrder, isActive, iconType, iconName } = req.body
     
     const blogType = await BlogType.findById(req.params.id)
     if (!blogType) {
@@ -174,6 +180,10 @@ const updateBlogType = async (req, res, next) => {
     if (sortOrder !== undefined) blogType.sortOrder = Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : blogType.sortOrder
     if (typeof isActive === 'boolean') blogType.isActive = isActive
     if (typeof iconType === 'string') blogType.iconType = iconType
+    if (typeof iconName === 'string') {
+      const t = iconName.trim()
+      blogType.iconName = t ? t.slice(0, 64) : null
+    }
     if (req.file?.path) blogType.iconPath = req.file.path
     
     await blogType.save()

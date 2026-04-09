@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Modal } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Modal, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../../components/common/Header';
@@ -8,11 +8,16 @@ import { useResponsive } from '../../../utils/responsive';
 import { api } from '../../../services/api/client';
 import { reverseGeocode, formatLocationLabel } from '../../../services/location/geolocation.service';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
+import { sociusRefreshProps } from '../../../utils/sociusRefreshControl';
 
 const AddDetailsScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
   const helpType = route?.params?.helpType;
   const category = route?.params?.category;
+  const categoryId = route?.params?.categoryId;
+  const categorySlug = route?.params?.categorySlug;
+  const subcategoryId = route?.params?.subcategoryId;
+  const subcategoryTitle = route?.params?.subcategoryTitle;
   const reason = route?.params?.reason;
   const query = route?.params?.query;
   const requestId = route?.params?.requestId;
@@ -22,6 +27,72 @@ const AddDetailsScreen = ({ navigation, route }) => {
   const [dbLocation, setDbLocation] = useState(null);
   const [locationLabel, setLocationLabel] = useState('');
   const [showError, setShowError] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const reloadAvailabilityLocation = useCallback(async () => {
+    try {
+      const auth = await loadAuth();
+      const token = auth?.accessToken;
+
+      if (!token) {
+        setDbLocation(null);
+        setLocationLabel('');
+        return;
+      }
+
+      const response = await api.get('/availability', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const body = response?.data;
+      if (!body?.success) {
+        setDbLocation(null);
+        setLocationLabel('');
+        return;
+      }
+
+      const location = body?.data?.location;
+      const hasLocation =
+        location &&
+        typeof location.lat === 'number' &&
+        typeof location.lng === 'number';
+
+      if (!hasLocation) {
+        setDbLocation(null);
+        setLocationLabel('');
+        return;
+      }
+
+      setDbLocation({ lat: location.lat, lng: location.lng });
+
+      let label = `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`;
+
+      try {
+        const place = await reverseGeocode({
+          latitude: location.lat,
+          longitude: location.lng,
+        });
+        label = formatLocationLabel(place, { fallback: label });
+      } catch (e) {
+      }
+
+      setLocationLabel(label);
+    } catch (e) {
+      setDbLocation(null);
+      setLocationLabel('');
+    }
+  }, []);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await reloadAvailabilityLocation();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [reloadAvailabilityLocation]);
 
   const timeOptions = [
     { id: 1, label: '10–15 minutes' },
@@ -52,64 +123,11 @@ const AddDetailsScreen = ({ navigation, route }) => {
     if (typeof route?.params?.description === 'string') {
       setDescription(route.params.description);
     }
-    const loadDbLocation = async () => {
-      try {
-        const auth = await loadAuth();
-        const token = auth?.accessToken;
+  }, [route?.params?.description]);
 
-        if (!token) {
-          setDbLocation(null);
-          setLocationLabel('');
-          return;
-        }
-
-        const response = await api.get('/availability', {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        const body = response?.data;
-        if (!body?.success) {
-          setDbLocation(null);
-          setLocationLabel('');
-          return;
-        }
-
-        const location = body?.data?.location;
-        const hasLocation =
-          location &&
-          typeof location.lat === 'number' &&
-          typeof location.lng === 'number';
-
-        if (!hasLocation) {
-          setDbLocation(null);
-          setLocationLabel('');
-          return;
-        }
-
-        setDbLocation({ lat: location.lat, lng: location.lng });
-
-        let label = `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`;
-
-        try {
-          const place = await reverseGeocode({
-            latitude: location.lat,
-            longitude: location.lng,
-          });
-          label = formatLocationLabel(place, { fallback: label });
-        } catch (e) {
-        }
-
-        setLocationLabel(label);
-      } catch (e) {
-        setDbLocation(null);
-        setLocationLabel('');
-      }
-    };
-
-    loadDbLocation();
-  }, []);
+  useEffect(() => {
+    reloadAvailabilityLocation();
+  }, [reloadAvailabilityLocation]);
 
   const handleReviewRequest = () => {
     if (!description.trim()) {
@@ -121,6 +139,10 @@ const AddDetailsScreen = ({ navigation, route }) => {
       time: selectedTime,
       helpType,
       category,
+      categoryId,
+      categorySlug,
+      subcategoryId,
+      subcategoryTitle,
       reason,
       query,
       location: dbLocation,
@@ -143,6 +165,7 @@ const AddDetailsScreen = ({ navigation, route }) => {
       <ScrollView 
         contentContainerStyle={[styles.scrollContent, { alignItems: 'center' }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} {...sociusRefreshProps} />}
       >
         <View style={{ width: contentWidth }}>
           {/* Title Section */}
@@ -159,9 +182,9 @@ const AddDetailsScreen = ({ navigation, route }) => {
                 borderWidth: scale(1),
                 paddingHorizontal: spacing(16),
                 paddingVertical: vscale(14),
-                fontSize: ms(15),
+                fontSize: ms(13),
                 minHeight: vscale(80),
-                paddingRight: spacing(60),
+                paddingRight: spacing(20),
                 shadowOffset: { width: 0, height: vscale(2) },
                 shadowRadius: scale(6),
                 elevation: scale(2),
@@ -371,7 +394,7 @@ const styles = StyleSheet.create({
   },
 
   titleSection: {
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
 
   mainTitle: {
@@ -382,6 +405,7 @@ const styles = StyleSheet.create({
   subtitle: {
     fontWeight: '400',
     color: '#666666',
+    textAlign: 'center',
   },
 
   inputContainer: {
@@ -406,11 +430,14 @@ const styles = StyleSheet.create({
   timeSectionTitle: {
     fontWeight: '600',
     color: '#2C3E50',
+    textAlign: 'center',
   },
 
   timeButtonsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
   timeButton: {
@@ -420,7 +447,7 @@ const styles = StyleSheet.create({
 
   timeButtonActive: {
     borderColor: '#DC5C69',
-    backgroundColor: '#FFF5F5',
+    backgroundColor: '#DC5C69',
   },
 
   timeButtonText: {
@@ -428,7 +455,7 @@ const styles = StyleSheet.create({
   },
 
   timeButtonTextActive: {
-    color: '#DC5C69',
+    color: '#FFFFFF',
     fontWeight: '600',
   },
 

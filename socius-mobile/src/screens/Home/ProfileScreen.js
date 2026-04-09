@@ -9,11 +9,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { clearAuth, loadAuth, loadAvailabilityPreference, loadAvailabilityUpdatedAt, loadLastKnownLocation, saveAvailabilityPreference } from '../../services/storage/asyncStorage.service';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getProfile, getHome, updateProfile, getEmergencyContacts, deleteEmergencyContact as apiDeleteEmergencyContact } from '../../services/api/user.api';
+import { logout as logoutApi } from '../../services/api/auth.api';
 import { toggleAvailability } from '../../services/api/incident.api';
 import { requestLocationPermission, getCurrentPosition } from '../../services/location/geolocation.service';
 import { getVerificationStatus } from '../../services/api/verification.api';
 import { baseURL as apiBaseURL } from '../../services/api/client';
 import CustomAlert from '../../components/common/CustomAlert';
+import { getFcmToken } from '../../services/firebase/config';
 
 const ProfileScreen = ({ navigation }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
@@ -82,6 +84,17 @@ const ProfileScreen = ({ navigation }) => {
 
   const performLogout = async () => {
     try {
+      const auth = await loadAuth();
+      const accessToken = auth?.accessToken;
+      if (accessToken) {
+        let deviceToken = null;
+        try {
+          deviceToken = await getFcmToken();
+        } catch (e) {
+          deviceToken = null;
+        }
+        await logoutApi(accessToken, deviceToken).catch(() => {});
+      }
       await clearAuth();
     } catch (e) {
     }

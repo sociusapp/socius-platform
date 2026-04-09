@@ -1,8 +1,7 @@
-import { getHelpRequestById } from '../../../services/api/incident.api';
-import { acceptHelpAsVolunteer } from '../../../services/api/volunteer.api';
-import { loadAuth } from '../../../services/storage/asyncStorage.service';
+import { getHelpRequestById, acceptHelpRequest } from '../../../services/api/dailyHelp.api';
+import { loadAuth, loadDailyHelpSafetyGuideSeen } from '../../../services/storage/asyncStorage.service';
 import { getSocket } from '../../../services/socket/socket.service';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,6 +10,8 @@ import {
   TouchableOpacity,
   Image,
   Modal,
+  RefreshControl,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -20,6 +21,7 @@ import { SkeletonBox, SkeletonCircle, SkeletonSpacer } from '../../../components
 import CustomAlert from '../../../components/common/CustomAlert';
 import { useResponsive } from '../../../utils/responsive';
 import { baseURL } from '../../../services/api/client';
+import { sociusRefreshProps } from '../../../utils/sociusRefreshControl';
 
 const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
@@ -35,22 +37,19 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
   } = route.params || {};
 
   const [loading, setLoading] = useState(false);
+  const [pullRefreshing, setPullRefreshing] = useState(false);
+  const requestDataRef = useRef(null);
   const [requestData, setRequestData] = useState({
     category: paramCategory,
     categoryName: paramCategoryName,
     categoryIcon: paramCategoryIcon,
     description: paramDescription,
     distanceMeters: paramDistance,
-    area: paramArea
+    area: paramArea,
+    requesterTrustSignals: route?.params?.requesterTrustSignals || null,
   });
 
-  // Placeholder for trust signals
-  const [trustSignals, setTrustSignals] = useState({
-    closes_properly: true,
-    returns_on_time: true,
-    helps_others: true,
-    occasional_requester: true,
-  });
+  const trustSignals = requestData?.requesterTrustSignals || {};
 
   const requestId = paramRequestId || requestData?.id || requestData?._id;
 
@@ -66,6 +65,14 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
 
   // Trust Signals Modal State
   const [trustModalVisible, setTrustModalVisible] = useState(false);
+  const [acceptConfirmVisible, setAcceptConfirmVisible] = useState(false);
+  const [acceptLoading, setAcceptLoading] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isDeclining, setIsDeclining] = useState(false);
+
+  useEffect(() => {
+    requestDataRef.current = requestData;
+  }, [requestData]);
 
   const showAlert = (title, message, buttons = [], icon = 'alert-circle-outline', iconColor = '#DC5C69') => {
     setAlertConfig({
@@ -126,11 +133,13 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
     };
   }, [requestId, navigation]);
 
-  useEffect(() => {
-    const fetchRequestDetails = async () => {
-      if (!requestId || (requestData.description && requestData.category)) return;
+  const fetchRequestDetails = useCallback(
+    async ({ force = false, quiet = false } = {}) => {
+      if (!requestId) return;
+      const rd = requestDataRef.current;
+      if (!force && rd?.description && rd?.category) return;
 
-      setLoading(true);
+      if (!quiet) setLoading(true);
       try {
         const auth = await loadAuth();
         const token = auth?.accessToken;
@@ -179,8 +188,7 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
                   text: 'Retry',
                   onPress: () => {
                     closeAlert();
-                    setLoading(true);
-                    fetchRequestDetails();
+                    fetchRequestDetails({ force: true });
                   }
                 }
               ]
@@ -194,20 +202,32 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
             categoryIcon: req.categoryIcon,
             description: req.description,
             distanceMeters: req.distanceMeters || paramDistance, // Keep param distance if available (might be calculated locally)
-            area: req.location?.address || 'Nearby'
+            area: req.location?.address || 'Nearby',
+            requesterTrustSignals: req.requesterTrustSignals || null,
           });
         }
       } catch (error) {
         console.error('Failed to fetch request details', error);
       } finally {
-        setLoading(false);
+        if (!quiet) setLoading(false);
       }
-    };
+    },
+    [requestId, paramDistance, navigation]
+  );
 
-    fetchRequestDetails();
-  }, [requestId]);
+  useEffect(() => {
+    fetchRequestDetails({ force: false });
+  }, [fetchRequestDetails]);
 
-  const [isProcessing, setIsProcessing] = useState(false);
+  const onPullRefresh = useCallback(async () => {
+    setPullRefreshing(true);
+    try {
+      await fetchRequestDetails({ force: true, quiet: true });
+    } finally {
+      setPullRefreshing(false);
+    }
+  }, [fetchRequestDetails]);
+
   const handleOpenDetails = async () => {
     // Check request status before navigating
     if (loading || isProcessing) return;
@@ -289,13 +309,54 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
       setIsProcessing(false);
     }
 
+    try {
+      const authForGuide = await loadAuth();
+      const uid = authForGuide?.userId;
+      if (uid && (await loadDailyHelpSafetyGuideSeen(uid))) {
+        setAcceptConfirmVisible(true);
+        return;
+      }
+    } catch (_) {}
+
     navigation.navigate('DailyHelpSafety', {
       requestId,
-      prefillRequest: requestData
+      prefillRequest: requestDataRef.current || requestData,
     });
   };
 
-  const [isDeclining, setIsDeclining] = useState(false);
+  const handleAcceptFromConfirmModal = async () => {
+    if (!requestId) {
+      Alert.alert('Error', 'Missing Request ID');
+      return;
+    }
+
+    setAcceptLoading(true);
+    try {
+      const auth = await loadAuth();
+      const token = auth?.accessToken;
+      if (!token) {
+        Alert.alert('Error', 'Session expired. Please sign in again.');
+        return;
+      }
+
+      const response = await acceptHelpRequest(token, requestId);
+      if (response?.success) {
+        setAcceptConfirmVisible(false);
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'MatchingMap', params: { requestId, mode: 'helper' } }],
+        });
+      } else {
+        Alert.alert('Error', response?.message || 'Failed to accept request');
+      }
+    } catch (error) {
+      const msg = error?.response?.data?.message || 'Something went wrong. Please try again.';
+      Alert.alert('Error', msg);
+    } finally {
+      setAcceptLoading(false);
+    }
+  };
+
   const handleNotAvailable = async () => {
     if (isDeclining) return;
     try {
@@ -325,6 +386,7 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
           alignItems: 'center'
         }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={pullRefreshing} onRefresh={onPullRefresh} {...sociusRefreshProps} />}
       >
         <View style={{ width: contentWidth }}>
           <Text
@@ -357,8 +419,8 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
               <View style={[styles.summaryRow, { paddingVertical: vscale(4) }]}>
                 <SkeletonCircle size={scale(25)} />
                 <View style={{ flex: 1, marginLeft: spacing(12) }}>
-                  <SkeletonBox height={12} radius={10} style={{ marginBottom: 8 }} />
-                  <SkeletonBox height={12} radius={10} width="70%" />
+                  <SkeletonBox height={12} radius={10} width="45%" style={{ marginBottom: 8 }} />
+                  <SkeletonBox height={10} radius={10} width="35%" />
                 </View>
               </View>
 
@@ -367,8 +429,8 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
               <View style={[styles.summaryRow, { paddingVertical: vscale(4) }]}>
                 <SkeletonCircle size={scale(25)} />
                 <View style={{ flex: 1, marginLeft: spacing(12) }}>
-                  <SkeletonBox height={12} radius={10} width="45%" style={{ marginBottom: 8 }} />
-                  <SkeletonBox height={10} radius={10} width="35%" />
+                  <SkeletonBox height={12} radius={10} style={{ marginBottom: 8 }} />
+                  <SkeletonBox height={12} radius={10} width="70%" />
                 </View>
               </View>
               <SkeletonSpacer height={vscale(6)} />
@@ -390,21 +452,6 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
               ]}
             >
               <View style={[styles.summaryRow, { paddingVertical: vscale(4) }]}>
-                <Icon name="hand-heart" size={scale(25)} color="#5A6F7D" />
-                <Text
-                  style={[
-                    styles.summaryText,
-                    { fontSize: ms(15), marginLeft: spacing(12), flex: 1 },
-                  ]}
-                  numberOfLines={2}
-                >
-                  {requestData.description || 'Someone needs help nearby'}
-                </Text>
-              </View>
-
-              <View style={[styles.summaryDivider, { marginVertical: vscale(6) }]} />
-
-              <View style={[styles.summaryRow, { paddingVertical: vscale(4) }]}>
                 {requestData?.categoryIcon ? (
                   <Image
                     source={{ uri: `${baseURL.replace(/\/api\/?$/, '')}${requestData.categoryIcon}` }}
@@ -417,10 +464,25 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
                 <Text
                   style={[
                     styles.summaryText,
-                    { fontSize: ms(15), marginLeft: spacing(12) },
+                    { fontSize: ms(15), marginLeft: spacing(12), flex: 1 },
                   ]}
                 >
                   {String(requestData?.categoryName || requestData?.category || 'General Help').replace(/_/g, ' ').toUpperCase()}
+                </Text>
+              </View>
+
+              <View style={[styles.summaryDivider, { marginVertical: vscale(6) }]} />
+
+              <View style={[styles.summaryRow, { paddingVertical: vscale(4) }]}>
+                <Icon name="hand-heart" size={scale(25)} color="#5A6F7D" />
+                <Text
+                  style={[
+                    styles.summaryText,
+                    { fontSize: ms(15), marginLeft: spacing(12), flex: 1 },
+                  ]}
+                  numberOfLines={2}
+                >
+                  {requestData.description || 'Someone needs help nearby'}
                 </Text>
               </View>
 
@@ -464,10 +526,22 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
             ]}
           >
             <View style={[styles.trustRow, { justifyContent: 'space-around' }]}>
-              <Image source={require('../../../assets/images/daily-4.png')} style={{ width: scale(48), height: scale(48) }} resizeMode="contain" />
-              <Image source={require('../../../assets/images/daily-3.png')} style={{ width: scale(48), height: scale(48) }} resizeMode="contain" />
-              <Image source={require('../../../assets/images/daily-2.png')} style={{ width: scale(48), height: scale(48) }} resizeMode="contain" />
-              <Image source={require('../../../assets/images/daily-1.png')} style={{ width: scale(48), height: scale(48) }} resizeMode="contain" />
+              <View style={{ alignItems: 'center', opacity: trustSignals?.closes_properly ? 1 : 0.45 }}>
+                <Icon name="check-decagram" size={scale(24)} color={trustSignals?.closes_properly ? '#16A34A' : '#9CA3AF'} />
+                <Text style={{ marginTop: vscale(4), fontSize: ms(11), color: '#64748B' }}>Closes</Text>
+              </View>
+              <View style={{ alignItems: 'center', opacity: trustSignals?.returns_on_time ? 1 : 0.45 }}>
+                <Icon name="clock-check-outline" size={scale(24)} color={trustSignals?.returns_on_time ? '#16A34A' : '#9CA3AF'} />
+                <Text style={{ marginTop: vscale(4), fontSize: ms(11), color: '#64748B' }}>Returns</Text>
+              </View>
+              <View style={{ alignItems: 'center', opacity: trustSignals?.also_helps_others ? 1 : 0.45 }}>
+                <Icon name="hand-heart" size={scale(24)} color={trustSignals?.also_helps_others ? '#F59E0B' : '#9CA3AF'} />
+                <Text style={{ marginTop: vscale(4), fontSize: ms(11), color: '#64748B' }}>Helps</Text>
+              </View>
+              <View style={{ alignItems: 'center', opacity: trustSignals?.occasional_requester ? 1 : 0.45 }}>
+                <Icon name="calendar-check-outline" size={scale(24)} color={trustSignals?.occasional_requester ? '#F59E0B' : '#9CA3AF'} />
+                <Text style={{ marginTop: vscale(4), fontSize: ms(11), color: '#64748B' }}>Occasional</Text>
+              </View>
             </View>
           </View>
 
@@ -540,7 +614,7 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
             </Text>
 
             <View style={[styles.modalItem, { marginBottom: vscale(12) }]}>
-              <Image source={require('../../../assets/images/daily-4.png')} style={{ width: scale(32), height: scale(32), marginRight: spacing(12) }} resizeMode="contain" />
+              <Icon name="check-decagram" size={scale(28)} color={trustSignals?.closes_properly ? '#16A34A' : '#9CA3AF'} style={{ marginRight: spacing(12) }} />
               <View style={{ flex: 1 }}>
                 <Text style={[styles.modalItemTitle, { fontSize: ms(14) }]}>Closes requests properly</Text>
                 <Text style={[styles.modalItemDesc, { fontSize: ms(12) }]}>This person properly completes requests</Text>
@@ -548,7 +622,7 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
             </View>
 
             <View style={[styles.modalItem, { marginBottom: vscale(12) }]}>
-              <Image source={require('../../../assets/images/daily-3.png')} style={{ width: scale(32), height: scale(32), marginRight: spacing(12) }} resizeMode="contain" />
+              <Icon name="clock-check-outline" size={scale(28)} color={trustSignals?.returns_on_time ? '#16A34A' : '#9CA3AF'} style={{ marginRight: spacing(12) }} />
               <View style={{ flex: 1 }}>
                 <Text style={[styles.modalItemTitle, { fontSize: ms(14) }]}>Returns items on time</Text>
                 <Text style={[styles.modalItemDesc, { fontSize: ms(12) }]}>This person returns borrowed items promptly</Text>
@@ -556,7 +630,7 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
             </View>
 
             <View style={[styles.modalItem, { marginBottom: vscale(12) }]}>
-              <Image source={require('../../../assets/images/daily-2.png')} style={{ width: scale(32), height: scale(32), marginRight: spacing(12) }} resizeMode="contain" />
+              <Icon name="hand-heart" size={scale(28)} color={trustSignals?.also_helps_others ? '#F59E0B' : '#9CA3AF'} style={{ marginRight: spacing(12) }} />
               <View style={{ flex: 1 }}>
                 <Text style={[styles.modalItemTitle, { fontSize: ms(14) }]}>Also helps others</Text>
                 <Text style={[styles.modalItemDesc, { fontSize: ms(12) }]}>This person actively helps others in community</Text>
@@ -564,7 +638,7 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
             </View>
 
             <View style={[styles.modalItem, { marginBottom: vscale(20) }]}>
-              <Image source={require('../../../assets/images/daily-1.png')} style={{ width: scale(32), height: scale(32), marginRight: spacing(12) }} resizeMode="contain" />
+              <Icon name="calendar-check-outline" size={scale(28)} color={trustSignals?.occasional_requester ? '#F59E0B' : '#9CA3AF'} style={{ marginRight: spacing(12) }} />
               <View style={{ flex: 1 }}>
                 <Text style={[styles.modalItemTitle, { fontSize: ms(14) }]}>Occasional requester</Text>
                 <Text style={[styles.modalItemDesc, { fontSize: ms(12) }]}>This person requests help occasionally, not frequently</Text>
@@ -578,6 +652,50 @@ const SomeoneNeedsHelpScreen = ({ navigation, route }) => {
             >
               <Text style={[styles.modalCloseText, { fontSize: ms(16) }]}>Got it</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={acceptConfirmVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !acceptLoading && setAcceptConfirmVisible(false)}
+      >
+        <View style={styles.acceptModalOverlay}>
+          <View style={[styles.acceptModalContainer, { padding: spacing(24) }]}>
+            <View style={styles.acceptModalIconWrap}>
+              <Icon name="hand-heart" size={scale(40)} color="#FFFFFF" />
+            </View>
+            <Text style={[styles.acceptModalTitle, { fontSize: ms(22), marginBottom: vscale(12) }]}>
+              Accept Request?
+            </Text>
+            <Text style={[styles.acceptModalMessage, { fontSize: ms(15), marginBottom: vscale(24), lineHeight: vscale(22) }]}>
+              Are you sure you want to help? You should be nearby and able to assist.
+            </Text>
+            <View style={styles.acceptModalActions}>
+              <TouchableOpacity
+                style={[styles.acceptModalCancelBtn, { paddingVertical: vscale(14), borderRadius: scale(12) }]}
+                onPress={() => setAcceptConfirmVisible(false)}
+                disabled={acceptLoading}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.acceptModalCancelText, { fontSize: ms(16) }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.acceptModalAcceptBtn,
+                  { paddingVertical: vscale(14), borderRadius: scale(12), opacity: acceptLoading ? 0.7 : 1 },
+                ]}
+                onPress={handleAcceptFromConfirmModal}
+                disabled={acceptLoading}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.acceptModalAcceptText, { fontSize: ms(16) }]}>
+                  {acceptLoading ? 'Processing...' : 'Accept'}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -709,6 +827,77 @@ const styles = StyleSheet.create({
   modalCloseText: {
     color: '#FFFFFF',
     fontWeight: '600',
+  },
+
+  acceptModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  acceptModalContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  acceptModalIconWrap: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#D84D42',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+    shadowColor: '#D84D42',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  acceptModalTitle: {
+    fontWeight: '700',
+    color: '#1E293B',
+    textAlign: 'center',
+  },
+  acceptModalMessage: {
+    color: '#64748B',
+    textAlign: 'center',
+  },
+  acceptModalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  acceptModalCancelBtn: {
+    flex: 1,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+  },
+  acceptModalCancelText: {
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  acceptModalAcceptBtn: {
+    flex: 1,
+    backgroundColor: '#D84D42',
+    alignItems: 'center',
+    shadowColor: '#D84D42',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  acceptModalAcceptText: {
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });
 

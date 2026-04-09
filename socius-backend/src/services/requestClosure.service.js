@@ -78,6 +78,7 @@ const initiateClosure = async (userId, { requestId, rating, feedback }) => {
       noReplyAfterAccept: !!feedback?.noReplyAfterAccept,
       itemIssue: !!feedback?.itemIssue,
       itemIssueDescription: feedback?.itemIssueDescription || null,
+      notes: feedback?.notes || null,
       evidencePhotos: Array.isArray(feedback?.evidencePhotos) ? feedback.evidencePhotos : []
     }
     // Flags

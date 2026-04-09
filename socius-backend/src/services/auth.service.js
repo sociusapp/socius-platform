@@ -221,6 +221,15 @@ const developerPasswordLogin = async ({ email, password }) => {
 
 const saveDeviceToken = async (userId, token, platform, meta = {}) => {
   try {
+    // If deviceId is known, ensure this physical device belongs to one user at a time.
+    // This prevents stale token records from previous accounts on same phone.
+    if (meta.deviceId) {
+      await DeviceToken.updateMany(
+        { deviceId: meta.deviceId, userId: { $ne: userId }, isActive: true },
+        { $set: { isActive: false, invalidatedAt: new Date() } }
+      )
+    }
+
     const update = {
       userId,
       token,
@@ -246,9 +255,15 @@ const saveDeviceToken = async (userId, token, platform, meta = {}) => {
 
 const logout = async ({ userId, deviceToken }) => {
   if (deviceToken) {
-    await DeviceToken.findOneAndUpdate(
+    await DeviceToken.updateMany(
       { token: deviceToken, userId },
-      { isActive: false, invalidatedAt: new Date() }
+      { $set: { isActive: false, invalidatedAt: new Date() } }
+    )
+  } else {
+    // Defensive fallback: if client cannot provide token, log out all active tokens for this user.
+    await DeviceToken.updateMany(
+      { userId, isActive: true },
+      { $set: { isActive: false, invalidatedAt: new Date() } }
     )
   }
   logger.info(`User logged out: ${userId}`)

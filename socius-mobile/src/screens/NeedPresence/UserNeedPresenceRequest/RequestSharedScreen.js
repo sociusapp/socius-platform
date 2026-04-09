@@ -11,7 +11,7 @@ import Animated, {
   Easing 
 } from 'react-native-reanimated';
 import { useResponsive } from '../../../utils/responsive';
-import { cancelPresenceRequest, getActivePresenceRequest } from '../../../services/api/incident.api';
+import { cancelPresenceRequest, getActivePresenceRequest } from '../../../services/api/needPresence.api';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
 import CustomAlert from '../../../components/common/CustomAlert';
 import PulseDot from '../../../components/common/PulseDot';

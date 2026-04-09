@@ -1,8 +1,11 @@
 const HelpRequest = require('../models/HelpRequest')
 const HelpMatch = require('../models/HelpMatch')
+const HelpBorrowItem = require('../models/HelpBorrowItem')
 const Verification = require('../models/Verification')
 const PresenceRequest = require('../models/PresenceRequest')
 const HelpCategory = require('../models/HelpCategory')
+const Badge = require('../models/Badge')
+const User = require('../models/User')
 const { findHelpersForRequest } = require('./location.service')
 const {
   sendHelpRequestAlert,
@@ -12,6 +15,7 @@ const {
   sendNoHelpersNearbyNotification,
   sendHelperArrivedNotification,
   sendHelperSessionExtendedNotification,
+  sendBorrowItemRequestNotification,
 } = require('./notification.service')
 const { findNearbyAvailableUsers } = require('../utils/geoQuery')
 const { parseRequestedDurationMinutes } = require('../utils/helpDuration')
@@ -54,7 +58,7 @@ const attachCategoryMeta = async (categorySlug) => {
 const { updateCommunityBalance } = require('./communityBalance.service')
 const chatService = require('./chat.service')
 const { emitToUser } = require('../config/socket')
-const { HELP_REQUEST_STATUS, HELP_MATCH_STATUS, PRESENCE_STATUS, GEO, AUTO_CLOSE } = require('../utils/constants')
+const { HELP_REQUEST_STATUS, HELP_MATCH_STATUS, PRESENCE_STATUS, GEO, AUTO_CLOSE, BADGE_TYPE } = require('../utils/constants')
 const logger = require('../utils/logger')
 const { logRequestAttempt } = require('./requestAttempt.service')
 
@@ -76,6 +80,34 @@ const computeHelpRequestStats = async (requestId) => {
   }
 }
 
+const buildTrustSignalsForUser = async (userId) => {
+  if (!userId) {
+    return {
+      closes_properly: false,
+      returns_on_time: false,
+      also_helps_others: false,
+      occasional_requester: false,
+      new_user: true,
+    }
+  }
+  const [badges, userDoc] = await Promise.all([
+    Badge.find({ userId, isActive: true }).select('type').lean(),
+    User.findById(userId).select('createdAt').lean(),
+  ])
+
+  const types = new Set((badges || []).map((b) => String(b.type || '')))
+  const createdAtMs = userDoc?.createdAt ? new Date(userDoc.createdAt).getTime() : Date.now()
+  const ageDays = Math.max(0, Math.floor((Date.now() - createdAtMs) / (24 * 60 * 60 * 1000)))
+
+  return {
+    closes_properly: types.has(BADGE_TYPE.CLOSES_PROPERLY),
+    returns_on_time: types.has(BADGE_TYPE.RETURNS_ON_TIME),
+    also_helps_others: types.has(BADGE_TYPE.ALSO_HELPS_OTHERS),
+    occasional_requester: types.has(BADGE_TYPE.OCCASIONAL_REQUESTER),
+    new_user: ageDays <= 30,
+  }
+}
+
 const emitHelpRequestStatsUpdate = async ({ requestId, requesterId, type, extra = {} }) => {
   try {
     const stats = await computeHelpRequestStats(requestId)
@@ -90,7 +122,7 @@ const emitHelpRequestStatsUpdate = async ({ requestId, requesterId, type, extra 
   }
 }
 
-const updateRequest = async (requesterId, requestId, { category, description, time, location, itemReturnRequired }) => {
+const updateRequest = async (requesterId, requestId, { category, categoryId, subcategoryId, description, time, location, itemReturnRequired }) => {
   const allowedStatuses = [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING]
 
   const set = {}
@@ -99,6 +131,10 @@ const updateRequest = async (requesterId, requestId, { category, description, ti
     const meta = await attachCategoryMeta(category)
     set.categoryName = meta.categoryName
     set.categoryIcon = meta.categoryIcon
+  }
+  if (typeof categoryId === 'string' && categoryId.trim()) set.categoryId = categoryId
+  if (subcategoryId !== undefined) {
+    set.subcategoryId = typeof subcategoryId === 'string' && subcategoryId.trim() ? subcategoryId : null
   }
   if (typeof description === 'string') set.description = description
   if (typeof time === 'string') set.requestedDurationLabel = time || null
@@ -142,7 +178,7 @@ const updateRequest = async (requesterId, requestId, { category, description, ti
 /**
  * Naya help request create karo + helpers notify karo
  */
-const createRequest = async (requesterId, { category, description, time, location, itemReturnRequired }, meta = null) => {
+const createRequest = async (requesterId, { category, categoryId, subcategoryId, description, time, location, itemReturnRequired }, meta = null) => {
   logger.info(`[HelpRequest] createRequest by=${requesterId} cat=${category} loc=(${location?.lng},${location?.lat})`)
   
   // Check ALL requests for this user (not just active ones) for debugging
@@ -206,12 +242,16 @@ const createRequest = async (requesterId, { category, description, time, locatio
   const autoCloseAt = new Date(Date.now() + AUTO_CLOSE.HELP_REQUEST_MINUTES * 60 * 1000)
 
   // Nearby helpers dhundho
+  const requesterIdStr = String(requesterId)
   let helpers = await findHelpersForRequest({
     lng: location.lng,
     lat: location.lat,
     category,
     excludeIds: [requesterId],
   })
+
+  // Safety guard: requester should never receive their own incoming help alert.
+  helpers = helpers.filter((h) => String(h?._id) !== requesterIdStr)
 
   logger.info(`Helpers found: ${helpers.length} for potential req`)
 
@@ -291,6 +331,8 @@ const createRequest = async (requesterId, { category, description, time, locatio
   const request = await HelpRequest.create({
     requesterId,
     category,
+    categoryId: categoryId || null,
+    subcategoryId: subcategoryId || null,
     description,
     categoryName: categoryMeta.categoryName,
     categoryIcon: categoryMeta.categoryIcon,
@@ -353,9 +395,11 @@ const createRequest = async (requesterId, { category, description, time, locatio
     }
 
     for (const h of helpers) {
+      if (String(h?._id) === requesterIdStr) continue
       try {
         emitToUser(String(h._id), 'help:incoming_request', {
           requestId: String(request._id),
+          requesterId: requesterIdStr,
           category: request.category || '',
           categoryName: request.categoryName || '',
           categoryIcon: request.categoryIcon || '',
@@ -748,6 +792,7 @@ const getRequestById = async (requestId, userId) => {
       request.requesterId.profileImage = normalizeProfileImage(ver.selfie.fileUrl);
     }
   }
+  request.requesterTrustSignals = await buildTrustSignalsForUser(request.requesterId?._id || request.requesterId)
 
   const match = await HelpMatch.findOne({
     requestId,
@@ -784,6 +829,7 @@ const getRequestById = async (requestId, userId) => {
         const ver = await Verification.findOne({ userId: match.helperId }).select('selfie');
         if (ver?.selfie?.fileUrl) volunteer.profileImage = normalizeProfileImage(ver.selfie.fileUrl);
       }
+      volunteer.trustSignals = await buildTrustSignalsForUser(match.helperId)
     }
   } else if (String(request.requesterId._id) === String(userId)) {
     // If requester is viewing, find accepted match
@@ -799,6 +845,7 @@ const getRequestById = async (requestId, userId) => {
           const ver = await Verification.findOne({ userId: acceptedMatch.helperId }).select('selfie');
           if (ver?.selfie?.fileUrl) volunteer.profileImage = normalizeProfileImage(ver.selfie.fileUrl);
         }
+        volunteer.trustSignals = await buildTrustSignalsForUser(acceptedMatch.helperId)
       }
     }
   }
@@ -855,6 +902,7 @@ const getMyActiveRequest = async (userId) => {
         requesterData.requesterId.profileImage = normalizeProfileImage(ver.selfie.fileUrl);
       }
     }
+    requesterData.requesterTrustSignals = await buildTrustSignalsForUser(requesterData.requesterId?._id || requesterData.requesterId)
   }
 
   // 2. Check if user is a helper (Helping someone else)
@@ -882,6 +930,7 @@ const getMyActiveRequest = async (userId) => {
         reqObj.requesterId.profileImage = normalizeProfileImage(ver.selfie.fileUrl);
       }
     }
+    reqObj.requesterTrustSignals = await buildTrustSignalsForUser(reqObj.requesterId?._id || reqObj.requesterId)
 
     helperData = {
       matchId: activeHelpMatch._id,
@@ -1150,6 +1199,140 @@ const extendHelpSession = async (requesterId, requestId, additionalMinutes) => {
   return { request: updated }
 }
 
+const getAcceptedMatchForRequest = async (requestId) => {
+  return HelpMatch.findOne({ requestId, status: HELP_MATCH_STATUS.ACCEPTED }).select('helperId')
+}
+
+const createBorrowItemRequest = async (requesterId, requestId, { itemName, note, requestedMinutes, imageUrl }) => {
+  const request = await HelpRequest.findById(requestId).select('_id requesterId status')
+  if (!request) {
+    const err = new Error('Request not found')
+    err.statusCode = 404
+    throw err
+  }
+  if (String(request.requesterId) !== String(requesterId)) {
+    const err = new Error('Forbidden')
+    err.statusCode = 403
+    throw err
+  }
+  if (![HELP_REQUEST_STATUS.MATCHED, HELP_REQUEST_STATUS.ACTIVE].includes(String(request.status || '').toLowerCase())) {
+    const err = new Error('Request is not active for borrow items')
+    err.statusCode = 409
+    throw err
+  }
+
+  const acceptedMatch = await getAcceptedMatchForRequest(requestId)
+  if (!acceptedMatch?.helperId) {
+    const err = new Error('No active helper assigned')
+    err.statusCode = 409
+    throw err
+  }
+
+  const doc = await HelpBorrowItem.create({
+    requestId,
+    requesterId,
+    helperId: acceptedMatch.helperId,
+    itemName,
+    note: note || '',
+    requestedMinutes: Number(requestedMinutes),
+    imageUrl: imageUrl || '',
+    status: 'pending',
+  })
+
+  const payload = {
+    borrowId: String(doc._id),
+    requestId: String(requestId),
+    requesterId: String(requesterId),
+    helperId: String(acceptedMatch.helperId),
+    itemName: doc.itemName,
+    note: doc.note || '',
+    requestedMinutes: String(doc.requestedMinutes),
+    imageUrl: doc.imageUrl || '',
+    status: doc.status,
+    createdAt: doc.createdAt ? doc.createdAt.toISOString() : new Date().toISOString(),
+  }
+
+  try {
+    emitToUser(String(acceptedMatch.helperId), 'help:borrow_requested', payload)
+  } catch (e) {
+    logger.error('help:borrow_requested emit failed', e)
+  }
+
+  try {
+    const requester = await require('../models/User').findById(requesterId).select('fullName')
+    await sendBorrowItemRequestNotification(String(acceptedMatch.helperId), {
+      ...payload,
+      requesterName: requester?.fullName || 'Requester',
+    })
+  } catch (e) {
+    logger.error('sendBorrowItemRequestNotification failed', e)
+  }
+
+  return { item: doc }
+}
+
+const getBorrowItems = async (userId, requestId) => {
+  const request = await HelpRequest.findById(requestId).select('_id requesterId status')
+  if (!request) {
+    const err = new Error('Request not found')
+    err.statusCode = 404
+    throw err
+  }
+  const acceptedMatch = await getAcceptedMatchForRequest(requestId)
+  const helperId = acceptedMatch?.helperId ? String(acceptedMatch.helperId) : ''
+  const allowed =
+    String(request.requesterId) === String(userId) ||
+    (helperId && helperId === String(userId))
+  if (!allowed) {
+    const err = new Error('Forbidden')
+    err.statusCode = 403
+    throw err
+  }
+
+  const items = await HelpBorrowItem.find({ requestId })
+    .sort({ createdAt: -1 })
+    .lean()
+  return { items }
+}
+
+const respondBorrowItemRequest = async (helperId, requestId, borrowId, { action }) => {
+  const acceptedMatch = await getAcceptedMatchForRequest(requestId)
+  if (!acceptedMatch?.helperId || String(acceptedMatch.helperId) !== String(helperId)) {
+    const err = new Error('Only current helper can respond')
+    err.statusCode = 403
+    throw err
+  }
+
+  const status = action === 'accept' ? 'accepted' : 'declined'
+  const item = await HelpBorrowItem.findOneAndUpdate(
+    { _id: borrowId, requestId, helperId, status: 'pending' },
+    { $set: { status, actedAt: new Date(), actedBy: helperId } },
+    { new: true }
+  )
+  if (!item) {
+    const err = new Error('Borrow request not found or already handled')
+    err.statusCode = 404
+    throw err
+  }
+
+  const responsePayload = {
+    borrowId: String(item._id),
+    requestId: String(requestId),
+    status: item.status,
+    actedAt: item.actedAt ? item.actedAt.toISOString() : new Date().toISOString(),
+    helperId: String(helperId),
+  }
+
+  try {
+    emitToUser(String(item.requesterId), 'help:borrow_response', responsePayload)
+    emitToUser(String(helperId), 'help:borrow_response', responsePayload)
+  } catch (e) {
+    logger.error('help:borrow_response emit failed', e)
+  }
+
+  return { item }
+}
+
 module.exports = {
   createRequest,
   updateRequest,
@@ -1161,4 +1344,7 @@ module.exports = {
   markAsDelivered,
   getNearbyHelpRequests,
   extendHelpSession,
+  createBorrowItemRequest,
+  getBorrowItems,
+  respondBorrowItemRequest,
 }

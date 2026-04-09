@@ -1,13 +1,15 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../components/common/Header';
 import Button from '../../components/common/Button';
 import { useResponsive } from '../../utils/responsive';
+import { sociusRefreshProps, useStaticPullRefresh } from '../../utils/sociusRefreshControl';
 
 const StartConcernScreen = ({ navigation }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
+  const { refreshing, onRefresh } = useStaticPullRefresh();
 
   const handleOpenReport = () => navigation.navigate('ReportConcern');
 
@@ -30,6 +32,7 @@ const StartConcernScreen = ({ navigation }) => {
           alignItems: 'center'
         }]} 
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} {...sociusRefreshProps} />}
       >
         <View style={{ width: contentWidth }}>
           <Text style={[styles.pageTitle, { fontSize: ms(22), marginBottom: vscale(8) }]}>Community Awareness</Text>

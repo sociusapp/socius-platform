@@ -11,12 +11,22 @@ const {
   getNearbyPresenceRequests,
   updatePresenceRequest,
 } = require('../controllers/presence.controller')
+const {
+  listPublicCategories,
+  listPublicItems,
+} = require('../controllers/presenceCatalog.controller')
 const { authenticate, requireActive } = require('../middlewares/auth')
 const { validate, schemas } = require('../middlewares/validate')
 const { presenceLimiter } = require('../middlewares/rateLimiter')
 
 // GET /api/presence/nearby
 router.get('/nearby', authenticate, validate(schemas.nearbyPresenceQuery, 'query'), getNearbyPresenceRequests)
+
+// GET /api/presence/categories
+router.get('/categories', authenticate, listPublicCategories)
+
+// GET /api/presence/items?categoryId={id}
+router.get('/items', authenticate, listPublicItems)
 
 // GET /api/presence/active
 router.get('/active', authenticate, getActivePresenceRequest)

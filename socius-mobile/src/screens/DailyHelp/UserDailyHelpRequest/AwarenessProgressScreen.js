@@ -1,13 +1,15 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Button from '../../../components/common/Button';
 import Header from '../../../components/common/Header';
 import { useResponsive } from '../../../utils/responsive';
+import { sociusRefreshProps, useStaticPullRefresh } from '../../../utils/sociusRefreshControl';
 
 const AwarenessProgressScreen = ({ navigation }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
+  const { refreshing, onRefresh } = useStaticPullRefresh();
   const handleBackHome = () =>
     navigation.reset({
       index: 0,
@@ -35,6 +37,7 @@ const AwarenessProgressScreen = ({ navigation }) => {
       <ScrollView 
         contentContainerStyle={[styles.scroll, { alignItems: 'center' }]} 
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} {...sociusRefreshProps} />}
       >
         <View style={{ width: contentWidth }}>
           <View style={[styles.progressHero, { marginBottom: vscale(16) }]}>

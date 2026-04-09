@@ -32,8 +32,20 @@ const {
 const { authenticate } = require('../middlewares/auth')
 const { requireAdmin } = require('../middlewares/admin')
 const { validate, schemas } = require('../middlewares/validate')
-const { uploadHelpCategoryIcon } = require('../middlewares/upload')
+const {
+  uploadHelpCategoryIcon,
+  uploadPresenceCategoryIcon,
+  uploadPresenceItemIcon,
+  uploadHelpCatalogItemIcon,
+  uploadPrepareCardImage,
+} = require('../middlewares/upload')
 const helpCategoryController = require('../controllers/helpCategory.controller')
+const presenceCatalogController = require('../controllers/presenceCatalog.controller')
+const helpCatalogController = require('../controllers/helpCatalog.controller')
+const helpSubcategoryController = require('../controllers/helpSubcategory.controller')
+const prepareCardsController = require('../controllers/prepareCards.controller')
+const prepareLearnController = require('../controllers/prepareLearn.controller')
+const communitySurveyController = require('../controllers/communitySurvey.controller')
 
 // All admin routes require auth + admin role
 router.use(authenticate, requireAdmin)
@@ -133,5 +145,58 @@ router.get('/help-categories/:id', helpCategoryController.getAdmin)
 router.put('/help-categories/:id', uploadHelpCategoryIcon, validate(schemas.adminUpdateHelpCategory), helpCategoryController.updateAdmin)
 router.patch('/help-categories/:id', uploadHelpCategoryIcon, validate(schemas.adminUpdateHelpCategory), helpCategoryController.updateAdmin)
 router.delete('/help-categories/:id', helpCategoryController.deleteAdmin)
+
+// ─── DailyHelp catalog items (per HelpCategory) ──────────────
+router.get('/help-catalog-items', helpCatalogController.listAdminHelpItems)
+router.post('/help-catalog-items', uploadHelpCatalogItemIcon, helpCatalogController.createHelpItem)
+router.put('/help-catalog-items/:id', uploadHelpCatalogItemIcon, helpCatalogController.updateHelpItem)
+router.patch('/help-catalog-items/:id', uploadHelpCatalogItemIcon, helpCatalogController.updateHelpItem)
+router.delete('/help-catalog-items/:id', helpCatalogController.deleteHelpItem)
+
+// ─── DailyHelp Sub-categories (per category) ─────────────────
+router.get('/help-subcategories', helpSubcategoryController.listAdmin)
+router.post('/help-subcategories', validate(schemas.adminCreateHelpSubcategory), helpSubcategoryController.createAdmin)
+router.put('/help-subcategories/:id', validate(schemas.adminUpdateHelpSubcategory), helpSubcategoryController.updateAdmin)
+router.patch('/help-subcategories/:id', validate(schemas.adminUpdateHelpSubcategory), helpSubcategoryController.updateAdmin)
+router.delete('/help-subcategories/:id', helpSubcategoryController.deleteAdmin)
+
+// ─── Presence Catalog (Categories + Items) ─────────────────
+router.get('/presence-categories', presenceCatalogController.listAdminCategories)
+router.post('/presence-categories', uploadPresenceCategoryIcon, presenceCatalogController.createCategory)
+router.put('/presence-categories/:id', uploadPresenceCategoryIcon, presenceCatalogController.updateCategory)
+router.patch('/presence-categories/:id', uploadPresenceCategoryIcon, presenceCatalogController.updateCategory)
+router.delete('/presence-categories/:id', presenceCatalogController.deleteCategory)
+
+router.get('/presence-items', presenceCatalogController.listAdminItems)
+router.post('/presence-items', uploadPresenceItemIcon, presenceCatalogController.createItem)
+router.put('/presence-items/:id', uploadPresenceItemIcon, presenceCatalogController.updateItem)
+router.patch('/presence-items/:id', uploadPresenceItemIcon, presenceCatalogController.updateItem)
+router.delete('/presence-items/:id', presenceCatalogController.deleteItem)
+
+// ─── Prepare tab (mobile "Prepare & Stay Ready" cards) ─────
+// Register /reorder BEFORE /:id so "reorder" is never captured as an id
+router.post('/prepare-cards/reorder', prepareCardsController.reorderAdmin)
+router.get('/prepare-cards', prepareCardsController.listAdmin)
+router.post('/prepare-cards', uploadPrepareCardImage, prepareCardsController.createAdmin)
+// Learn more (literal paths — MUST stay before /prepare-cards/:id)
+router.get('/prepare-cards/learn-more', prepareLearnController.getAdmin)
+router.patch('/prepare-cards/learn-more/settings', prepareLearnController.patchSettingsAdmin)
+router.post('/prepare-cards/learn-more/chips/reorder', prepareLearnController.reorderChipsAdmin)
+router.post('/prepare-cards/learn-more/chips', prepareLearnController.createChipAdmin)
+router.patch('/prepare-cards/learn-more/chips/:chipId', prepareLearnController.updateChipAdmin)
+router.delete('/prepare-cards/learn-more/chips/:chipId', prepareLearnController.deleteChipAdmin)
+// Only 24-char hex Mongo ids — avoids /learn-more being treated as :id if route order regresses
+const prepareCardId = ':id([0-9a-fA-F]{24})'
+router.get(`/prepare-cards/${prepareCardId}`, prepareCardsController.getAdminById)
+router.put(`/prepare-cards/${prepareCardId}`, uploadPrepareCardImage, prepareCardsController.updateAdmin)
+router.patch(`/prepare-cards/${prepareCardId}`, uploadPrepareCardImage, prepareCardsController.updateAdmin)
+router.delete(`/prepare-cards/${prepareCardId}`, prepareCardsController.deleteAdmin)
+
+// ─── Community survey (Community tab / mobile) ─────────────
+router.get('/community-survey/questions', communitySurveyController.listAdmin)
+router.get('/community-survey/votes', communitySurveyController.listVotesAdmin)
+router.post('/community-survey/questions', communitySurveyController.createAdmin)
+router.put('/community-survey/questions/:id', communitySurveyController.updateAdmin)
+router.delete('/community-survey/questions/:id', communitySurveyController.deleteAdmin)
 
 module.exports = router

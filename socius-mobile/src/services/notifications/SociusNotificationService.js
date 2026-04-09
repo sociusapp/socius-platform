@@ -69,8 +69,8 @@ export const displaySociusUpdateNotification = async (rawData) => {
       title = 'Return time ended';
       body =
         'The agreed item return time has ended. Open Socius to follow up with the requester.';
-      channelId = CHANNELS.UPDATES;
-      importance = AndroidImportance.DEFAULT;
+      channelId = CHANNELS.HELP_ALARM;
+      importance = AndroidImportance.HIGH;
       break;
     case 'HELP_SESSION_EXTENDED_HELPER':
       title = 'Session extended';
@@ -80,6 +80,16 @@ export const displaySociusUpdateNotification = async (rawData) => {
       channelId = CHANNELS.UPDATES;
       importance = AndroidImportance.DEFAULT;
       break;
+    case 'BORROW_ITEM_REQUEST': {
+      const item = String(data.itemName || 'Requested item').trim();
+      const mins = Number(data.requestedMinutes || 0);
+      const minsText = Number.isFinite(mins) && mins > 0 ? `${mins} min` : 'custom time';
+      title = 'Borrow item request';
+      body = `${item} • ${minsText}`;
+      if (data.note) body = `${body}\n${String(data.note).slice(0, 80)}`;
+      importance = AndroidImportance.HIGH;
+      break;
+    }
     case 'REVIEW_DECISION': {
       const approved = String(data.approved || '').toLowerCase() === 'true';
       title = approved ? 'Verification approved' : 'Verification update';
@@ -132,13 +142,29 @@ export const displayAndroidForegroundIncomingHeadsUp = async (kind, rawData = {}
   // Keep high alarm behavior in header tray as requested.
   const channelId = isHelp ? CHANNELS.HELP_ALARM : CHANNELS.PRESENCE_ALARM;
   const title = isHelp ? 'Someone nearby needs help' : 'Presence alert nearby';
-  const body = String(
-    isHelp
-      ? data.description || data.categoryName || data.category || 'Open to view details'
-      : data.description || data.situation || data.situationType || 'Someone needs awareness nearby'
-  )
+  const itemName = String(data.categoryName || data.category || data.situationType || 'Help request')
+    .replace(/_/g, ' ')
     .trim()
-    .slice(0, 220);
+    .slice(0, 70);
+  const area = String(data.area || data.locationLabel || data.cityArea || '').trim();
+  const rawDistance = Number(data.distanceMeters ?? data.distance_meters ?? data.distance);
+  const distanceLabel = Number.isFinite(rawDistance) && rawDistance > 0
+    ? rawDistance < 1000
+      ? `${Math.round(rawDistance)}m away`
+      : `${(rawDistance / 1000).toFixed(1)}km away`
+    : '';
+  const itemLine = `Items: ${itemName || 'Help request'}`;
+  const locationValue = [area, distanceLabel].filter(Boolean).join(' • ');
+  const locationLine = `Location: ${locationValue || 'Nearby'}`;
+  const body = [itemLine, locationLine].join('\n').slice(0, 260);
+  const categoryIconPath = String(data.categoryIcon || '').trim();
+  const root = String(baseURL || '').replace(/\/api\/?$/, '');
+  const largeIcon =
+    categoryIconPath.length > 0
+      ? categoryIconPath.startsWith('http://') || categoryIconPath.startsWith('https://')
+        ? categoryIconPath
+        : `${root}${categoryIconPath.startsWith('/') ? '' : '/'}${categoryIconPath}`
+      : undefined;
   const notifType = isHelp ? 'help_request' : 'presence_alarm';
   const notifData = Object.fromEntries(
     Object.entries({
@@ -157,14 +183,18 @@ export const displayAndroidForegroundIncomingHeadsUp = async (kind, rawData = {}
         category: AndroidCategory.CALL,
         importance: AndroidImportance.HIGH,
         visibility: AndroidVisibility.PUBLIC,
+        ongoing: true,
+        autoCancel: false,
+        style: { type: AndroidStyle.BIGTEXT, text: body || title },
         pressAction: { id: 'default', launchActivity: 'default' },
+        ...(largeIcon ? { largeIcon } : {}),
         actions: [
           {
             title: 'Not available',
             pressAction: { id: isHelp ? 'decline_help' : 'decline_presence', launchActivity: 'default' },
           },
           {
-            title: 'View',
+            title: 'view',
             pressAction: { id: 'default', launchActivity: 'default' },
           },
         ],
@@ -174,6 +204,51 @@ export const displayAndroidForegroundIncomingHeadsUp = async (kind, rawData = {}
   } catch (e) {
     console.warn('[Notifee] displayAndroidForegroundIncomingHeadsUp failed', e);
   }
+};
+
+export const displayBorrowItemActionNotification = async (rawData = {}) => {
+  if (Platform.OS !== 'android') return;
+  const data = rawData || {};
+  const requestId = String(data.requestId || '');
+  const borrowId = String(data.borrowId || '');
+  if (!requestId || !borrowId) return;
+  await initNotifeeChannels();
+  const itemName = String(data.itemName || 'Requested item').trim();
+  const mins = Number(data.requestedMinutes || 0);
+  const minsText = Number.isFinite(mins) && mins > 0 ? `${mins} min` : 'custom time';
+  const note = String(data.note || '').trim();
+  const body = note
+    ? `${itemName} • ${minsText}\n${note}`.slice(0, 260)
+    : `${itemName} • ${minsText}`;
+  const notifData = Object.fromEntries(
+    Object.entries({
+      ...data,
+      type: 'borrow_item_request',
+      requestId,
+      borrowId,
+    }).map(([k, v]) => [k, v != null ? String(v) : ''])
+  );
+  await notifee.displayNotification({
+    id: `borrow_req_${borrowId}`.slice(0, 120),
+    title: 'Borrow item request',
+    body,
+    android: {
+      channelId: CHANNELS.HELP_ALARM,
+      category: AndroidCategory.CALL,
+      importance: AndroidImportance.HIGH,
+      visibility: AndroidVisibility.PUBLIC,
+      ongoing: true,
+      autoCancel: false,
+      style: { type: AndroidStyle.BIGTEXT, text: body },
+      pressAction: { id: 'default', launchActivity: 'default' },
+      actions: [
+        { title: 'View', pressAction: { id: 'borrow_view', launchActivity: 'default' } },
+        { title: 'Accept', pressAction: { id: 'borrow_accept', launchActivity: 'default' } },
+        { title: 'Decline', pressAction: { id: 'borrow_decline', launchActivity: 'default' } },
+      ],
+    },
+    data: notifData,
+  });
 };
 
 const SOCIUS_DATA_UPDATE_TYPES = new Set([
@@ -186,6 +261,7 @@ const SOCIUS_DATA_UPDATE_TYPES = new Set([
   'HELPER_DISTANCE_UPDATE',
   'HELP_SESSION_TIME_ENDED_HELPER',
   'HELP_SESSION_EXTENDED_HELPER',
+  'BORROW_ITEM_REQUEST',
   'REVIEW_DECISION',
 ]);
 

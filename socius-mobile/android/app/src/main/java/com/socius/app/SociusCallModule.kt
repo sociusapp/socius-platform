@@ -477,7 +477,7 @@ class SociusCallModule(private val reactContext: ReactApplicationContext) :
                     .setContentText(body)
                     .setPriority(NotificationCompat.PRIORITY_MAX)
                     .setCategory(NotificationCompat.CATEGORY_CALL)
-                    .setAutoCancel(true)
+                    .setAutoCancel(false)
                     .setOngoing(true)
                     .setOnlyAlertOnce(true)
                     .setVibrate(longArrayOf(0, 500, 1000, 500, 1000))
@@ -496,7 +496,10 @@ class SociusCallModule(private val reactContext: ReactApplicationContext) :
                     .addAction(0, "View", acceptPendingIntent)
                     
                 val notification = notificationBuilder.build()
-                notification.flags = notification.flags or android.app.Notification.FLAG_INSISTENT
+                notification.flags = notification.flags or
+                    android.app.Notification.FLAG_INSISTENT or
+                    android.app.Notification.FLAG_ONGOING_EVENT or
+                    android.app.Notification.FLAG_NO_CLEAR
 
                 notifMgr.notify(uuid.hashCode(), notification)
                 android.util.Log.d("SociusCallModule", "Custom Layout Notification dispatched: ID=${uuid.hashCode()}")

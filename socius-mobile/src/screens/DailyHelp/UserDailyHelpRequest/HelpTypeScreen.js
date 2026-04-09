@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Image } from 'react-native';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Image, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../../components/common/Header';
@@ -9,6 +9,7 @@ import { useResponsive } from '../../../utils/responsive';
 import BottomActionBar from '../../../components/common/BottomActionBar';
 import { api } from '../../../services/api/client';
 import { getHelpCategories } from '../../../services/api/helpCategories.api';
+import { sociusRefreshProps } from '../../../utils/sociusRefreshControl';
 
 const HelpTypeScreen = ({ navigation }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
@@ -16,6 +17,8 @@ const HelpTypeScreen = ({ navigation }) => {
   const [selectedHelpType, setSelectedHelpType] = useState(null);
   const [remoteCategories, setRemoteCategories] = useState([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const categoriesMountedRef = useRef(true);
 
   const fallbackHelpTypes = useMemo(() => ([
     { id: 1, label: 'Print / Document', icon: 'printer', color: '#5A6F7D', category: 'print_document' },
@@ -36,24 +39,37 @@ const HelpTypeScreen = ({ navigation }) => {
   }, []);
 
   useEffect(() => {
-    let mounted = true;
-    const run = async () => {
-      try {
-        setLoadingCategories(true);
-        const res = await getHelpCategories();
-        const items = res?.data?.items || res?.items || [];
-        if (mounted) setRemoteCategories(Array.isArray(items) ? items : []);
-      } catch (e) {
-        if (mounted) setRemoteCategories([]);
-      } finally {
-        if (mounted) setLoadingCategories(false);
-      }
-    };
-    run();
+    categoriesMountedRef.current = true;
     return () => {
-      mounted = false;
+      categoriesMountedRef.current = false;
     };
   }, []);
+
+  const loadRemoteCategories = useCallback(async ({ quiet = false } = {}) => {
+    try {
+      if (!quiet) setLoadingCategories(true);
+      const res = await getHelpCategories();
+      const items = res?.data?.items || res?.items || [];
+      if (categoriesMountedRef.current) setRemoteCategories(Array.isArray(items) ? items : []);
+    } catch (e) {
+      if (categoriesMountedRef.current) setRemoteCategories([]);
+    } finally {
+      if (categoriesMountedRef.current && !quiet) setLoadingCategories(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadRemoteCategories();
+  }, [loadRemoteCategories]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadRemoteCategories({ quiet: true });
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadRemoteCategories]);
 
   const helpTypes = useMemo(() => {
     if (Array.isArray(remoteCategories) && remoteCategories.length) {
@@ -74,12 +90,15 @@ const HelpTypeScreen = ({ navigation }) => {
         .sort((a, b) => (Number(a?.sortOrder || 0) - Number(b?.sortOrder || 0)))
         .map((c, idx) => ({
           id: c.slug || String(c._id || idx),
+          mongoId: c._id ? String(c._id) : null,
           label: c.name || c.slug || 'Help',
           description: c.description || '',
           category: c.slug,
           iconUrl: c.iconUrl ? `${baseRoot}${c.iconUrl}` : null,
           icon: iconMap[String(c.slug || '').toLowerCase()] || 'help-circle-outline',
           color: c.color || '#5A6F7D',
+          hasSubcategories: !!(c.has_subcategories || c.hasSubcategories),
+          subcategories: Array.isArray(c.subcategories) ? c.subcategories : [],
         }));
     }
     return fallbackHelpTypes;
@@ -105,10 +124,26 @@ const HelpTypeScreen = ({ navigation }) => {
     const selected = helpTypes.find((item) => item.id === selectedHelpType);
     if (!selected) return;
 
-    navigation.navigate('CreateAwareness', {
+    const hasSubcategories = !!selected.hasSubcategories || (Array.isArray(selected.subcategories) && selected.subcategories.length > 0);
+    if (hasSubcategories) {
+      navigation.navigate('DailyHelpReason', {
+        helpType: selected,
+        categoryId: selected.mongoId || undefined,
+        categorySlug: selected.category,
+        subcategories: selected.subcategories || [],
+        mode: 'subcategory',
+      });
+      return;
+    }
+
+    navigation.navigate('AddDetails', {
       helpType: selected,
       category: selected.category,
-      from: 'helpFlow',
+      categoryId: selected.mongoId || undefined,
+      categorySlug: selected.category,
+      subcategoryId: undefined,
+      reason: undefined,
+      query: '',
     });
   };
 
@@ -128,6 +163,7 @@ const HelpTypeScreen = ({ navigation }) => {
         <ScrollView 
           contentContainerStyle={[styles.scrollContent, { alignItems: 'center' }]}
           showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} {...sociusRefreshProps} />}
         >
           <View style={{ width: contentWidth }}>
             {/* Title Section */}

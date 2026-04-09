@@ -25,6 +25,7 @@ import { SkeletonBox, SkeletonCircle, SkeletonSpacer } from '../../components/co
 import { connectSocket, getSocket } from '../../services/socket/socket.service';
 import MotionView from '../../components/common/MotionView';
 import MotionPressable from '../../components/common/MotionPressable';
+import { ScrollView as GHScrollView } from 'react-native-gesture-handler';
 
 import DailyHelpRequestCard from '../../components/DailyHelp/cards/DailyHelpRequestCard';
 import NeedPresenceRequestCard from '../../components/NeedPresence/cards/NeedPresenceRequestCard';
@@ -49,6 +50,8 @@ const HomeScreen = ({ navigation }) => {
   // Community Screen State
   const isFocused = useIsFocused();
   const [activeTab, setActiveTab] = useState('overview');
+  const activeTabRef = useRef('overview');
+  const isAvailableRef = useRef(true);
   const [historyData, setHistoryData] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [nearbyRequests, setNearbyRequests] = useState([]);
@@ -67,6 +70,11 @@ const HomeScreen = ({ navigation }) => {
   useEffect(() => {
     historyDataLengthRef.current = historyData.length;
   }, [historyData.length]);
+
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
   const [categoriesBySlug, setCategoriesBySlug] = useState({});
@@ -213,11 +221,19 @@ const HomeScreen = ({ navigation }) => {
   };
 
   const fetchNearbyRequests = useCallback(async (showSkeleton = false) => {
+    if (!isAvailableRef.current) {
+      setNearbyRequests([]);
+      nearbyRequestsLengthRef.current = 0;
+      setLoadingNearby(false);
+      setRefreshingNearby(false);
+      isNearbyLoadingRef.current = false;
+      return;
+    }
     if (isNearbyLoadingRef.current) return;
-    
+
     // Only show skeleton if explicitly requested AND we have no data
     const shouldShowSkeleton = showSkeleton && nearbyRequestsLengthRef.current === 0;
-    
+
     isNearbyLoadingRef.current = true;
     if (shouldShowSkeleton) setLoadingNearby(true);
 
@@ -685,16 +701,11 @@ const HomeScreen = ({ navigation }) => {
         }
 
         if (shouldApplyServer) {
-          setIsAvailable(!!isAvailable);
+          const serverAvail = !!isAvailable;
+          applyAvailability(serverAvail, { animate: true });
           try {
-            await saveAvailabilityPreference(!!isAvailable);
+            await saveAvailabilityPreference(serverAvail);
           } catch (e) { }
-          Animated.timing(toggleAnim, {
-            toValue: isAvailable ? 0 : 1,
-            duration: 220,
-            easing: Easing.out(Easing.ease),
-            useNativeDriver: true,
-          }).start();
         }
       }
     } catch (error) {
@@ -704,7 +715,21 @@ const HomeScreen = ({ navigation }) => {
 
   const applyAvailability = (value, { animate = false } = {}) => {
     const nextValue = !!value;
+    isAvailableRef.current = nextValue;
     setIsAvailable(nextValue);
+    if (!nextValue) {
+      setNearbyRequests([]);
+      nearbyRequestsLengthRef.current = 0;
+      setLoadingNearby(false);
+      setRefreshingNearby(false);
+      isNearbyLoadingRef.current = false;
+    } else {
+      queueMicrotask(() => {
+        if (activeTabRef.current === 'requests') {
+          fetchNearbyRequests(false);
+        }
+      });
+    }
     if (animate) {
       Animated.timing(toggleAnim, {
         toValue: nextValue ? 0 : 1,
@@ -1068,6 +1093,7 @@ const HomeScreen = ({ navigation }) => {
         data={['overview', 'requests', 'history']}
         horizontal
         pagingEnabled
+        nestedScrollEnabled
         showsHorizontalScrollIndicator={false}
         keyExtractor={(item) => item}
         getItemLayout={(_, index) => ({
@@ -1091,6 +1117,7 @@ const HomeScreen = ({ navigation }) => {
               <ScrollView
                 contentContainerStyle={[styles.scrollContent, { paddingHorizontal: spacing(20), paddingTop: vscale(12), paddingBottom: vscale(95) }]}
                 showsVerticalScrollIndicator={false}
+                nestedScrollEnabled
                 refreshControl={
                   <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
                 }
@@ -1201,9 +1228,13 @@ const HomeScreen = ({ navigation }) => {
                       Bookmarks
                     </Text>
 
-                    <ScrollView
+                    <GHScrollView
                       horizontal
+                      nestedScrollEnabled
+                      directionalLockEnabled
+                      keyboardShouldPersistTaps="handled"
                       showsHorizontalScrollIndicator={false}
+                      bounces
                       contentContainerStyle={{ gap: spacing(10), paddingRight: spacing(20) }}
                       style={[styles.quickActionsContainer, { marginBottom: vscale(6) }]}
                     >
@@ -1238,7 +1269,7 @@ const HomeScreen = ({ navigation }) => {
                           </Text>
                         </MotionPressable>
                       ))}
-                    </ScrollView>
+                    </GHScrollView>
 
                     <Text
                       style={[
@@ -1396,7 +1427,29 @@ const HomeScreen = ({ navigation }) => {
                   <Text style={[styles.sectionTitle, { fontSize: ms(18), marginBottom: 0 }]}>Nearby Active Requests</Text>
                 </View>
 
-                {(loadingNearby && nearbyRequests.length === 0) ? (
+                {!isAvailable ? (
+                  <View style={{ alignItems: 'center', justifyContent: 'center', paddingTop: vscale(48), paddingHorizontal: spacing(16) }}>
+                    <View
+                      style={{
+                        width: scale(80),
+                        height: scale(80),
+                        borderRadius: scale(40),
+                        backgroundColor: '#F8FAFC',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginBottom: vscale(16),
+                      }}
+                    >
+                      <Icon name="toggle-switch-off-outline" size={scale(40)} color="#CBD5E1" />
+                    </View>
+                    <Text style={{ fontSize: ms(16), fontWeight: '600', color: '#475569', marginBottom: vscale(8), textAlign: 'center' }}>
+                      You're not available
+                    </Text>
+                    <Text style={{ fontSize: ms(13), color: '#94A3B8', textAlign: 'center', maxWidth: '85%', lineHeight: ms(20) }}>
+                      Turn on <Text style={{ fontWeight: '600', color: '#64748B' }}>Available</Text> in the header to see nearby requests you can help with.
+                    </Text>
+                  </View>
+                ) : (loadingNearby && nearbyRequests.length === 0) ? (
                   <View style={{ flex: 1 }}>
                     {[0, 1, 2].map((i) => (
                       <View

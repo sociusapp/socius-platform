@@ -18,7 +18,7 @@ import RenderHtml from 'react-native-render-html';
 import Header from '../../components/common/Header';
 import MotionView from '../../components/common/MotionView';
 import { useResponsive } from '../../utils/responsive';
-import { getBlogBySlug } from '../../services/api/blog.api';
+import { getBlogBySlug, getPublicMediaUrl } from '../../services/api/blog.api';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -27,19 +27,50 @@ const BlogDetailScreen = ({ navigation, route }) => {
   const { blog: initialBlog, blogType } = route?.params || {};
   
   const [blog, setBlog] = useState(initialBlog || null);
-  const [loading, setLoading] = useState(!initialBlog);
+  const needsRemoteBody = !!(initialBlog?.slug && !initialBlog?.content);
+  const [loading, setLoading] = useState(!initialBlog || needsRemoteBody);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (!initialBlog?.slug && initialBlog?._id) {
-      fetchBlogDetails();
+    const slug = initialBlog?.slug;
+    if (!slug) {
+      setLoading(false);
+      if (!initialBlog) setError('Article not found');
+      return undefined;
     }
-  }, []);
+    if (initialBlog.content) {
+      setLoading(false);
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoading(true);
+        const data = await getBlogBySlug(slug);
+        if (cancelled) return;
+        if (data) {
+          setBlog(data);
+          setError(null);
+        } else {
+          setError('Failed to load article');
+        }
+      } catch {
+        if (!cancelled) setError('Failed to load article');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialBlog?.slug, initialBlog?.content]);
 
   const fetchBlogDetails = async () => {
+    const slug = blog?.slug || initialBlog?.slug;
+    if (!slug) return;
     try {
       setLoading(true);
-      const slug = initialBlog?.slug || initialBlog?._id;
+      setError(null);
       const response = await getBlogBySlug(slug);
       if (response) {
         setBlog(response);
@@ -51,13 +82,6 @@ const BlogDetailScreen = ({ navigation, route }) => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const getFullImageUrl = (imagePath) => {
-    if (!imagePath) return null;
-    if (imagePath.startsWith('http')) return imagePath;
-    const baseUrl = 'http://192.168.1.74:48080';
-    return `${baseUrl}${imagePath.startsWith('/') ? '' : '/'}${imagePath}`;
   };
 
   const handleShare = async () => {
@@ -171,7 +195,7 @@ const BlogDetailScreen = ({ navigation, route }) => {
     );
   }
 
-  const imageUrl = getFullImageUrl(blog.featuredImage);
+  const imageUrl = getPublicMediaUrl(blog.featuredImageUrl || blog.featuredImage);
   const displayContent = blog.content || `<p>${blog.excerpt || ''}</p>`;
 
   return (

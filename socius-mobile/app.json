@@ -25,7 +25,7 @@
           "image": "./src/assets/icons/icon-03.png",
           "resizeMode": "contain",
           "backgroundColor": "#FFFFFF",
-          "imageWidth": 256
+          "imageWidth": 440
         }
       ]
     ],

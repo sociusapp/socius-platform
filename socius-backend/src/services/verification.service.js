@@ -10,13 +10,19 @@ const path = require('path')
  */
 const toRelativePath = (fullPath) => {
   if (!fullPath) return null
+  const normalized = String(fullPath).replace(/\\/g, '/')
   // Extract just the /uploads/... part from full path
-  const uploadsIndex = fullPath.indexOf('/uploads/')
+  const uploadsIndex = normalized.indexOf('/uploads/')
   if (uploadsIndex !== -1) {
-    return fullPath.substring(uploadsIndex)
+    return normalized.substring(uploadsIndex)
   }
-  // If no /uploads/ found, return the filename with /uploads prefix
-  const filename = path.basename(fullPath)
+  // If no explicit /uploads/ found, keep folder hint (documents/selfies) when possible
+  const filename = path.basename(normalized)
+  const folder = path.basename(path.dirname(normalized))
+  const known = new Set(['documents', 'selfies', 'help-categories', 'issue-screenshots', 'gallery', 'blogs', 'blog-types', 'chat-media', 'closures'])
+  if (known.has(folder)) {
+    return `/uploads/${folder}/${filename}`
+  }
   return `/uploads/${filename}`
 }
 

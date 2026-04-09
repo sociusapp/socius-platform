@@ -1,17 +1,14 @@
 const express = require('express')
 const router = express.Router()
 const multer = require('multer')
+const { resolveUploadDir } = require('../config/uploads')
 const blogTypeController = require('../controllers/blogType.controller')
 const { authenticate, requireAdmin } = require('../middlewares/auth')
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = 'src/uploads/blog-types'
-    const fs = require('fs')
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true })
-    }
+    const uploadDir = resolveUploadDir('blog-types')
     cb(null, uploadDir)
   },
   filename: (req, file, cb) => {

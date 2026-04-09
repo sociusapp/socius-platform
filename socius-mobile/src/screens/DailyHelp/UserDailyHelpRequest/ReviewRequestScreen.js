@@ -1,23 +1,36 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image, ActivityIndicator, RefreshControl } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../../components/common/Header';
 import Button from '../../../components/common/Button';
 import CustomAlert from '../../../components/common/CustomAlert';
 import MotionView from '../../../components/common/MotionView';
 import { useResponsive } from '../../../utils/responsive';
-import { createHelpRequest, updateHelpRequest, getMyActiveHelpRequest } from '../../../services/api/incident.api';
+import { createHelpRequest, updateHelpRequest, getMyActiveHelpRequest } from '../../../services/api/dailyHelp.api';
 import { requestLocationPermission, getCurrentPosition, reverseGeocode, formatLocationLabel } from '../../../services/location/geolocation.service';
 import { loadAuth, saveActiveHelpRequestId } from '../../../services/storage/asyncStorage.service';
+import { sociusRefreshProps } from '../../../utils/sociusRefreshControl';
 
 const ReviewRequestScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
-  const { description, time, helpType, location, category: explicitCategory } = route?.params || {};
+  const insets = useSafeAreaInsets();
+  const {
+    description,
+    time,
+    helpType,
+    location,
+    category: explicitCategory,
+    categoryId,
+    categorySlug,
+    subcategoryId,
+    subcategoryTitle,
+  } = route?.params || {};
   const requestId = route?.params?.requestId;
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [locationLabel, setLocationLabel] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
   
   // Custom Alert State
   const [alertVisible, setAlertVisible] = useState(false);
@@ -92,8 +105,15 @@ const ReviewRequestScreen = ({ navigation, route }) => {
   const helpTypeIcon = helpType?.icon || 'flower';
   const helpTypeColor = helpType?.color || '#DC5C69';
   const helpTypeImage = helpType?.iconUrl || null;
+  const subcategoryLabel =
+    typeof subcategoryTitle === 'string' && subcategoryTitle.trim().length > 0
+      ? subcategoryTitle.trim()
+      : '';
 
   const mapHelpTypeToCategory = () => {
+    if (typeof categorySlug === 'string' && categorySlug.length > 0) {
+      return categorySlug;
+    }
     if (typeof explicitCategory === 'string' && explicitCategory.length > 0) {
       return explicitCategory;
     }
@@ -120,7 +140,7 @@ const ReviewRequestScreen = ({ navigation, route }) => {
     }
   };
 
-  useEffect(() => {
+  const reloadLocationLabel = useCallback(async () => {
     const hasDbLocation =
       location &&
       typeof location.lat === 'number' &&
@@ -131,23 +151,32 @@ const ReviewRequestScreen = ({ navigation, route }) => {
       return;
     }
 
-    const loadLabel = async () => {
-      let label = `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`;
+    let label = `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`;
 
-      try {
-        const place = await reverseGeocode({
-          latitude: location.lat,
-          longitude: location.lng,
-        });
-        label = formatLocationLabel(place, { fallback: label });
-      } catch (e) {
-      }
+    try {
+      const place = await reverseGeocode({
+        latitude: location.lat,
+        longitude: location.lng,
+      });
+      label = formatLocationLabel(place, { fallback: label });
+    } catch (e) {
+    }
 
-      setLocationLabel(label);
-    };
-
-    loadLabel();
+    setLocationLabel(label);
   }, [location?.lat, location?.lng]);
+
+  useEffect(() => {
+    reloadLocationLabel();
+  }, [reloadLocationLabel]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await reloadLocationLabel();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [reloadLocationLabel]);
 
   const handleSettings = () => {
     navigation.navigate('Settings');
@@ -232,6 +261,8 @@ const ReviewRequestScreen = ({ navigation, route }) => {
 
       payload = {
         category: mapHelpTypeToCategory(),
+        categoryId: categoryId || undefined,
+        subcategoryId: subcategoryId || undefined,
         description: requestText,
         time: timeText,
         location: {
@@ -494,14 +525,21 @@ const ReviewRequestScreen = ({ navigation, route }) => {
       />
 
       <ScrollView 
-        contentContainerStyle={[styles.scrollContent, { alignItems: 'center' }]}
+        contentContainerStyle={[
+          styles.scrollContent,
+          {
+            alignItems: 'center',
+            paddingBottom: Math.max(vscale(88), insets.bottom + vscale(56)),
+          },
+        ]}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} {...sociusRefreshProps} />}
       >
         <View style={{ width: contentWidth }}>
             {/* Title Section */}
           <MotionView preset="fadeUp" duration={220}>
-            <View style={[styles.titleSection, { marginBottom: vscale(15) }]}>
-              <Text style={[styles.mainTitle, { fontSize: ms(22), marginBottom: vscale(8) }]}>Review & confirm</Text>
+            <View style={[styles.titleSection, { marginBottom: vscale(8) }]}>
+              <Text style={[styles.mainTitle, { fontSize: ms(22), marginBottom: vscale(2) }]}>Review & confirm</Text>
             </View>
           </MotionView>
 
@@ -513,9 +551,9 @@ const ReviewRequestScreen = ({ navigation, route }) => {
               {
                 borderRadius: scale(18),
                 borderWidth: scale(1),
-                paddingHorizontal: spacing(18),
-                paddingVertical: vscale(16),
-                marginBottom: vscale(16),
+                paddingHorizontal: spacing(16),
+                paddingVertical: vscale(12),
+                marginBottom: vscale(10),
                 shadowOffset: { width: 0, height: vscale(2) },
                 shadowRadius: scale(6),
                 elevation: scale(2),
@@ -525,7 +563,7 @@ const ReviewRequestScreen = ({ navigation, route }) => {
             <View
               style={[
                 styles.requestHeaderRow,
-                { marginBottom: vscale(10), paddingBottom: vscale(8), borderBottomWidth: scale(1) },
+                { marginBottom: vscale(6), paddingBottom: vscale(6), borderBottomWidth: scale(1) },
               ]}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -543,7 +581,7 @@ const ReviewRequestScreen = ({ navigation, route }) => {
             <View
               style={[
                 styles.requestRow,
-                { paddingVertical: vscale(6), borderBottomWidth: scale(1) },
+                { paddingVertical: vscale(4), borderBottomWidth: scale(1) },
               ]}
             >
               <View style={[styles.requestRowLeft, { marginRight: spacing(12) }]}>
@@ -575,10 +613,39 @@ const ReviewRequestScreen = ({ navigation, route }) => {
               </Text>
             </View>
 
+            {subcategoryLabel ? (
+              <View
+                style={[
+                  styles.requestRow,
+                  { paddingVertical: vscale(4), borderBottomWidth: scale(1) },
+                ]}
+              >
+                <View style={[styles.requestRowLeft, { marginRight: spacing(12) }]}>
+                  <Icon name="shape-outline" size={scale(20)} color="#6B7280" />
+                  <Text
+                    style={[
+                      styles.requestRowLabel,
+                      { fontSize: ms(13), marginLeft: spacing(8) },
+                    ]}
+                  >
+                    Sub-category
+                  </Text>
+                </View>
+                <Text
+                  style={[
+                    styles.requestRowValue,
+                    { fontSize: ms(14), maxWidth: '60%' },
+                  ]}
+                >
+                  {subcategoryLabel}
+                </Text>
+              </View>
+            ) : null}
+
             <View
               style={[
                 styles.requestRow,
-                { paddingVertical: vscale(6), borderBottomWidth: scale(1) },
+                { paddingVertical: vscale(4), borderBottomWidth: scale(1) },
               ]}
             >
               <View style={[styles.requestRowLeft, { marginRight: spacing(12) }]}>
@@ -605,7 +672,7 @@ const ReviewRequestScreen = ({ navigation, route }) => {
             <View
               style={[
                 styles.requestRow,
-                { paddingVertical: vscale(6), borderBottomWidth: scale(1) },
+                { paddingVertical: vscale(4), borderBottomWidth: scale(1) },
               ]}
             >
               <View style={[styles.requestRowLeft, { marginRight: spacing(12) }]}>
@@ -629,7 +696,7 @@ const ReviewRequestScreen = ({ navigation, route }) => {
               </Text>
             </View>
 
-            <View style={[styles.requestRow, { paddingVertical: vscale(6), borderBottomWidth: scale(1) }]}>
+            <View style={[styles.requestRow, { paddingVertical: vscale(4), borderBottomWidth: scale(1) }]}>
               <View style={[styles.requestRowLeft, { marginRight: spacing(12) }]}>
                 <Icon name="clock-outline" size={scale(20)} color="#6B7280" />
                 <Text
@@ -651,7 +718,7 @@ const ReviewRequestScreen = ({ navigation, route }) => {
               </Text>
             </View>
 
-            <View style={[styles.requestRow, { paddingVertical: vscale(6) }]}>
+            <View style={[styles.requestRow, { paddingVertical: vscale(4) }]}>
               <View style={[styles.requestRowLeft, { marginRight: spacing(12) }]}>
                 <Icon name="calendar-check" size={scale(20)} color="#6B7280" />
                 <Text
@@ -679,15 +746,15 @@ const ReviewRequestScreen = ({ navigation, route }) => {
           <View style={[styles.infoBox, { 
             borderRadius: scale(16),
             borderWidth: scale(1),
-            paddingHorizontal: spacing(16),
-            paddingVertical: vscale(16),
-            marginBottom: vscale(10),
+            paddingHorizontal: spacing(14),
+            paddingVertical: vscale(12),
+            marginBottom: vscale(8),
             shadowOffset: { width: 0, height: vscale(2) },
             shadowRadius: scale(6),
             elevation: scale(2)
           }]}>
-            <Text style={[styles.infoBoxTitle, { fontSize: ms(14), fontWeight: '600', color: '#374151', marginBottom: vscale(10) }]}>Who will see this</Text>
-            <View style={{ width: '100%', height: 1, backgroundColor: '#E5E7EB', marginBottom: vscale(10) }} />
+            <Text style={[styles.infoBoxTitle, { fontSize: ms(14), fontWeight: '600', color: '#374151', marginBottom: vscale(6) }]}>Who will see this</Text>
+            <View style={{ width: '100%', height: 1, backgroundColor: '#E5E7EB', marginBottom: vscale(6) }} />
             <View style={styles.bulletRow}>
               <Icon name="circle-small" size={scale(16)} color="#6B7280" />
               <Text style={[styles.bulletText, { fontSize: ms(13), color: '#6B7280' }]}>Only nearby available people</Text>
@@ -706,21 +773,72 @@ const ReviewRequestScreen = ({ navigation, route }) => {
           <View style={[styles.cancelInfoBox, { 
             borderRadius: scale(16),
             borderWidth: scale(1),
-            paddingHorizontal: spacing(16),
-            paddingVertical: vscale(12),
-            marginBottom: vscale(16),
+            paddingHorizontal: spacing(14),
+            paddingVertical: vscale(10),
+            marginBottom: vscale(8),
           }]}>
             <Text style={[styles.cancelInfoText, { fontSize: ms(13), color: '#6B7280', textAlign: 'center' }]}>You can cancel this request at any time.</Text>
           </View>
 
-          {/* Spacer */}
-          <View style={[styles.spacer, { height: vscale(20) }]} />
+          {/* Everyday help vs emergencies — above action buttons */}
+          <View
+            style={[
+              styles.everydayHelpCard,
+              {
+                borderRadius: scale(18),
+                paddingVertical: vscale(12),
+                paddingHorizontal: spacing(16),
+                marginBottom: vscale(8),
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.everydayHelpCardText,
+                {
+                  fontSize: ms(13),
+                  color: '#3D4F5F',
+                  textAlign: 'center',
+                  lineHeight: Math.round(ms(20)),
+                  fontWeight: '500',
+                },
+              ]}
+            >
+              This is for small, everyday help.
+            </Text>
+            <Text
+              style={[
+                styles.everydayHelpCardText,
+                {
+                  fontSize: ms(13),
+                  color: '#3D4F5F',
+                  textAlign: 'center',
+                  lineHeight: Math.round(ms(20)),
+                  marginTop: vscale(1),
+                  paddingHorizontal: spacing(4),
+                  fontWeight: '500',
+                },
+              ]}
+            >
+              For emergencies, use{' '}
+              <Text style={{ fontWeight: '500', color: '#3D4F5F' }}>Emergency Contacts</Text>.
+            </Text>
+          </View>
 
           {/* Buttons Container */}
           <MotionView preset="fadeUp" duration={220} delay={90}>
-          <View style={[styles.buttonsContainer, { gap: vscale(12), marginBottom: vscale(12) }]}>
+          <View
+            style={[
+              styles.buttonsContainer,
+              {
+                gap: vscale(10),
+                marginTop: vscale(4),
+                marginBottom: Math.max(vscale(8), insets.bottom + vscale(6)),
+              },
+            ]}
+          >
             <TouchableOpacity
-              style={[styles.shareButton, { borderRadius: scale(28), paddingVertical: vscale(16), opacity: submitting ? 0.8 : 1 }]}
+              style={[styles.shareButton, { borderRadius: scale(28), paddingVertical: vscale(14), opacity: submitting ? 0.8 : 1 }]}
               onPress={handleShareRequest}
               disabled={submitting}
               activeOpacity={0.9}
@@ -733,7 +851,7 @@ const ReviewRequestScreen = ({ navigation, route }) => {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.editButton, { borderRadius: scale(28), paddingVertical: vscale(16), borderWidth: 1 }]}
+              style={[styles.editButton, { borderRadius: scale(28), paddingVertical: vscale(14), borderWidth: 1 }]}
               onPress={handleEditDetails}
               activeOpacity={0.9}
             >
@@ -743,7 +861,7 @@ const ReviewRequestScreen = ({ navigation, route }) => {
           </MotionView>
 
           {/* Bottom text */}
-          <Text style={[styles.bottomText, { fontSize: ms(12), color: '#9CA3AF', textAlign: 'center', fontStyle: 'italic', marginBottom: vscale(20) }]}>
+          <Text style={[styles.bottomText, { fontSize: ms(12), color: '#9CA3AF', textAlign: 'center', fontStyle: 'italic', marginTop: vscale(8), marginBottom: vscale(12) }]}>
             Sharing is voluntary and temporary.
           </Text>
         </View>
@@ -770,8 +888,8 @@ const styles = StyleSheet.create({
 
   scrollContent: {
     flexGrow: 1,
-    paddingTop: 24,
-    paddingBottom: 100,
+    paddingTop: 12,
+    paddingBottom: 24,
   },
 
   // ===== TITLE SECTION =====
@@ -845,7 +963,7 @@ const styles = StyleSheet.create({
   bulletRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   bulletText: {
     fontWeight: '400',
@@ -858,18 +976,27 @@ const styles = StyleSheet.create({
   cancelInfoText: {
     fontWeight: '400',
   },
+  everydayHelpCard: {
+    backgroundColor: '#FAF8F5',
+    borderWidth: 1,
+    borderColor: '#E8E4DC',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  everydayHelpCardText: {
+    fontWeight: '400',
+  },
   infoText: {
     fontWeight: '400',
     color: '#4B5563',
   },
-  emergencyLink: {
-    color: '#DC5C69',
-    textDecorationLine: 'underline',
-  },
 
   // ===== BUTTONS =====
   shareButton: {
-    backgroundColor: '#B94A48',
+    backgroundColor: '#C93F46',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -891,9 +1018,6 @@ const styles = StyleSheet.create({
   editButtonText: {
     color: '#374151',
     fontWeight: '500',
-  },
-
-  spacer: {
   },
 
   buttonsContainer: {

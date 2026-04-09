@@ -21,6 +21,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import MotionPressable from './MotionPressable';
 
+const APP_PRIMARY_BUTTON = '#C93F46';
+
 const styles = StyleSheet.create({
   buttonContainer: {
     marginBottom: 10,
@@ -46,21 +48,21 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   primaryButton: {
-    backgroundColor: '#E85555',
+    backgroundColor: APP_PRIMARY_BUTTON,
   },
   emergencyButton: {
-    backgroundColor: '#D84D42',
+    backgroundColor: APP_PRIMARY_BUTTON,
   },
   secondaryButton: {
     backgroundColor: '#F5F1ED',
     borderWidth: 2,
-    borderColor: '#E85555',
+    borderColor: APP_PRIMARY_BUTTON,
     shadowOpacity: 0.2,
   },
   outlineButton: {
     backgroundColor: 'transparent',
     borderWidth: 2,
-    borderColor: '#E85555',
+    borderColor: APP_PRIMARY_BUTTON,
     elevation: 0,
     shadowOpacity: 0,
   },
@@ -86,13 +88,13 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   secondaryText: {
-    color: '#E85555',
+    color: APP_PRIMARY_BUTTON,
     fontSize: 18,
     fontWeight: '700',
     letterSpacing: 0.3,
   },
   outlineText: {
-    color: '#E85555',
+    color: APP_PRIMARY_BUTTON,
     fontSize: 18,
     fontWeight: '700',
     letterSpacing: 0.3,
@@ -281,7 +283,7 @@ const Button = ({
   };
 
   const getLoaderColor = () => {
-    return variant === 'primary' || variant === 'emergency' || variant === 'gradient' ? '#FFFFFF' : '#E85555';
+    return variant === 'primary' || variant === 'emergency' || variant === 'gradient' ? '#FFFFFF' : APP_PRIMARY_BUTTON;
   };
 
   const getSizeStyle = () => {
@@ -317,7 +319,7 @@ const Button = ({
       >
         {variant === 'gradient' && (
           <LinearGradient
-            colors={['#E96A5C', '#D84D42']}
+            colors={[APP_PRIMARY_BUTTON, APP_PRIMARY_BUTTON]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.gradientFill}

@@ -73,30 +73,31 @@ const formatVoiceDuration = (sec) => {
 
 const QUICK_EMOJIS = ['😊', '👍', '❤️', '😂', '🙏', '😮', '✅', '👋'];
 
-/** WhatsApp-style light green / white palette */
+/** App-aligned pink / white palette */
 const WA_COLORS = {
-  sentBubble: '#DCF8C6',
+  sentBubble: '#FDECEF',
   receivedBubble: '#FFFFFF',
-  sentText: '#303030',
-  receivedText: '#303030',
-  header: '#075E54',
-  headerSecondary: '#128C7E',
-  tickDelivered: '#8696A0',
-  tickRead: '#53BDEB',
-  fab: '#25D366',
-  pageBg: '#ECE5DD',
+  sentText: '#1F2937',
+  receivedText: '#1F2937',
+  header: '#DC5C69',
+  headerSecondary: '#C84D59',
+  tickDelivered: '#98A2B3',
+  tickRead: '#DC5C69',
+  fab: '#DC5C69',
+  pageBg: '#F8F9FB',
 };
 
 const InlineAudioPlayer = ({ uri, isMyMessage, durationSec: initialDurationSec }) => {
   const [playing, setPlaying] = useState(false);
+  const [preparing, setPreparing] = useState(false);
   const [positionMillis, setPositionMillis] = useState(0);
   const [durationMillis, setDurationMillis] = useState(
     typeof initialDurationSec === 'number' && initialDurationSec > 0 ? initialDurationSec * 1000 : 0
   );
   const soundRef = useRef(null);
   const seekBarW = useRef(1);
-  const barTint = isMyMessage ? 'rgba(48,48,48,0.28)' : 'rgba(7, 94, 84, 0.28)';
-  const iconTint = isMyMessage ? '#075E54' : '#128C7E';
+  const barTint = isMyMessage ? 'rgba(31,41,55,0.24)' : 'rgba(152,162,179,0.35)';
+  const iconTint = isMyMessage ? '#C84D59' : '#667085';
 
   const bars = useMemo(() => {
     const out = [];
@@ -135,11 +136,14 @@ const InlineAudioPlayer = ({ uri, isMyMessage, durationSec: initialDurationSec }
   };
 
   const toggle = async () => {
+    if (preparing) return;
     try {
+      setPreparing(true);
       const { Audio } = await loadExpoAv();
       if (playing && soundRef.current) {
         await soundRef.current.pauseAsync();
         setPlaying(false);
+        setPreparing(false);
         return;
       }
       if (soundRef.current) {
@@ -147,6 +151,7 @@ const InlineAudioPlayer = ({ uri, isMyMessage, durationSec: initialDurationSec }
         if (st.isLoaded && st.positionMillis > 0 && st.durationMillis && st.positionMillis < st.durationMillis - 50) {
           await soundRef.current.playAsync();
           setPlaying(true);
+          setPreparing(false);
           return;
         }
         await soundRef.current.unloadAsync();
@@ -159,6 +164,8 @@ const InlineAudioPlayer = ({ uri, isMyMessage, durationSec: initialDurationSec }
       setPlaying(true);
     } catch (e) {
       console.warn('Audio playback', e);
+    } finally {
+      setPreparing(false);
     }
   };
 
@@ -180,9 +187,14 @@ const InlineAudioPlayer = ({ uri, isMyMessage, durationSec: initialDurationSec }
       <TouchableOpacity
         onPress={toggle}
         style={styles.voicePlayBtn}
-        accessibilityLabel={playing ? 'Pause voice message' : 'Play voice message'}
+        accessibilityLabel={preparing ? 'Loading audio' : playing ? 'Pause voice message' : 'Play voice message'}
+        disabled={preparing}
       >
-        <Icon name={playing ? 'pause' : 'play-arrow'} size={24} color={iconTint} />
+        {preparing ? (
+          <ActivityIndicator size="small" color={iconTint} />
+        ) : (
+          <Icon name={playing ? 'pause' : 'play-arrow'} size={24} color={iconTint} />
+        )}
       </TouchableOpacity>
       <View style={styles.voiceWaveBlock}>
         <View style={styles.voiceTopRow}>
@@ -229,6 +241,7 @@ const MediaLoadingOverlay = ({ label = 'Loading...' }) => (
 const ChatImageBubble = ({ uri, timeStr, statusIconOnImage, imageCaption, isMyMessage }) => {
   const [loadingImage, setLoadingImage] = useState(true);
   const [failedImage, setFailedImage] = useState(false);
+  const isRemoteImage = /^https?:\/\//i.test(String(uri || ''));
 
   if (failedImage) {
     return (
@@ -255,7 +268,7 @@ const ChatImageBubble = ({ uri, timeStr, statusIconOnImage, imageCaption, isMyMe
             setFailedImage(true);
           }}
         />
-        {loadingImage ? <MediaLoadingOverlay label="Loading image..." /> : null}
+        {loadingImage && isRemoteImage ? <MediaLoadingOverlay label="Loading image..." /> : null}
         <LinearGradient
           colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.12)', 'rgba(0,0,0,0.52)']}
           locations={[0, 0.45, 1]}
@@ -280,12 +293,11 @@ const ChatImageBubble = ({ uri, timeStr, statusIconOnImage, imageCaption, isMyMe
 
 const LocationMapPreview = ({ lat, lng }) => {
   const [failed, setFailed] = useState(false);
-  const [loadingMap, setLoadingMap] = useState(true);
   if (failed) {
     return (
       <View style={styles.locationMapBlock}>
         <View style={styles.locationMapHeader}>
-          <Icon name="map" size={18} color="#075E54" />
+          <Icon name="map" size={18} color="#C84D59" />
           <Text style={styles.locationMapHeaderTitle}>Map</Text>
         </View>
         <View style={styles.locationMapFallbackInner}>
@@ -297,21 +309,17 @@ const LocationMapPreview = ({ lat, lng }) => {
   return (
     <View style={styles.locationMapBlock}>
       <View style={styles.locationMapHeader}>
-        <Icon name="map" size={18} color="#075E54" />
+        <Icon name="map" size={18} color="#C84D59" />
         <Text style={styles.locationMapHeaderTitle}>Map</Text>
       </View>
       <Image
         source={{ uri: osmStaticMapUri(lat, lng) }}
         style={styles.locationMapImage}
         resizeMode="cover"
-        onLoadStart={() => setLoadingMap(true)}
-        onLoadEnd={() => setLoadingMap(false)}
         onError={() => {
-          setLoadingMap(false);
           setFailed(true);
         }}
       />
-      {loadingMap ? <MediaLoadingOverlay label="Loading map..." /> : null}
     </View>
   );
 };
@@ -323,11 +331,18 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
   /** Gap above keyboard so the bar floats slightly (5–8px). */
   const KEYBOARD_GAP = 7;
   const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   useEffect(() => {
     const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const subShow = Keyboard.addListener(showEvt, () => setKeyboardOpen(true));
-    const subHide = Keyboard.addListener(hideEvt, () => setKeyboardOpen(false));
+    const subShow = Keyboard.addListener(showEvt, (e) => {
+      setKeyboardOpen(true);
+      setKeyboardHeight(e?.endCoordinates?.height || 0);
+    });
+    const subHide = Keyboard.addListener(hideEvt, () => {
+      setKeyboardOpen(false);
+      setKeyboardHeight(0);
+    });
     return () => {
       subShow.remove();
       subHide.remove();
@@ -338,8 +353,7 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
   const mediaBubbleWidth = Math.round(Math.min(layoutWidth * 0.76, layoutWidth - 28));
   const navigation = useNavigation();
   const SOCIUS_PRIMARY = WA_COLORS.header;
-  const WHATSAPP_TEXTURE_URI =
-    'https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png';
+  const WHATSAPP_TEXTURE_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAEklEQVR4nGP4//8/AwMDAwMjAABV5gP6mQfR0QAAAABJRU5ErkJggg==';
   const REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏'];
   const [session, setSession] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -362,9 +376,12 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
   const recordSecsRef = useRef(0);
 
   const [uploadProgress, setUploadProgress] = useState(null);
+  const [uploadingKind, setUploadingKind] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [recordSecs, setRecordSecs] = useState(0);
   const [showQuickEmoji, setShowQuickEmoji] = useState(false);
+  const suppressNextActiveRefreshRef = useRef(false);
+  const lastAppStateRef = useRef(AppState.currentState);
 
   const scrollToLatest = () => {
     // Only scroll if list is ready
@@ -405,9 +422,15 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (s) => {
-      if (s === 'active' && visible && requestId) {
-        initializeChat();
+      const prev = lastAppStateRef.current;
+      lastAppStateRef.current = s;
+      const becameActiveFromBackground = s === 'active' && /background|inactive/.test(String(prev || ''));
+      if (!becameActiveFromBackground || !visible || !requestId) return;
+      if (suppressNextActiveRefreshRef.current) {
+        suppressNextActiveRefreshRef.current = false;
+        return;
       }
+      initializeChat();
     });
     return () => sub.remove();
   }, [visible, requestId]);
@@ -885,6 +908,7 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
 
   const handlePickImage = async () => {
     if (chatBlocked || !session) return;
+    suppressNextActiveRefreshRef.current = true;
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
       if (Platform.OS === 'android') ToastAndroid.show('Photo access needed', ToastAndroid.SHORT);
@@ -897,7 +921,32 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
     });
     if (res.canceled || !res.assets?.[0]) return;
     const asset = res.assets[0];
+    const localId = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const localCaption = inputText.trim() || '';
+    setMessages((prev) => [
+      ...prev,
+      {
+        _id: null,
+        localId,
+        text: localCaption,
+        senderId: userId,
+        createdAt: new Date().toISOString(),
+        read: false,
+        status: 'pending',
+        messageType: 'image',
+        attachment: {
+          localUri: asset.uri,
+          mimeType: asset.mimeType || 'image/jpeg',
+          fileName: asset.fileName || 'photo.jpg',
+          size: asset.fileSize || 0,
+        },
+      },
+    ]);
+    scrollToLatest();
+    setInputText('');
+
     try {
+      setUploadingKind('image');
       setUploadProgress(0);
       const auth = await loadAuth();
       if (!auth?.accessToken) return;
@@ -909,26 +958,37 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
       const up = await uploadChatMedia(auth.accessToken, session._id, file, (p) => setUploadProgress(p));
       setUploadProgress(null);
       if (!up?.success || !up?.data?.url) throw new Error('Upload failed');
-      await sendMediaMessage({
+      const uploadedAttachment = {
+        url: up.data.url,
+        localUri: asset.uri,
+        mimeType: up.data.mimeType,
+        fileName: up.data.fileName,
+        size: up.data.size,
+      };
+      setMessages((prev) =>
+        prev.map((m) => (m.localId === localId ? { ...m, attachment: uploadedAttachment } : m))
+      );
+      await emitOrApiSend({
+        sessionId: session._id,
+        text: localCaption || '',
+        localId,
+        replyToId: null,
         messageType: 'image',
-        attachment: {
-          url: up.data.url,
-          mimeType: up.data.mimeType,
-          fileName: up.data.fileName,
-          size: up.data.size,
-        },
-        caption: inputText.trim() || '',
+        attachment: uploadedAttachment,
       });
-      setInputText('');
     } catch (e) {
       setUploadProgress(null);
       console.warn('image upload', e);
+      setMessages((prev) => prev.map((m) => (m.localId === localId ? { ...m, status: 'failed' } : m)));
       if (Platform.OS === 'android') ToastAndroid.show('Image upload failed', ToastAndroid.SHORT);
+    } finally {
+      setUploadingKind('');
     }
   };
 
   const handleOpenCamera = async () => {
     if (chatBlocked || !session) return;
+    suppressNextActiveRefreshRef.current = true;
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) {
       if (Platform.OS === 'android') ToastAndroid.show('Camera permission needed', ToastAndroid.SHORT);
@@ -940,7 +1000,32 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
     });
     if (res.canceled || !res.assets?.[0]) return;
     const asset = res.assets[0];
+    const localId = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const localCaption = inputText.trim() || '';
+    setMessages((prev) => [
+      ...prev,
+      {
+        _id: null,
+        localId,
+        text: localCaption,
+        senderId: userId,
+        createdAt: new Date().toISOString(),
+        read: false,
+        status: 'pending',
+        messageType: 'image',
+        attachment: {
+          localUri: asset.uri,
+          mimeType: asset.mimeType || 'image/jpeg',
+          fileName: asset.fileName || 'photo.jpg',
+          size: asset.fileSize || 0,
+        },
+      },
+    ]);
+    scrollToLatest();
+    setInputText('');
+
     try {
+      setUploadingKind('camera');
       setUploadProgress(0);
       const auth = await loadAuth();
       if (!auth?.accessToken) return;
@@ -952,32 +1037,44 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
       const up = await uploadChatMedia(auth.accessToken, session._id, file, (p) => setUploadProgress(p));
       setUploadProgress(null);
       if (!up?.success || !up?.data?.url) throw new Error('Upload failed');
-      await sendMediaMessage({
+      const uploadedAttachment = {
+        url: up.data.url,
+        localUri: asset.uri,
+        mimeType: up.data.mimeType,
+        fileName: up.data.fileName,
+        size: up.data.size,
+      };
+      setMessages((prev) =>
+        prev.map((m) => (m.localId === localId ? { ...m, attachment: uploadedAttachment } : m))
+      );
+      await emitOrApiSend({
+        sessionId: session._id,
+        text: localCaption || '',
+        localId,
+        replyToId: null,
         messageType: 'image',
-        attachment: {
-          url: up.data.url,
-          mimeType: up.data.mimeType,
-          fileName: up.data.fileName,
-          size: up.data.size,
-        },
-        caption: inputText.trim() || '',
+        attachment: uploadedAttachment,
       });
-      setInputText('');
     } catch (e) {
       setUploadProgress(null);
       console.warn('camera upload', e);
+      setMessages((prev) => prev.map((m) => (m.localId === localId ? { ...m, status: 'failed' } : m)));
       if (Platform.OS === 'android') ToastAndroid.show('Camera upload failed', ToastAndroid.SHORT);
+    } finally {
+      setUploadingKind('');
     }
   };
 
   const handleShareLocation = async () => {
     if (chatBlocked || !session) return;
-    const perm = await Location.requestForegroundPermissionsAsync();
-    if (!perm.granted) {
-      if (Platform.OS === 'android') ToastAndroid.show('Location permission needed', ToastAndroid.SHORT);
-      return;
-    }
+    suppressNextActiveRefreshRef.current = true;
     try {
+      setUploadingKind('location');
+      const perm = await Location.requestForegroundPermissionsAsync();
+      if (!perm.granted) {
+        if (Platform.OS === 'android') ToastAndroid.show('Location permission needed', ToastAndroid.SHORT);
+        return;
+      }
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       const { latitude, longitude } = pos.coords;
       let address = '';
@@ -1001,12 +1098,16 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
     } catch (e) {
       console.warn('location', e);
       if (Platform.OS === 'android') ToastAndroid.show('Could not get location', ToastAndroid.SHORT);
+    } finally {
+      setUploadingKind('');
     }
   };
 
   const handlePickDocument = async () => {
     if (chatBlocked || !session) return;
+    suppressNextActiveRefreshRef.current = true;
     try {
+      setUploadingKind('file');
       const res = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, type: '*/*' });
       if (res.canceled) return;
       const asset = res.assets?.[0] || {
@@ -1047,12 +1148,15 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
       setUploadProgress(null);
       console.warn('document', e);
       if (Platform.OS === 'android') ToastAndroid.show('File upload failed', ToastAndroid.SHORT);
+    } finally {
+      setUploadingKind('');
     }
   };
 
   const stopRecordingAndSend = async () => {
     if (!isRecording || !recordingRef.current) return;
     try {
+      setUploadingKind('audio');
       if (recordIntervalRef.current) {
         clearInterval(recordIntervalRef.current);
         recordIntervalRef.current = null;
@@ -1091,6 +1195,8 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
       recordingRef.current = null;
       console.warn('voice send', e);
       if (Platform.OS === 'android') ToastAndroid.show('Voice message failed', ToastAndroid.SHORT);
+    } finally {
+      setUploadingKind('');
     }
   };
 
@@ -1232,11 +1338,48 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
     } catch (e) {}
   };
 
+  const handleDeleteMessage = async (message) => {
+    setReactionPicker(null);
+    const myId = String(userId || '');
+    const senderId = String(message?.senderId?._id ?? message?.senderId ?? '');
+    if (!message || !myId || senderId !== myId) return;
+
+    const matchBy = (m) => {
+      if (message?._id && m?._id) return String(m._id) === String(message._id);
+      if (message?.localId && m?.localId) return String(m.localId) === String(message.localId);
+      return false;
+    };
+
+    setMessages((prev) =>
+      prev.map((m) =>
+        matchBy(m)
+          ? {
+              ...m,
+              text: 'This message was deleted',
+              isDeleted: true,
+              messageType: 'text',
+              attachment: undefined,
+              reactions: [],
+              replyTo: null,
+            }
+          : m
+      )
+    );
+
+    try {
+      const socket = getSocket();
+      // TODO: add backend socket/API support for persistent message delete.
+      if (socket && socket.connected && message?._id) {
+        socket.emit('chat:delete_message', { messageId: String(message._id), sessionId: session?._id });
+      }
+    } catch (e) {}
+  };
+
   const openReactionPicker = (message, isMyMessage, event) => {
     if (!message?._id || message.status === 'pending') return;
     const { pageX, pageY } = event?.nativeEvent || {};
     if (typeof pageX !== 'number' || typeof pageY !== 'number') return;
-    setReactionPicker({ message, isMyMessage, x: pageX, y: pageY });
+    setReactionPicker({ message, isMyMessage, x: pageX, y: pageY, canDelete: !!isMyMessage });
   };
 
   const renderReactions = (message, isMyMessage) => {
@@ -1290,7 +1433,7 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
     const hasReactions = item.reactions && item.reactions.length > 0;
     const mt = item.messageType || 'text';
     const att = item.attachment || {};
-    const mediaUri = att.url ? getFullImageUrl(att.url) : null;
+    const mediaUri = att.url ? getFullImageUrl(att.url) : att.localUri || null;
     const isImage = mt === 'image' && !!mediaUri;
     const isLocation = mt === 'location' && att.lat != null && att.lng != null;
 
@@ -1333,8 +1476,13 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
     const imagePlaceholderLabels = new Set(['📷 Photo', '📷 photo', 'Photo']);
     const imageCaption =
       isImage && rawImageText && !imagePlaceholderLabels.has(rawImageText) ? rawImageText : '';
-
-    const shouldUseWideTextBubble = mt === 'text' && !isImage && !isLocation;
+    const hasWhitespace = /\s/.test(String(item.text || ''));
+    const shouldUseNoSpaceWideBubble =
+      mt === 'text' &&
+      !isImage &&
+      !isLocation &&
+      !hasWhitespace &&
+      String(item.text || '').length >= 12;
 
     const renderMainBody = () => {
       if (isImage) {
@@ -1393,7 +1541,13 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
         );
       }
       return (
-        <Text style={[styles.messageText, isMyMessage ? styles.sentMessageText : styles.recvMessageText]}>
+        <Text
+          style={[
+            styles.messageText,
+            isMyMessage ? styles.sentMessageText : styles.recvMessageText,
+            item?.isDeleted && styles.deletedMessageText,
+          ]}
+        >
           {item.text}
         </Text>
       );
@@ -1413,13 +1567,13 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
           >
             <Pressable 
               onLongPress={(e) => openReactionPicker(item, isMyMessage, e)} 
-              delayLongPress={250}
+              delayLongPress={140}
             >
               <View
                 style={[
                   styles.bubbleOuter,
                   isMyMessage ? styles.bubbleOuterRight : styles.bubbleOuterLeft,
-                  shouldUseWideTextBubble && styles.bubbleOuterWideText,
+                  shouldUseNoSpaceWideBubble && styles.bubbleOuterNoSpaceWide,
                   (isImage || isLocation) && styles.bubbleOuterMedia,
                   (isImage || isLocation) && {
                     width: mediaBubbleWidth,
@@ -1462,7 +1616,12 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
   };
 
   const screenWidth = Dimensions.get('window').width;
-  const pickerWidth = REACTION_EMOJIS.length * 36 + 16;
+  const pickerItemCount = REACTION_EMOJIS.length + (reactionPicker?.canDelete ? 1 : 0);
+  const pickerWidth = pickerItemCount * 36 + 16;
+  const androidKeyboardInset =
+    Platform.OS === 'android' && keyboardOpen
+      ? Math.max(0, keyboardHeight - insets.bottom - 6)
+      : 0;
   const reactionPickerLeft = reactionPicker
     ? Math.min(Math.max(reactionPicker.x - pickerWidth / 2, 8), screenWidth - pickerWidth - 8)
     : 0;
@@ -1520,7 +1679,7 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
 
             <KeyboardAvoidingView
               style={[styles.keyboardView, styles.keyboardAvoidTransparent]}
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
               keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 12}
             >
               {/* Chat body + composer: doodle/gradient fills to bottom (no solid slab). */}
@@ -1531,7 +1690,7 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
                 resizeMode="cover"
               >
                 <LinearGradient
-                  colors={['rgba(236, 229, 221, 0.82)', 'rgba(227, 219, 210, 0.9)', 'rgba(236, 229, 221, 0.88)']}
+                  colors={['rgba(248, 249, 251, 0.96)', 'rgba(253, 236, 239, 0.82)', 'rgba(248, 249, 251, 0.96)']}
                   style={styles.backgroundOverlay}
                 >
                   {loading ? (
@@ -1543,7 +1702,13 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
                       ref={flatListRef}
                       data={reversedMessages}
                       renderItem={renderMessage}
-                      keyExtractor={(item) => item._id || item.localId || Math.random().toString()}
+                      keyExtractor={(item, index) =>
+                        String(
+                          item._id ||
+                            item.localId ||
+                            `${item.createdAt || 'msg'}_${item.senderId?._id || item.senderId || 'u'}_${index}`
+                        )
+                      }
                       style={styles.messagesListTransparent}
                       contentContainerStyle={styles.messagesList}
                       showsVerticalScrollIndicator={false}
@@ -1574,18 +1739,12 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
                     </View>
                   )}
 
-                  {uploadProgress != null ? (
-                    <View style={styles.uploadBar}>
-                      <ActivityIndicator color={SOCIUS_PRIMARY} />
-                      <Text style={styles.uploadBarText}>{Math.round(Math.min(1, uploadProgress) * 100)}% uploading…</Text>
-                    </View>
-                  ) : null}
-
                   {isRecording ? (
                     <View
                       style={[
                         styles.recordBar,
                         { paddingBottom: keyboardOpen ? KEYBOARD_GAP : 10 + composerBottomInset },
+                        androidKeyboardInset > 0 ? { marginBottom: androidKeyboardInset } : null,
                       ]}
                     >
                       <View style={styles.recordDot} />
@@ -1593,8 +1752,16 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
                       <TouchableOpacity onPress={cancelRecording} style={styles.recordBtn}>
                         <Text style={styles.recordBtnText}>Cancel</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={stopRecordingAndSend} style={[styles.recordBtn, styles.recordSendBtn]}>
-                        <Text style={[styles.recordBtnText, { color: '#fff' }]}>Send</Text>
+                      <TouchableOpacity
+                        onPress={stopRecordingAndSend}
+                        style={[styles.recordBtn, styles.recordSendBtn]}
+                        disabled={uploadingKind === 'audio'}
+                      >
+                        {uploadingKind === 'audio' ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                          <Text style={[styles.recordBtnText, { color: '#fff' }]}>Send</Text>
+                        )}
                       </TouchableOpacity>
                     </View>
                   ) : (
@@ -1620,6 +1787,7 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
                         style={[
                           styles.inputRow,
                           { paddingBottom: keyboardOpen ? KEYBOARD_GAP : 8 + composerBottomInset },
+                          androidKeyboardInset > 0 ? { marginBottom: androidKeyboardInset } : null,
                         ]}
                       >
                         <View style={styles.combinedInputBar}>
@@ -1647,19 +1815,27 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
                           />
                           <TouchableOpacity
                             onPress={handleShareLocation}
-                            disabled={chatBlocked}
+                            disabled={chatBlocked || uploadingKind === 'location'}
                             style={styles.inputBarIconBtn}
                             accessibilityLabel="Share location"
                           >
-                            <Icon name="place" size={22} color={chatBlocked ? '#ccc' : '#8696A0'} />
+                            {uploadingKind === 'location' ? (
+                              <ActivityIndicator size="small" color="#8696A0" />
+                            ) : (
+                              <Icon name="place" size={22} color={chatBlocked ? '#ccc' : '#8696A0'} />
+                            )}
                           </TouchableOpacity>
                           <TouchableOpacity
                             onPress={handleOpenCamera}
-                            disabled={chatBlocked}
+                            disabled={chatBlocked || uploadingKind === 'camera' || uploadingKind === 'image'}
                             style={styles.inputBarIconBtn}
                             accessibilityLabel="Camera"
                           >
-                            <Icon name="photo-camera" size={22} color={chatBlocked ? '#ccc' : '#8696A0'} />
+                            {uploadingKind === 'camera' || uploadingKind === 'image' ? (
+                              <ActivityIndicator size="small" color="#8696A0" />
+                            ) : (
+                              <Icon name="photo-camera" size={22} color={chatBlocked ? '#ccc' : '#8696A0'} />
+                            )}
                           </TouchableOpacity>
                         </View>
 
@@ -1675,11 +1851,15 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
                         ) : (
                           <TouchableOpacity
                             onPress={startRecording}
-                            disabled={chatBlocked}
+                            disabled={chatBlocked || uploadingKind === 'audio'}
                             style={[styles.fabSend, chatBlocked && styles.fabDisabled]}
                             accessibilityLabel="Record voice"
                           >
-                            <Icon name="mic" size={24} color="#fff" />
+                            {uploadingKind === 'audio' ? (
+                              <ActivityIndicator size="small" color="#fff" />
+                            ) : (
+                              <Icon name="mic" size={24} color="#fff" />
+                            )}
                           </TouchableOpacity>
                         )}
                       </View>
@@ -1715,6 +1895,17 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
                     </TouchableOpacity>
                   </Animated.View>
                 ))}
+                {reactionPicker?.canDelete ? (
+                  <Animated.View entering={BounceIn.delay(REACTION_EMOJIS.length * 60).springify().damping(12)}>
+                    <TouchableOpacity
+                      onPress={() => handleDeleteMessage(reactionPicker.message)}
+                      style={[styles.reactionEmojiButton, styles.reactionDeleteButton]}
+                      accessibilityLabel="Delete message"
+                    >
+                      <Icon name="delete-outline" size={18} color="#B4234F" />
+                    </TouchableOpacity>
+                  </Animated.View>
+                ) : null}
               </Animated.View>
             </View>
           ) : null}
@@ -1744,7 +1935,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   textureImage: {
-    opacity: 0.32,
+    opacity: 0.08,
   },
   header: {
     flexDirection: 'row',
@@ -1842,12 +2033,12 @@ const styles = StyleSheet.create({
   },
   bubbleOuter: {
     position: 'relative',
-    maxWidth: '82%',
-    minWidth: 72,
+    maxWidth: '95%',
+    minWidth: 85,
     overflow: 'visible',
   },
-  bubbleOuterWideText: {
-    minWidth: '70%',
+  bubbleOuterNoSpaceWide: {
+    maxWidth: '95%',
   },
   bubbleOuterRight: {
     alignSelf: 'flex-end',
@@ -1884,7 +2075,7 @@ const styles = StyleSheet.create({
   messageBubble: {
     paddingHorizontal: 12,
     paddingVertical: 8,
-    paddingBottom: 26,
+    paddingBottom: 22,
     borderRadius: 18,
     overflow: 'visible',
     ...Platform.select({
@@ -1915,6 +2106,7 @@ const styles = StyleSheet.create({
   messageText: {
     fontSize: 16,
     lineHeight: 21,
+    paddingRight: 8,
   },
   sentMessageText: {
     color: WA_COLORS.sentText,
@@ -1922,12 +2114,16 @@ const styles = StyleSheet.create({
   recvMessageText: {
     color: WA_COLORS.receivedText,
   },
+  deletedMessageText: {
+    fontStyle: 'italic',
+    color: '#667085',
+  },
   metaContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     position: 'absolute',
-    bottom: 7,
-    right: 11,
+    bottom: 5,
+    right: 8,
     maxWidth: '92%',
   },
   timeText: {
@@ -2086,7 +2282,7 @@ const styles = StyleSheet.create({
   },
   voiceProgressFg: {
     height: 4,
-    backgroundColor: 'rgba(7, 94, 84, 0.4)',
+    backgroundColor: 'rgba(220, 92, 105, 0.35)',
     borderRadius: 2,
     position: 'absolute',
     left: 0,
@@ -2113,7 +2309,7 @@ const styles = StyleSheet.create({
     color: 'rgba(48,48,48,0.55)',
   },
   voiceTimeRecv: {
-    color: 'rgba(7, 94, 84, 0.6)',
+    color: 'rgba(71, 84, 103, 0.75)',
   },
   imageBubbleClip: {
     position: 'relative',
@@ -2212,26 +2408,26 @@ const styles = StyleSheet.create({
   locationMapHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#DCF8C6',
+    backgroundColor: '#FDECEF',
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(7, 94, 84, 0.12)',
+    borderBottomColor: 'rgba(220, 92, 105, 0.15)',
   },
   locationMapHeaderTitle: {
     marginLeft: 8,
     fontSize: 15,
     fontWeight: '700',
-    color: '#075E54',
+    color: '#C84D59',
   },
   locationMapImage: {
     width: '100%',
     height: 140,
-    backgroundColor: '#E8F5E9',
+    backgroundColor: '#F8F9FB',
   },
   locationMapFallbackInner: {
     height: 140,
-    backgroundColor: '#E8F5E9',
+    backgroundColor: '#F8F9FB',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2244,7 +2440,7 @@ const styles = StyleSheet.create({
   locationLiveLabel: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#075E54',
+    color: '#C84D59',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
     marginBottom: 6,
@@ -2262,7 +2458,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingVertical: 11,
     paddingHorizontal: 16,
-    backgroundColor: '#128C7E',
+    backgroundColor: '#DC5C69',
     borderRadius: 10,
   },
   openMapsBtnSolidText: {
@@ -2275,7 +2471,7 @@ const styles = StyleSheet.create({
   },
   fileTapHint: {
     fontSize: 12,
-    color: '#128C7E',
+    color: '#C84D59',
     fontWeight: '600',
     marginTop: 6,
   },
@@ -2400,7 +2596,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   myReplySender: {
-    color: '#075E54',
+    color: '#C84D59',
   },
   theirReplySender: {
     color: '#C84D59',
@@ -2428,7 +2624,7 @@ const styles = StyleSheet.create({
   },
   myReplySnippet: {
     backgroundColor: 'rgba(0, 0, 0, 0.06)',
-    borderLeftColor: '#128C7E',
+    borderLeftColor: '#DC5C69',
   },
   theirReplySnippet: {
     backgroundColor: 'rgba(0, 0, 0, 0.05)',
@@ -2499,6 +2695,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 18,
   },
+  reactionDeleteButton: {
+    backgroundColor: '#FFF1F3',
+  },
   reactionEmojiLarge: {
     fontSize: 20,
   },
@@ -2531,7 +2730,7 @@ const styles = StyleSheet.create({
   recordBarText: {
     flex: 1,
     fontWeight: '600',
-    color: '#075E54',
+    color: '#C84D59',
   },
   recordBtn: {
     paddingHorizontal: 12,

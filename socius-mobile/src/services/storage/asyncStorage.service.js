@@ -11,6 +11,21 @@ const ACTIVE_HELP_REQUEST_ID_KEY = 'request.active.help.id.v1';
 const ACTIVE_PRESENCE_REQUEST_ID_KEY = 'request.active.presence.id.v1';
 const ACTIVE_PRESENCE_ASSIGNMENT_ID_KEY = 'request.active.presence.assignment.id.v1';
 const DEFAULT_COUNTRY_CODE_KEY = 'user.default.countryCode.v1';
+const PENDING_BORROW_ITEM_OPEN_KEY = 'pending.borrow.item.open.v1';
+
+const dailyHelpSafetyGuideKey = (userId) =>
+  `dailyHelp.helperSafetyGuideSeen.v1:${String(userId || '')}`;
+
+const saveDailyHelpSafetyGuideSeen = async (userId) => {
+  if (userId == null || userId === '') return;
+  await AsyncStorage.setItem(dailyHelpSafetyGuideKey(userId), '1');
+};
+
+const loadDailyHelpSafetyGuideSeen = async (userId) => {
+  if (userId == null || userId === '') return false;
+  const v = await AsyncStorage.getItem(dailyHelpSafetyGuideKey(userId));
+  return v === '1' || v === 'true';
+};
 
 const saveAuth = async ({ accessToken, refreshToken, role, userId }) => {
   const tasks = [];
@@ -48,6 +63,7 @@ const clearAuth = async () => {
     AsyncStorage.removeItem(ACTIVE_HELP_REQUEST_ID_KEY),
     AsyncStorage.removeItem(ACTIVE_PRESENCE_REQUEST_ID_KEY),
     AsyncStorage.removeItem(ACTIVE_PRESENCE_ASSIGNMENT_ID_KEY),
+    AsyncStorage.removeItem(PENDING_BORROW_ITEM_OPEN_KEY),
   ]);
 };
 
@@ -149,6 +165,30 @@ const loadDefaultCountryCode = async () => {
   return AsyncStorage.getItem(DEFAULT_COUNTRY_CODE_KEY);
 };
 
+/** Pending helper navigation: user tapped View / notification body on borrow_item_request before nav was ready. */
+const savePendingBorrowItemOpen = async (payload) => {
+  if (!payload?.requestId || !payload?.borrowId) return;
+  try {
+    await AsyncStorage.setItem(PENDING_BORROW_ITEM_OPEN_KEY, JSON.stringify(payload));
+  } catch (_) {}
+};
+
+const loadPendingBorrowItemOpen = async () => {
+  try {
+    const raw = await AsyncStorage.getItem(PENDING_BORROW_ITEM_OPEN_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};
+
+const clearPendingBorrowItemOpen = async () => {
+  try {
+    await AsyncStorage.removeItem(PENDING_BORROW_ITEM_OPEN_KEY);
+  } catch (_) {}
+};
+
 export {
   saveAuth,
   loadAuth,
@@ -169,4 +209,9 @@ export {
   clearActivePresenceAssignmentId,
   saveDefaultCountryCode,
   loadDefaultCountryCode,
+  savePendingBorrowItemOpen,
+  loadPendingBorrowItemOpen,
+  clearPendingBorrowItemOpen,
+  saveDailyHelpSafetyGuideSeen,
+  loadDailyHelpSafetyGuideSeen,
 };

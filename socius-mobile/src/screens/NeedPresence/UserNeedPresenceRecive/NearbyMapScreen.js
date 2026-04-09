@@ -7,7 +7,7 @@ import Header from '../../../components/common/Header';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useResponsive } from '../../../utils/responsive';
-import { cancelPresenceRequest, closePresenceRequest, getActivePresenceRequest, getPresenceById, updatePresenceStatus, updatePresenceRequest, declinePresence } from '../../../services/api/incident.api';
+import { cancelPresenceRequest, closePresenceRequest, getActivePresenceRequest, getPresenceById, updatePresenceStatus, updatePresenceRequest, declinePresence } from '../../../services/api/needPresence.api';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
 import { requestLocationPermission, getCurrentPosition } from '../../../services/location/geolocation.service';
 import { connectSocket } from '../../../services/socket/socket.service';

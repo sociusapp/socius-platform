@@ -1,24 +1,26 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../../components/common/Header';
 import Button from '../../../components/common/Button';
 import { SkeletonBox, SkeletonCircle, SkeletonSpacer } from '../../../components/common/Skeleton';
 import { useResponsive } from '../../../utils/responsive';
-import { getHelpRequestById } from '../../../services/api/incident.api';
+import { getHelpRequestById } from '../../../services/api/dailyHelp.api';
 import { acceptHelpAsVolunteer, declineHelpAsVolunteer } from '../../../services/api/volunteer.api';
 import { loadAuth } from '../../../services/storage/asyncStorage.service';
 import { getSocket } from '../../../services/socket/socket.service';
 import NativeCallService from '../../../services/notifications/NativeCallService';
 import CustomAlert from '../../../components/common/CustomAlert';
 import { baseURL } from '../../../services/api/client';
+import { sociusRefreshProps } from '../../../utils/sociusRefreshControl';
 
 const LocalRequestScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
   const [loading, setLoading] = useState(true);
   const [request, setRequest] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const requestId = route?.params?.requestId;
   const viewedMarkedRef = useRef(false);
   const baseRoot = useMemo(() => String(baseURL || '').replace(/\/api\/?$/, ''), []);
@@ -235,13 +237,14 @@ const LocalRequestScreen = ({ navigation, route }) => {
     }
   };
 
-  const loadRequest = async () => {
+  const loadRequest = useCallback(async (opts = {}) => {
+    const suppressLoading = Boolean(opts.suppressLoading);
     if (!requestId) {
       showAlert('Request not found', 'Unable to load this request.', [{ text: 'OK', onPress: () => navigation.goBack() }]);
       return;
     }
 
-    setLoading(true);
+    if (!suppressLoading) setLoading(true);
     try {
       const auth = await loadAuth();
       const token = auth?.accessToken;
@@ -320,16 +323,25 @@ const LocalRequestScreen = ({ navigation, route }) => {
         ]
       );
     } finally {
-      setLoading(false);
+      if (!suppressLoading) setLoading(false);
     }
-  };
+  }, [requestId, navigation]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadRequest({ suppressLoading: true });
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadRequest]);
 
   useEffect(() => {
     if (!requestId || viewedMarkedRef.current) return;
     viewedMarkedRef.current = true;
     // Force a network read once so backend can mark viewedAt immediately.
     loadRequest();
-  }, [requestId]);
+  }, [requestId, loadRequest]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -350,6 +362,7 @@ const LocalRequestScreen = ({ navigation, route }) => {
           alignItems: 'center'
         }]} 
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} {...sociusRefreshProps} />}
       >
         {loading ? (
           <View style={{ width: contentWidth }}>

@@ -58,9 +58,23 @@ const errorHandler = (err, req, res, next) => {
     return error(res, 'Token expired', 401)
   }
 
-  // Multer errors (just in case)
+  // Multer errors
+  if (err.name === 'MulterError') {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return error(res, err.message || 'File too large', 400)
+    }
+    if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+      return error(res, 'Unexpected file field. Use field name "image".', 400)
+    }
+    return error(res, err.message || 'Upload failed', 400)
+  }
   if (err.code === 'LIMIT_FILE_SIZE') {
-    return error(res, 'File too large. Maximum size is 5MB.', 400)
+    return error(res, err.message || 'File too large', 400)
+  }
+
+  // Multer fileFilter passes a plain Error (not MulterError) for rejected MIME types
+  if (typeof err.message === 'string' && /only jpg, png, or webp images are allowed/i.test(err.message)) {
+    return error(res, err.message, 400)
   }
 
   // Default 500

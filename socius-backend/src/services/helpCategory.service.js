@@ -1,5 +1,7 @@
 const HelpCategory = require('../models/HelpCategory')
 const HelpRequest = require('../models/HelpRequest')
+const HelpSubcategory = require('../models/HelpSubcategory')
+const { ensureHelpSubcategoryDefaults } = require('./helpSubcategoryDefaults')
 
 const DEFAULT_CATEGORIES = [
   { slug: 'print_document', name: 'Print / Document', sortOrder: 1, isActive: true },
@@ -36,16 +38,52 @@ const slugify = (value) =>
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
 
+const attachSubcategoryMeta = async (items, { includeSubcategories = false, onlyActive = true } = {}) => {
+  const ids = (Array.isArray(items) ? items : []).map((c) => c?._id).filter(Boolean)
+  if (!ids.length) return Array.isArray(items) ? items : []
+  const subQuery = {
+    parentCategoryId: { $in: ids },
+    ...(onlyActive ? { isActive: true } : {}),
+  }
+  const rows = await HelpSubcategory.find(subQuery).select('_id parentCategoryId title description').sort({ createdAt: 1 }).lean()
+  const byParent = new Map()
+  for (const row of rows) {
+    const key = String(row.parentCategoryId)
+    if (!byParent.has(key)) byParent.set(key, [])
+    byParent.get(key).push({
+      _id: String(row._id),
+      title: row.title,
+      description: row.description,
+      parent_category_id: String(row.parentCategoryId),
+    })
+  }
+
+  return items.map((c) => {
+    const list = byParent.get(String(c._id)) || []
+    return {
+      ...c,
+      hasSubcategories: list.length > 0,
+      has_subcategories: list.length > 0,
+      subcategories: includeSubcategories ? list : undefined,
+      subcategoryCount: list.length,
+    }
+  })
+}
+
 const listPublic = async () => {
   await ensureSeeded()
+  await ensureHelpSubcategoryDefaults()
   const items = await HelpCategory.find({ isActive: true }).sort({ sortOrder: 1, name: 1 }).lean()
-  return items.map((c) => ({ ...c, iconUrl: c.iconPath ? normalizeUploadPath(c.iconPath) : null }))
+  const normalized = items.map((c) => ({ ...c, iconUrl: c.iconPath ? normalizeUploadPath(c.iconPath) : null }))
+  return attachSubcategoryMeta(normalized, { includeSubcategories: true, onlyActive: true })
 }
 
 const listAdmin = async () => {
   await ensureSeeded()
+  await ensureHelpSubcategoryDefaults()
   const items = await HelpCategory.find({}).sort({ sortOrder: 1, name: 1 }).lean()
-  return items.map((c) => ({ ...c, iconUrl: c.iconPath ? normalizeUploadPath(c.iconPath) : null }))
+  const normalized = items.map((c) => ({ ...c, iconUrl: c.iconPath ? normalizeUploadPath(c.iconPath) : null }))
+  return attachSubcategoryMeta(normalized, { includeSubcategories: false, onlyActive: false })
 }
 
 const getById = async (id) => {

@@ -216,6 +216,8 @@ const NOTIFICATION_TYPE = {
   HELP_SESSION_TIME_ENDED_HELPER: 'help_session_time_ended_helper',
   /** Helper: requester extended the session — new end time in payload */
   HELP_SESSION_EXTENDED_HELPER: 'help_session_extended_helper',
+  BORROW_ITEM_REQUEST: 'borrow_item_request',
+  BORROW_ITEM_STATUS: 'borrow_item_status',
 }
 
 const NOTIFICATION_PRIORITY = {
