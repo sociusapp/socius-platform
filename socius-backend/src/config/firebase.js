@@ -133,7 +133,14 @@ const getProjectId = () => {
 /**
  * Single device ko notification bhejo (HTTP v1, Postman jaisa)
  */
-const sendToDevice = async ({ token, title, body, data = {}, priority = 'high' }) => {
+const normalizeImageUrl = (url) => {
+  const s = String(url || '').trim()
+  if (!s) return null
+  if (/^https:\/\//i.test(s)) return s
+  return null
+}
+
+const sendToDevice = async ({ token, title, body, data = {}, priority = 'high', imageUrl = null }) => {
   try {
     const accessToken = await getAccessToken()
     const projectId = getProjectId()
@@ -143,7 +150,8 @@ const sendToDevice = async ({ token, title, body, data = {}, priority = 'high' }
 
     const resolveAndroidNotifConfig = () => {
       const t = String(data?.type || '').toLowerCase()
-      // IDs must match channels created on mobile side (SociusNotificationService).
+      const campaign = String(data?.campaignType || '').toLowerCase()
+      // IDs must match channels created on mobile (MainApplication / Notifee).
       if (
         t.includes('help_request') ||
         t.includes('borrow_item_request') ||
@@ -155,6 +163,9 @@ const sendToDevice = async ({ token, title, body, data = {}, priority = 'high' }
       }
       if (t.includes('presence_alarm') || t.includes('presence')) {
         return { channelId: 'socius_presence_alarm', sound: 'presence_alarm' }
+      }
+      if (t === 'admin_broadcast' && (campaign === 'marketing' || campaign === 'promo')) {
+        return { channelId: 'socius_nudge', sound: null }
       }
       return { channelId: 'socius_updates', sound: null }
     }
@@ -173,11 +184,13 @@ const sendToDevice = async ({ token, title, body, data = {}, priority = 'high' }
 
     if (hasNotification) {
       const androidCfg = resolveAndroidNotifConfig()
-      bodyPayload.message.notification = { title, body }
+      const img = normalizeImageUrl(imageUrl)
+      bodyPayload.message.notification = img ? { title, body, image: img } : { title, body }
       bodyPayload.message.android.notification = {
         channel_id: androidCfg.channelId,
         ...(androidCfg.sound ? { sound: androidCfg.sound } : {}),
         notification_priority: isHigh ? 'PRIORITY_MAX' : 'PRIORITY_DEFAULT',
+        ...(img ? { image: img } : {}),
       }
     }
 
@@ -236,14 +249,14 @@ const sendToDeviceWithRetry = async (payload, maxAttempts = 3) => {
 /**
  * Multiple devices ko notification bhejo (HTTP v1, per-token)
  */
-const sendToMultipleDevices = async ({ tokens, title, body, data = {}, priority = 'high' }) => {
+const sendToMultipleDevices = async ({ tokens, title, body, data = {}, priority = 'high', imageUrl = null }) => {
   if (!tokens || tokens.length === 0) return { success: false, error: 'No tokens' }
 
   try {
     const results = []
     for (const token of tokens) {
       // eslint-disable-next-line no-await-in-loop
-      const r = await sendToDeviceWithRetry({ token, title, body, data, priority })
+      const r = await sendToDeviceWithRetry({ token, title, body, data, priority, imageUrl })
       results.push(r)
     }
 

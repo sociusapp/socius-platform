@@ -1,23 +1,39 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Platform, Image, BackHandler, TextInput } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
-import MapView, { Marker, Circle } from 'react-native-maps';
-import Header from '../../../../components/common/Header';
+import { resolvePresenceScreenMode } from '../../../../utils/presenceRole';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Linking,
+  Platform,
+  Image,
+  TextInput,
+  Animated,
+} from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import MapView, { Marker } from 'react-native-maps';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useResponsive } from '../../../../utils/responsive';
 import { cancelPresenceRequest, closePresenceRequest, getActivePresenceRequest, getPresenceById, updatePresenceStatus, updatePresenceRequest, declinePresence } from '../../../../services/api/needPresence.api';
 import { loadAuth } from '../../../../services/storage/asyncStorage.service';
 import { requestLocationPermission, getCurrentPosition } from '../../../../services/location/geolocation.service';
-import { connectSocket } from '../../../../services/socket/socket.service';
+import { connectSocket, appEvents } from '../../../../services/socket/socket.service';
 import { baseURL as apiBaseURL } from '../../../../services/api/client';
 import CustomAlert from '../../../../components/common/CustomAlert';
+import CancelRequestModal from './CancelRequestModal';
+import ChatModal from '../../../../components/common/ChatModal';
+import { getSessionByRequest } from '../../../../services/api/chat.api';
+import {
+  PresenceBottomMaterialBar,
+  PresenceMaterialNavItem,
+  presenceMaterialNavStyles,
+} from '../../components/PresenceMaterialNavBar';
 
 const NearbyMapScreen = ({ navigation, route }) => {
-  const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
+  const insets = useSafeAreaInsets();
   const { requestId } = route?.params || {};
-  const mode = route?.params?.mode || 'helper';
+  const paramMode = route?.params?.mode;
   
   const [request, setRequest] = useState(null);
   const [requester, setRequester] = useState(null);
@@ -27,6 +43,10 @@ const NearbyMapScreen = ({ navigation, route }) => {
   const [isAccepting, setIsAccepting] = useState(false);
   const [situation, setSituation] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [cancelModalVisible, setCancelModalVisible] = useState(false);
+  const [chatVisible, setChatVisible] = useState(false);
+  const [chatMinimizedUnread, setChatMinimizedUnread] = useState(0);
+  const [presenceChatSessionId, setPresenceChatSessionId] = useState(null);
   
   // Custom Alert State
   const [alertVisible, setAlertVisible] = useState(false);
@@ -54,6 +74,154 @@ const NearbyMapScreen = ({ navigation, route }) => {
   };
   
   const socketRef = useRef(null);
+  const chatVisibleRef = useRef(false);
+  const currentUserIdRef = useRef(null);
+  const presenceToastFade = useRef(new Animated.Value(0)).current;
+  const presenceToastAnimRef = useRef(null);
+
+  const [presenceLeaveToast, setPresenceLeaveToast] = useState(null);
+
+  useEffect(() => {
+    currentUserIdRef.current = currentUserId;
+  }, [currentUserId]);
+
+  const showPresenceLeaveToast = useCallback((data) => {
+    const fullName = String(data?.fullName || '').trim() || 'Someone';
+    const reason = data?.reason === 'declined' ? 'declined' : 'stepped_away';
+    const subtitle =
+      reason === 'declined' ? 'Declined to help' : 'Stepped away from this presence';
+
+    const apiRoot = apiBaseURL.replace(/\/api\/?$/, '');
+    let photoUrl = null;
+    const p = data?.profileImage;
+    if (p) {
+      photoUrl = p.startsWith('http') ? p : `${apiRoot}${p.startsWith('/') ? '' : '/'}${p}`;
+    }
+
+    setPresenceLeaveToast({ fullName, subtitle, photoUrl });
+
+    if (presenceToastAnimRef.current?.stop) presenceToastAnimRef.current.stop();
+    presenceToastFade.setValue(0);
+    presenceToastAnimRef.current = Animated.sequence([
+      Animated.timing(presenceToastFade, {
+        toValue: 1,
+        duration: 280,
+        useNativeDriver: true,
+      }),
+      Animated.delay(3200),
+      Animated.timing(presenceToastFade, {
+        toValue: 0,
+        duration: 280,
+        useNativeDriver: true,
+      }),
+    ]);
+    presenceToastAnimRef.current.start(({ finished }) => {
+      if (finished) setPresenceLeaveToast(null);
+    });
+  }, [presenceToastFade, apiBaseURL]);
+
+  const showPresenceLeaveToastRef = useRef(showPresenceLeaveToast);
+  showPresenceLeaveToastRef.current = showPresenceLeaveToast;
+
+  const screenMode = useMemo(
+    () => resolvePresenceScreenMode(request, currentUserId, paramMode),
+    [request, currentUserId, paramMode],
+  );
+
+  const subscribeChatWhileMinimized =
+    (screenMode === 'requester' && helpers.length > 0) || screenMode === 'helper';
+
+  useEffect(() => {
+    chatVisibleRef.current = chatVisible;
+  }, [chatVisible]);
+
+  useEffect(() => {
+    if (chatVisible) setChatMinimizedUnread(0);
+  }, [chatVisible]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!requestId || !subscribeChatWhileMinimized) {
+      setPresenceChatSessionId(null);
+      return;
+    }
+    (async () => {
+      const auth = await loadAuth();
+      const token = auth?.accessToken;
+      if (!token || cancelled) return;
+      try {
+        const res = await getSessionByRequest(token, requestId);
+        if (cancelled) return;
+        const session = res?.success ? res.data : null;
+        const sid = session?._id != null ? String(session._id) : null;
+        setPresenceChatSessionId(sid);
+      } catch {
+        if (!cancelled) setPresenceChatSessionId(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [requestId, subscribeChatWhileMinimized]);
+
+  useEffect(() => {
+    if (!presenceChatSessionId || currentUserId == null || currentUserId === '') return;
+
+    let cancelled = false;
+    let activeSocket = null;
+    const handler = (data) => {
+      if (!data || String(data.sessionId) !== String(presenceChatSessionId)) return;
+      if (chatVisibleRef.current) return;
+      const msg = data.message;
+      const sender = msg?.senderId?._id ?? msg?.senderId;
+      if (String(sender) === String(currentUserId)) return;
+      setChatMinimizedUnread((c) => Math.min(c + 1, 999));
+    };
+
+    connectSocket().then((socket) => {
+      if (cancelled || !socket) return;
+      activeSocket = socket;
+      socket.on('chat:new_message', handler);
+    });
+
+    return () => {
+      cancelled = true;
+      if (activeSocket) activeSocket.off('chat:new_message', handler);
+    };
+  }, [presenceChatSessionId, currentUserId]);
+
+  const chatPeerName = useMemo(() => {
+    if (screenMode === 'helper') {
+      const r = request?.requesterId;
+      if (typeof r === 'object' && r?.fullName) return r.fullName;
+      return 'Someone nearby';
+    }
+    if (helpers.length === 1) return helpers[0].name;
+    if (helpers.length > 1) return `Nearby helpers (${helpers.length})`;
+    return 'Helper';
+  }, [screenMode, request, helpers]);
+
+  const handleOpenPresenceChat = useCallback(() => {
+    if (screenMode === 'requester' && helpers.length === 0) {
+      showAlert(
+        'Message',
+        'When someone accepts your presence request, you can chat with them here.',
+        [{ text: 'OK', onPress: closeAlert }],
+      );
+      return;
+    }
+    setChatVisible(true);
+  }, [screenMode, helpers.length]);
+
+  useEffect(() => {
+    const onOpenChat = (payload) => {
+      if (payload?.requestId != null && String(payload.requestId) === String(requestId)) {
+        setChatVisible(true);
+      }
+    };
+    appEvents.on('open_chat', onOpenChat);
+    return () => appEvents.off('open_chat', onOpenChat);
+  }, [requestId]);
 
   const loadData = async () => {
     try {
@@ -131,11 +299,18 @@ const NearbyMapScreen = ({ navigation, route }) => {
           }
         };
 
+        const handleHelperLeft = (data) => {
+          if (String(data?.presenceRequestId || data?.requestId) !== String(requestId)) return;
+          loadData();
+          if (String(data?.helperId) === String(currentUserIdRef.current)) return;
+          showPresenceLeaveToastRef.current?.(data);
+        };
+
         // Listen to all relevant events for instant updates
         socket.on('presence:accepted', handleUpdate);
         socket.on('presence:status_updated', handleUpdate);
         socket.on('presence:helper_joined', handleUpdate);
-        socket.on('presence:helper_left', handleUpdate);
+        socket.on('presence:helper_left', handleHelperLeft);
         socket.on('presence:location_updated', (data) => {
           // If we receive location updates, we can update specific helper markers without full reload
           // For now, reload is safer to get full state, but we could optimize later
@@ -235,41 +410,25 @@ const NearbyMapScreen = ({ navigation, route }) => {
     }
   };
 
-  const handleCancelRequest = () => {
-    showAlert(
-      'Cancel Request?',
-      'Are you sure you want to cancel this presence request?',
-      [
-        { text: 'No', style: 'cancel', onPress: closeAlert },
-        { 
-          text: 'Yes, Cancel', 
-          style: 'destructive', 
-          onPress: async () => {
-            closeAlert();
-            try {
-              const auth = await loadAuth();
-              const token = auth?.accessToken;
-              if (!token || !requestId) return;
+  const executeCancelPresence = async (selectedReason) => {
+    setCancelModalVisible(false);
+    try {
+      const auth = await loadAuth();
+      const token = auth?.accessToken;
+      if (!token || !requestId) return;
 
-              const response = await cancelPresenceRequest(token, requestId, { reason: 'user_cancelled' });
-              if (response?.success) {
-                navigation.reset({
-                  index: 0,
-                  routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
-                });
-              }
-            } catch (e) {
-              console.log('Error cancelling request:', e);
-            }
-          } 
-        }
-      ]
-    );
-  };
-
-  const handleContactAuthorities = () => {
-    const url = `tel:100`;
-    Linking.openURL(url);
+      const response = await cancelPresenceRequest(token, requestId, {
+        reason: selectedReason || 'user_cancelled',
+      });
+      if (response?.success) {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+        });
+      }
+    } catch (e) {
+      console.log('Error cancelling request:', e);
+    }
   };
 
   const handleStepAway = () => {
@@ -326,25 +485,70 @@ const NearbyMapScreen = ({ navigation, route }) => {
         iconColor={alertConfig.iconColor}
         onClose={closeAlert}
       />
-      {/* Header Section */}
+      {presenceLeaveToast ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.presenceLeaveToastWrap,
+            {
+              top: insets.top + 52,
+              opacity: presenceToastFade,
+              transform: [
+                {
+                  translateY: presenceToastFade.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-12, 0],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.presenceLeaveToastCard}>
+            {presenceLeaveToast.photoUrl ? (
+              <Image
+                source={{ uri: presenceLeaveToast.photoUrl }}
+                style={styles.presenceLeaveToastAvatar}
+              />
+            ) : (
+              <View style={[styles.presenceLeaveToastAvatar, styles.presenceLeaveToastAvatarPh]}>
+                <Icon name="account" size={22} color="#64748B" />
+              </View>
+            )}
+            <View style={styles.presenceLeaveToastTextCol}>
+              <Text style={styles.presenceLeaveToastName} numberOfLines={1}>
+                {presenceLeaveToast.fullName}
+              </Text>
+              <Text style={styles.presenceLeaveToastSub} numberOfLines={2}>
+                {presenceLeaveToast.subtitle}
+              </Text>
+            </View>
+          </View>
+        </Animated.View>
+      ) : null}
+      <CancelRequestModal
+        visible={cancelModalVisible}
+        onClose={() => setCancelModalVisible(false)}
+        onConfirm={(reason) => void executeCancelPresence(reason)}
+      />
+      {/* Header: back | centered Socius | status (matches requester "presence active" mock) */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 4 }}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerSideBtn}>
           <Icon name="arrow-left" size={24} color="#5A5A5A" />
         </TouchableOpacity>
-        <View style={styles.brandContainer}>
-          <Image 
-            source={require('../../../../assets/icons/icon-03.png')} 
-            style={styles.logoIcon} 
-            resizeMode="contain" 
-          />
-          <Text style={styles.logoText}>Socius</Text>
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitleCenter}>Socius</Text>
         </View>
-        <View style={styles.presenceActivePill}>
+        <View style={[styles.presenceActivePill, styles.headerSidePill]}>
           <Text style={styles.presenceActiveText}>Presence Active</Text>
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={screenMode === 'requester' ? styles.scrollFlex : undefined}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Map Section */}
         <View style={styles.mapContainer}>
           <MapView
@@ -358,15 +562,7 @@ const NearbyMapScreen = ({ navigation, route }) => {
           >
             {/* Nearby people (Red dots with glow) */}
             {helpers.map((h, i) => (
-              <Marker key={i} coordinate={{ latitude: h.latitude || 27.001, longitude: h.longitude || 85.001 }}>
-                <View style={styles.helperMarkerGlow}>
-                  <View style={styles.helperMarker} />
-                </View>
-              </Marker>
-            ))}
-            {/* Fallback markers for design */}
-            {!helpers.length && [1, 2, 3].map(i => (
-              <Marker key={`fb-${i}`} coordinate={{ latitude: 27.0 + (i * 0.002), longitude: 85.0 + (i * 0.002) }}>
+              <Marker key={h.id || i} coordinate={{ latitude: h.latitude || 27.001, longitude: h.longitude || 85.001 }}>
                 <View style={styles.helperMarkerGlow}>
                   <View style={styles.helperMarker} />
                 </View>
@@ -394,8 +590,8 @@ const NearbyMapScreen = ({ navigation, route }) => {
         {/* Floating Card Section */}
         <View style={styles.cardSection}>
           <View style={styles.contentCard}>
-            <Text style={styles.mainTitle}>{mode === 'requester' ? 'You are not alone' : 'Someone needs presence'}</Text>
-            <Text style={styles.subtitle}>People nearby are aware of {mode === 'requester' ? 'your' : 'the'} situation</Text>
+            <Text style={styles.mainTitle}>{screenMode === 'requester' ? 'You are not alone' : 'Someone needs presence'}</Text>
+            <Text style={styles.subtitle}>People nearby are aware of {screenMode === 'requester' ? 'your' : 'the'} situation</Text>
             
             <View style={styles.dividerRow}>
               <View style={styles.dividerLine} />
@@ -411,7 +607,7 @@ const NearbyMapScreen = ({ navigation, route }) => {
                       <Image source={{ uri: h.photo }} style={styles.avatar} />
                     ) : (
                       <View style={[styles.avatar, styles.placeholderAvatar]}>
-                        <Icon name="account" size={24} color="#CBD5E1" />
+                        <Icon name="account" size={22} color="#CBD5E1" />
                       </View>
                     )}
                   </View>
@@ -430,14 +626,16 @@ const NearbyMapScreen = ({ navigation, route }) => {
 
         {/* Actions Area */}
         <View style={styles.actionsContainer}>
-          {mode === 'requester' && (
+          {screenMode === 'requester' && (
             <>
-              <TextInput 
+              <Text style={styles.situationContextLabel}>What others see</Text>
+              <TextInput
                 style={styles.situationInput}
                 placeholder="Share your current situation"
                 placeholderTextColor="#A0A0A0"
                 value={situation}
                 onChangeText={setSituation}
+                multiline
               />
 
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickRepliesScroll}>
@@ -446,26 +644,19 @@ const NearbyMapScreen = ({ navigation, route }) => {
                 <TouchableOpacity style={styles.replyPill} onPress={() => setSituation("I need urgent help")}><Text style={styles.replyText}>I need urgent help</Text></TouchableOpacity>
               </ScrollView>
 
-              <TouchableOpacity style={styles.authoritiesButton} onPress={handleContactAuthorities}>
-                <Text style={styles.authoritiesText}>Contact Authorities</Text>
+              <TouchableOpacity
+                style={[styles.actionButton, styles.updateSituationWide, isSubmitting && { opacity: 0.6 }]}
+                onPress={handleUpdateSituation}
+                disabled={isSubmitting}
+              >
+                <Text style={styles.actionText}>
+                  {isSubmitting ? 'Updating...' : 'Update Situation'}
+                </Text>
               </TouchableOpacity>
-
-              <View style={styles.bottomButtons}>
-                <TouchableOpacity 
-                  style={[styles.actionButton, isSubmitting && { opacity: 0.6 }]} 
-                  onPress={handleUpdateSituation}
-                  disabled={isSubmitting}
-                >
-                  <Text style={styles.actionText}>{isSubmitting ? 'Updating...' : 'Update Situation'}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.actionButton} onPress={handleCancelRequest}>
-                  <Text style={styles.actionText}>Cancel Request</Text>
-                </TouchableOpacity>
-              </View>
             </>
           )}
 
-          {mode === 'helper' && (
+          {screenMode === 'helper' && (
             <>
               <View style={{ marginBottom: 15 }}>
                 <Text style={{ fontSize: 16, fontWeight: '600', color: '#334155', marginBottom: 5 }}>Situation:</Text>
@@ -473,6 +664,20 @@ const NearbyMapScreen = ({ navigation, route }) => {
                   <Text style={{ fontSize: 14, color: '#475569' }}>{request?.description || 'Requesting calm presence nearby'}</Text>
                 </View>
               </View>
+
+              <TouchableOpacity
+                style={[styles.actionButton, styles.helperMessageBtn]}
+                onPress={handleOpenPresenceChat}
+              >
+                <Text style={styles.actionText}>Message</Text>
+                {chatMinimizedUnread > 0 ? (
+                  <View style={styles.helperMessageBadge} accessibilityLabel={`${chatMinimizedUnread} unread`}>
+                    <Text style={styles.helperMessageBadgeText}>
+                      {chatMinimizedUnread > 99 ? '99+' : String(chatMinimizedUnread)}
+                    </Text>
+                  </View>
+                ) : null}
+              </TouchableOpacity>
 
               <TouchableOpacity style={styles.authoritiesButton} onPress={handleNearby}>
                 <Text style={styles.authoritiesText}>I'm Nearby</Text>
@@ -491,7 +696,7 @@ const NearbyMapScreen = ({ navigation, route }) => {
 
           <View style={styles.safetyBox}>
             <View style={styles.eyeIconBg}>
-               <Icon name="eye" size={22} color="#8B4513" />
+               <Icon name="eye" size={20} color="#8B4513" />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.safetyTitle}>Stay in visible areas.</Text>
@@ -502,6 +707,60 @@ const NearbyMapScreen = ({ navigation, route }) => {
           <Text style={styles.controlText}>You remain in control. Others respond voluntarily.</Text>
         </View>
       </ScrollView>
+
+      {screenMode === 'requester' && (
+        <PresenceBottomMaterialBar paddingBottom={Math.max(insets.bottom, 8)}>
+          <PresenceMaterialNavItem
+            onPress={() => navigation.navigate('EmergencyHelp', { returnWithBack: true })}
+            icon="phone-alert"
+            iconColor="#C62828"
+            label="Authorities"
+            accessibilityLabel="Contact authorities"
+            iconBg="rgba(198, 40, 40, 0.12)"
+          />
+          <PresenceMaterialNavItem
+            onPress={() => navigation.navigate('EmergencyContacts')}
+            icon="account-multiple-outline"
+            iconColor="#5C4C7C"
+            label="Contacts"
+            accessibilityLabel="Emergency contacts"
+            iconBg="rgba(103, 80, 164, 0.10)"
+          />
+          <PresenceMaterialNavItem
+            onPress={handleOpenPresenceChat}
+            icon="message-text-outline"
+            iconColor="#0D9488"
+            label="Message"
+            accessibilityLabel="Open chat with nearby helpers"
+            iconBg="rgba(13, 148, 136, 0.12)"
+            badgeCount={chatMinimizedUnread}
+          />
+          <PresenceMaterialNavItem
+            onPress={() => navigation.navigate('ReportConcern')}
+            icon="shield-alert-outline"
+            iconColor="#B3261E"
+            label="Report"
+            accessibilityLabel="Report concern"
+            iconBg="rgba(179, 38, 30, 0.12)"
+            labelStyle={presenceMaterialNavStyles.navLabelReport}
+          />
+          <PresenceMaterialNavItem
+            onPress={() => setCancelModalVisible(true)}
+            icon="close"
+            iconColor="#49454F"
+            label="Close"
+            accessibilityLabel="Close presence request"
+            iconBg="rgba(73, 69, 79, 0.08)"
+          />
+        </PresenceBottomMaterialBar>
+      )}
+
+      <ChatModal
+        visible={chatVisible}
+        onClose={() => setChatVisible(false)}
+        requestId={requestId}
+        otherUserName={chatPeerName}
+      />
     </SafeAreaView>
   );
 };
@@ -515,26 +774,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    height: 64,
+    paddingHorizontal: 12,
+    minHeight: 54,
+    paddingVertical: 6,
     backgroundColor: '#FFF',
     borderBottomWidth: 1,
     borderBottomColor: '#F5F5F5',
   },
-  brandContainer: {
-    flexDirection: 'row',
+  headerSideBtn: {
+    padding: 4,
+    width: 40,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  headerCenter: {
+    flex: 1,
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
   },
-  logoIcon: {
-    width: 32,
-    height: 32,
-  },
-  logoText: {
-    fontSize: 22,
+  headerTitleCenter: {
+    fontSize: 20,
     fontWeight: '700',
     color: '#2C3E50',
-    letterSpacing: -0.5,
+    letterSpacing: -0.3,
+  },
+  headerSidePill: {
+    maxWidth: '38%',
   },
   presenceActivePill: {
     backgroundColor: '#F1635C',
@@ -552,11 +817,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  scrollFlex: {
+    flex: 1,
+  },
   scrollContent: {
-    paddingBottom: 20,
+    paddingBottom: 12,
+    flexGrow: 1,
   },
   mapContainer: {
-    height: 230,
+    height: 168,
     width: '100%',
   },
   map: {
@@ -564,14 +833,14 @@ const styles = StyleSheet.create({
   },
   topInfoOverlay: {
     position: 'absolute',
-    top: 20,
+    top: 10,
     left: 0,
     right: 0,
     alignItems: 'center',
     zIndex: 5,
   },
   topInfoTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: '#333',
     textShadowColor: 'rgba(255, 255, 255, 0.9)',
@@ -579,9 +848,9 @@ const styles = StyleSheet.create({
     textShadowRadius: 3,
   },
   topInfoSubtitle: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#666',
-    marginTop: 2,
+    marginTop: 1,
     textShadowColor: 'rgba(255, 255, 255, 0.9)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
@@ -632,22 +901,23 @@ const styles = StyleSheet.create({
   },
   cardSection: {
     paddingHorizontal: 16,
-    marginTop: -45, // Overlap the map
+    marginTop: -38,
   },
   contentCard: {
     backgroundColor: '#FFF',
-    borderRadius: 28,
-    padding: 20,
+    borderRadius: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 17,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.1,
-    shadowRadius: 16,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
     borderWidth: 1,
     borderColor: '#F0F0F0',
   },
   mainTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '700',
     textAlign: 'center',
     color: '#212121',
@@ -656,12 +926,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#757575',
     textAlign: 'center',
-    marginTop: 6,
+    marginTop: 5,
   },
   dividerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 18,
+    marginVertical: 12,
   },
   dividerLine: {
     flex: 1,
@@ -672,13 +942,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#999',
     fontStyle: 'italic',
-    marginHorizontal: 12,
+    marginHorizontal: 10,
   },
   avatarRow: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginBottom: 10,
-    minHeight: 50,
+    marginBottom: 6,
+    minHeight: 46,
     alignItems: 'center',
   },
   avatarWrapper: {
@@ -695,10 +965,10 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    borderWidth: 2.5,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
     borderColor: '#FFF',
     backgroundColor: '#F1F5F9',
   },
@@ -711,7 +981,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 5,
+    marginBottom: 0,
   },
   smallLine: {
     width: 14,
@@ -724,35 +994,46 @@ const styles = StyleSheet.create({
     marginHorizontal: 10,
   },
   actionsContainer: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+  },
+  situationContextLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#94A3B8',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   situationInput: {
     backgroundColor: '#FFF',
     borderWidth: 1.5,
     borderColor: '#F0F0F0',
-    borderRadius: 16,
-    height: 50,
-    paddingHorizontal: 18,
-    fontSize: 15,
+    borderRadius: 14,
+    minHeight: 56,
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 10,
+    fontSize: 14,
     color: '#333',
-    marginBottom: 8,
+    marginBottom: 6,
+    textAlignVertical: 'top',
   },
   quickRepliesScroll: {
-    paddingBottom: 10,
+    paddingBottom: 6,
   },
   replyPill: {
     backgroundColor: '#FFF',
     borderWidth: 1.5,
     borderColor: '#F0F0F0',
-    borderRadius: 25,
-    paddingHorizontal: 18,
-    height: 38,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    height: 34,
     justifyContent: 'center',
-    marginRight: 5,
+    marginRight: 6,
   },
   replyText: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#666',
     fontWeight: '500',
   },
@@ -777,17 +1058,49 @@ const styles = StyleSheet.create({
   bottomButtons: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 20,
+    marginBottom: 12,
   },
   actionButton: {
     flex: 1,
     backgroundColor: '#FFF',
-    borderRadius: 16,
-    height: 50,
+    borderRadius: 14,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
     borderColor: '#F0F0F0',
+  },
+  updateSituationWide: {
+    flex: 0,
+    width: '100%',
+    marginBottom: 2,
+    marginTop: 2,
+  },
+  helperMessageBtn: {
+    flex: 0,
+    width: '100%',
+    marginBottom: 12,
+    overflow: 'visible',
+    position: 'relative',
+  },
+  helperMessageBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 10,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 5,
+    borderRadius: 10,
+    backgroundColor: '#DC2626',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFF',
+  },
+  helperMessageBadgeText: {
+    color: '#FFF',
+    fontSize: 11,
+    fontWeight: '700',
   },
   actionText: {
     color: '#F1635C',
@@ -796,38 +1109,94 @@ const styles = StyleSheet.create({
   },
   safetyBox: {
     backgroundColor: '#FFF9E6',
-    borderRadius: 22,
-    padding: 18,
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#FFE082',
-    marginBottom: 8
+    marginBottom: 4,
+    marginTop: 4,
   },
   eyeIconBg: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#FFECC2',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 15,
+    marginRight: 12,
   },
   safetyTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     color: '#8B4513',
   },
   safetySub: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#8B4513',
   },
   controlText: {
     textAlign: 'center',
-    fontSize: 12,
+    fontSize: 11,
     color: '#AAA',
-    marginTop: 8,
-    marginBottom: 10,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  presenceLeaveToastWrap: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    zIndex: 200,
+    alignItems: 'center',
+  },
+  presenceLeaveToastCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    maxWidth: 400,
+    width: '100%',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(15, 23, 42, 0.08)',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.12,
+        shadowRadius: 12,
+      },
+      android: { elevation: 6 },
+    }),
+  },
+  presenceLeaveToastAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    marginRight: 12,
+    backgroundColor: '#F1F5F9',
+  },
+  presenceLeaveToastAvatarPh: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  presenceLeaveToastTextCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  presenceLeaveToastName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  presenceLeaveToastSub: {
+    marginTop: 2,
+    fontSize: 13,
+    color: '#64748B',
+    fontWeight: '500',
   },
   loadingContainer: {
     flex: 1,

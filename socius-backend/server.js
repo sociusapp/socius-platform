@@ -18,6 +18,9 @@ const { runAutoCloseJobs } = require('./src/jobs/autoClose.job')
 const { runHelpRequestExpiryWarnings } = require('./src/jobs/helpRequestExpiryWarnings.job')
 const { runHelpSessionCompletionPrompts } = require('./src/jobs/helpSessionCompletion.job')
 const { cleanupOldChats } = require('./src/jobs/cleanup.job')
+const {
+  cleanupExpiredNotificationCampaignAssets,
+} = require('./src/jobs/notificationCampaignAssets.job')
 const { runSubscriptionCheck } = require('./src/jobs/subscriptionCheck.job')
 const { notifyMissingHelpersForOpenRequestsBatch } = require('./src/services/helpRequest.service')
 
@@ -47,6 +50,10 @@ app.use('/uploads/blogs', express.static(resolveUploadDir('blogs')))
 app.use('/uploads/chat-media', express.static(resolveUploadDir('chat-media')))
 app.use('/uploads/closures', express.static(resolveUploadDir('closures')))
 app.use('/uploads/prepare-cards', express.static(resolveUploadDir('prepare-cards')))
+app.use(
+  '/uploads/notification-campaigns',
+  express.static(resolveUploadDir('notification-campaigns'))
+)
 
 app.use('/public', require('./src/routes/public.routes'))
 app.use('/api/blog-types', require('./src/routes/blogType.routes'))
@@ -202,6 +209,15 @@ const start = async () => {
         await cleanupOldChats()
       } catch (err) {
         console.error('Cleanup job failed:', err)
+      }
+    })
+
+    // Temporary FCM campaign images (admin uploads) — daily at 3 AM
+    cron.schedule('0 3 * * *', async () => {
+      try {
+        await cleanupExpiredNotificationCampaignAssets()
+      } catch (err) {
+        console.error('Notification campaign asset cleanup failed:', err)
       }
     })
     

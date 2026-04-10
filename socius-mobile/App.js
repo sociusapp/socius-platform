@@ -13,8 +13,8 @@ import { loadAuth } from './src/services/storage/asyncStorage.service';
 import { declineHelpAsVolunteer } from './src/services/api/volunteer.api';
 import { getMyActiveHelpRequest, getActivePresenceRequest } from './src/services/api/incident.api';
 
-// Keep the splash screen visible while we fetch resources
-SplashScreen.preventAutoHideAsync();
+// Global scope (Expo docs): keep native splash until SplashScreen.js calls hideAsync after first paint.
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 
 // Ignore specific warnings
@@ -57,8 +57,8 @@ const App = () => {
   }, []);
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
+      <SafeAreaProvider style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
         <StatusBar
           barStyle="dark-content"
           backgroundColor="transparent"

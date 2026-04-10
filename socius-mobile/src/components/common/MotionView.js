@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { Platform } from 'react-native';
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -47,12 +48,15 @@ const MotionView = ({
 
   const entering = useMemo(() => {
     if (reduced) return undefined;
+    // Fabric / horizontal FlatList: entering presets can keep opacity at 0 (blank home Overview on Android).
+    if (Platform.OS === 'android') return undefined;
     const fn = presetMap[preset] || presetMap.fadeUp;
     return fn({ duration, delay });
   }, [reduced, preset, duration, delay]);
 
   const exiting = useMemo(() => {
     if (reduced) return undefined;
+    if (Platform.OS === 'android') return undefined;
     if (!exitPreset) return undefined;
     const fn = exitMap[exitPreset];
     if (!fn) return undefined;

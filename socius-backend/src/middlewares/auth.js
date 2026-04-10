@@ -69,8 +69,10 @@ const authenticate = async (req, res, next) => {
         return forbidden(res, 'Your account has been suspended. Please contact support.', AUTH_ERROR_CODES.ACCOUNT_SUSPENDED)
       }
 
-      // Check identity verification for sensitive operations
-      if (req.path.includes('/presence') && !user.isIdentityVerified) {
+      // Match /presence as a path segment (avoid "/admin/presence-categories" false positives).
+      const pathOnly = String(req.originalUrl || req.url || '').split('?')[0]
+      const isPresenceApi = /\/presence(\/|$)/.test(pathOnly)
+      if (isPresenceApi && !user.isIdentityVerified) {
         return forbidden(res, 'Identity verification required for presence requests', AUTH_ERROR_CODES.VERIFICATION_REQUIRED)
       }
     }

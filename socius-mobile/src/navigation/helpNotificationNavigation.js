@@ -38,6 +38,28 @@ export function normalizeRecipientRole(value) {
   return normalizeRecipientRolePure(value);
 }
 
+/** FCM / Notifee chat payload: `requestType` from ChatSession (e.g. PresenceRequest vs HelpRequest). */
+export function isPresenceChatNotification(data) {
+  const raw = String(data?.requestType ?? '').trim();
+  if (!raw) return false;
+  const compact = raw.replace(/\s/g, '');
+  if (compact === 'PresenceRequest') return true;
+  const lower = compact.toLowerCase();
+  return lower === 'presencerequest' || lower === 'presence_request';
+}
+
+/** Map notification `recipientRole` to NearbyMap `mode` param. */
+export function presenceNearbyMapModeFromChatNotification(data) {
+  let role = normalizeRecipientRole(data?.recipientRole);
+  if (!role) {
+    const ib = String(data?.initiatedBy || '').toLowerCase();
+    if (ib === 'requester') role = 'helper';
+    else if (ib === 'helper') role = 'requester';
+  }
+  if (!role) role = 'requester';
+  return role === 'helper' ? 'helper' : 'requester';
+}
+
 function meetingRouteForRole(role) {
   return role === 'helper' ? HELP_MEETING_SCREENS.helper : HELP_MEETING_SCREENS.requester;
 }

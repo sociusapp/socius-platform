@@ -47,7 +47,7 @@ const BloodNeededScreen = ({ navigation }) => {
 
           <Button 
             title="I Can Help" 
-            onPress={() => navigation.navigate('AwarenessShared')}
+            onPress={() => navigation.navigate('MultiplePeople')}
             style={{ borderRadius: scale(30), marginBottom: vscale(12) }}
           />
           <Button 

@@ -1,13 +1,7 @@
 import * as Location from 'expo-location';
+import Constants from 'expo-constants';
 
-let bundledGoogleApiKey = null;
-try {
-  bundledGoogleApiKey =
-    require('../../../app.json')?.expo?.android?.config?.googleMaps?.apiKey ||
-    null;
-} catch (e) {
-  bundledGoogleApiKey = null;
-}
+const bundledGoogleApiKey = Constants.expoConfig?.android?.config?.googleMaps?.apiKey ?? null;
 
 const requestLocationPermission = async () => {
   const { status } = await Location.requestForegroundPermissionsAsync();

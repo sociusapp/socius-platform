@@ -29,17 +29,15 @@ const LOCAL_API = normalizeApiBase(process.env.REACT_APP_SOCIUS_API_BASE || LOCA
 const LIVE_API = normalizeApiBase(process.env.REACT_APP_SOCIUS_LIVE_API || LIVE_DEFAULT);
 
 const isProduction = typeof window !== 'undefined' && window.location.hostname.includes('onrender.com');
-const issueTrackerForceLive = String(process.env.REACT_APP_ISSUE_TRACKER_FORCE_LIVE || '').toLowerCase() === 'true';
 const baseURL = isProduction ? LIVE_API : LOCAL_API;
-const issueTrackerBaseURL = issueTrackerForceLive ? LIVE_API : baseURL;
-
-console.log(`Admin API URL (${isProduction ? 'LIVE' : 'LOCAL'}):`, baseURL);
-console.log(`Issue Tracker API URL (${issueTrackerForceLive ? 'LIVE' : isProduction ? 'LIVE' : 'LOCAL'}):`, issueTrackerBaseURL);
 
 const api = axios.create({ baseURL, headers: { 'Content-Type': 'application/json' } });
-const issueTrackerApi = axios.create({ baseURL: issueTrackerBaseURL, headers: { 'Content-Type': 'application/json' } });
 
-const ISSUE_TRACKER_TOKEN_KEY = 'socius_issue_tracker_token';
+/** Same axios instance — Issue Tracker uses the logged-in admin session (no separate base URL or token). */
+const issueTrackerApi = api;
+const issueTrackerBaseURL = baseURL;
+
+console.log(`Admin API URL (${isProduction ? 'LIVE' : 'LOCAL'}):`, baseURL);
 
 const attachAuth = (instance) => {
   instance.interceptors.request.use((config) => {
@@ -86,29 +84,8 @@ const attachFormDataContentTypeFix = (instance) => {
   });
 };
 
-const attachIssueTrackerAuth = (instance) => {
-  instance.interceptors.request.use((config) => {
-    try {
-      const token =
-        (typeof localStorage !== 'undefined' && localStorage.getItem(ISSUE_TRACKER_TOKEN_KEY)) ||
-        null;
-
-      if (token) {
-        config.headers = config.headers || {};
-        config.headers.Authorization = `Bearer ${token}`;
-        return config;
-      }
-    } catch { }
-
-    return config;
-  });
-};
-
 attachAuth(api);
 attachFormDataContentTypeFix(api);
-attachAuth(issueTrackerApi);
-attachFormDataContentTypeFix(issueTrackerApi);
-attachIssueTrackerAuth(issueTrackerApi);
 
 const getBearer = () => {
   try {
@@ -144,4 +121,11 @@ const fetchFormData = async (method, path, formData) => {
   return data;
 };
 
-export { api, baseURL, issueTrackerApi, issueTrackerBaseURL, ISSUE_TRACKER_TOKEN_KEY, fetchFormData };
+export {
+  api,
+  baseURL,
+  issueTrackerApi,
+  issueTrackerBaseURL,
+  fetchFormData,
+  getBearer,
+};

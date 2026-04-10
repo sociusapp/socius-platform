@@ -114,6 +114,13 @@ const uploadPrepareCardImage = multer({
   limits: { fileSize: 3 * 1024 * 1024 },
 }).single('image');
 
+/** Admin FCM campaign image (temporary; cleaned up after expiresAt). */
+const uploadNotificationCampaignImage = multer({
+  storage: createStorage('notification-campaigns'),
+  fileFilter: prepareCardImageFilter,
+  limits: { fileSize: 2 * 1024 * 1024 },
+}).single('image');
+
 const chatMediaMimes = new Set([
   'image/jpeg',
   'image/png',
@@ -154,5 +161,6 @@ module.exports = {
   uploadPresenceItemIcon,
   uploadHelpCatalogItemIcon,
   uploadPrepareCardImage,
+  uploadNotificationCampaignImage,
   uploadChatMedia,
 };

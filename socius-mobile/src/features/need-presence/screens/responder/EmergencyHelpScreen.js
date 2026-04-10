@@ -6,8 +6,9 @@ import Header from '../../../../components/common/Header';
 import Button from '../../../../components/common/Button';
 import { useResponsive } from '../../../../utils/responsive';
 
-const EmergencyHelpScreen = ({ navigation }) => {
+const EmergencyHelpScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
+  const returnWithBack = route?.params?.returnWithBack === true;
   
   const handleCall = (number) => {
     let phoneNumber = '';
@@ -82,9 +83,18 @@ const EmergencyHelpScreen = ({ navigation }) => {
               If the situation is not urgent, you may also choose to share awareness with nearby community members.
             </Text>
             <View style={[styles.divider, { height: scale(1), marginVertical: vscale(8) }]} />
-            <Button 
-              title="Return to Socius" 
-            onPress={() => navigation.reset({ index: 0, routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }] })}
+            <Button
+              title={returnWithBack ? 'Back to live map' : 'Return to Socius'}
+              onPress={() => {
+                if (returnWithBack && navigation.canGoBack()) {
+                  navigation.goBack();
+                } else {
+                  navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+                  });
+                }
+              }}
               style={[styles.returnButton, { borderRadius: scale(8), marginTop: vscale(8) }]}
               textStyle={styles.returnButtonText}
             />

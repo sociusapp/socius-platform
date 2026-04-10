@@ -12,11 +12,14 @@ import NativeCallService from './NativeCallService';
 import { loadAuth } from '../storage/asyncStorage.service';
 import { markRequestDelivered } from '../api/incident.api';
 import { baseURL } from '../api/client';
+import { shouldIgnoreIncomingPresenceAlarm } from '../../utils/presenceIncomingGuard';
 
 export const CHANNELS = {
   PRESENCE_ALARM: 'socius_presence_alarm',
   HELP_ALARM:     'socius_help_alarm',
   UPDATES:        'socius_updates',
+  /** Low-noise channel (native + Notifee) — promos / optional updates */
+  NUDGE:          'socius_nudge',
 };
 
 let initialized = false;
@@ -134,6 +137,63 @@ export const displaySociusUpdateNotification = async (rawData) => {
 };
 
 /**
+ * Admin-composed FCM (marketing, notices, volunteer prompts). Supports optional HTTPS image (big picture).
+ */
+export const displayAdminBroadcastNotification = async (remoteMessage) => {
+  if (Platform.OS !== 'android') return;
+  const data = remoteMessage?.data || {};
+  const notif = remoteMessage?.notification || {};
+  const title =
+    String(notif.title || data.title || 'Socius').trim() || 'Socius';
+  const body =
+    String(
+      notif.body || data.body || 'You have a new message from Socius.'
+    ).trim() || 'Tap to open the app.';
+  const imageUrl = String(data.imageUrl || '').trim();
+  const campaign = String(data.campaignType || 'notice').toLowerCase();
+
+  const useNudgeChannel =
+    campaign === 'marketing' || campaign === 'promo';
+  const channelId = useNudgeChannel ? CHANNELS.NUDGE : CHANNELS.UPDATES;
+  let importance = AndroidImportance.HIGH;
+  if (useNudgeChannel) {
+    importance = AndroidImportance.DEFAULT;
+  } else if (
+    campaign === 'safety_reminder' ||
+    campaign === 'volunteer_recruitment'
+  ) {
+    importance = AndroidImportance.HIGH;
+  }
+
+  const hasPicture = /^https:\/\//i.test(imageUrl);
+
+  try {
+    await initNotifeeChannels();
+    await notifee.displayNotification({
+      id: `soc_admin_${Date.now()}`.replace(/[^a-zA-Z0-9_:.-]/g, '_').slice(0, 120),
+      title,
+      body,
+      android: {
+        channelId,
+        pressAction: { id: 'default', launchActivity: 'default' },
+        importance,
+        style: hasPicture
+          ? { type: AndroidStyle.BIGPICTURE, picture: imageUrl }
+          : { type: AndroidStyle.BIGTEXT, text: body },
+      },
+      data: Object.fromEntries(
+        Object.entries({ ...data, type: 'ADMIN_BROADCAST' }).map(([k, v]) => [
+          k,
+          v != null ? String(v) : '',
+        ])
+      ),
+    });
+  } catch (e) {
+    console.warn('[Notifee] displayAdminBroadcastNotification failed', e);
+  }
+};
+
+/**
  * FCM does not show a system banner while the app is foregrounded. Mirror native alarm channels so users
  * still get a high-importance, call-category heads-up in the tray (alongside the in-app modal).
  */
@@ -150,11 +210,24 @@ export const displayAndroidForegroundIncomingHeadsUp = async (kind, rawData = {}
   const isHelp = kind === 'help';
   // Keep high alarm behavior in header tray as requested.
   const channelId = isHelp ? CHANNELS.HELP_ALARM : CHANNELS.PRESENCE_ALARM;
-  const title = isHelp ? 'Someone nearby needs help' : 'Presence alert nearby';
+  const actorName = String(data.requesterName || data.helperName || '').trim();
+  const title = isHelp
+    ? actorName
+      ? `${actorName} needs help nearby`
+      : 'Someone nearby needs help'
+    : actorName
+      ? `${actorName} needs presence nearby`
+      : 'Presence alert nearby';
   const itemName = String(data.categoryName || data.category || data.situationType || 'Help request')
     .replace(/_/g, ' ')
     .trim()
     .slice(0, 70);
+  const situationText = String(
+    data.description || data.situation || data.situationType || ''
+  )
+    .replace(/_/g, ' ')
+    .trim()
+    .slice(0, 100);
   const area = String(data.area || data.locationLabel || data.cityArea || '').trim();
   const rawDistance = Number(data.distanceMeters ?? data.distance_meters ?? data.distance);
   const distanceLabel = Number.isFinite(rawDistance) && rawDistance > 0
@@ -162,18 +235,25 @@ export const displayAndroidForegroundIncomingHeadsUp = async (kind, rawData = {}
       ? `${Math.round(rawDistance)}m away`
       : `${(rawDistance / 1000).toFixed(1)}km away`
     : '';
-  const itemLine = `Items: ${itemName || 'Help request'}`;
+  const itemLine = isHelp
+    ? `Items: ${itemName || 'Help request'}`
+    : situationText || 'Someone nearby is sharing presence';
   const locationValue = [area, distanceLabel].filter(Boolean).join(' • ');
   const locationLine = `Location: ${locationValue || 'Nearby'}`;
   const body = [itemLine, locationLine].join('\n').slice(0, 260);
   const categoryIconPath = String(data.categoryIcon || '').trim();
+  const userImagePath = String(data.userImage || data.senderImage || '').trim();
   const root = String(baseURL || '').replace(/\/api\/?$/, '');
   const largeIcon =
     categoryIconPath.length > 0
       ? categoryIconPath.startsWith('http://') || categoryIconPath.startsWith('https://')
         ? categoryIconPath
         : `${root}${categoryIconPath.startsWith('/') ? '' : '/'}${categoryIconPath}`
-      : undefined;
+      : userImagePath.length > 0
+        ? userImagePath.startsWith('http://') || userImagePath.startsWith('https://')
+          ? userImagePath
+          : `${root}${userImagePath.startsWith('/') ? '' : '/'}${userImagePath}`
+        : undefined;
   const notifType = isHelp ? 'help_request' : 'presence_alarm';
   const notifData = Object.fromEntries(
     Object.entries({
@@ -194,6 +274,8 @@ export const displayAndroidForegroundIncomingHeadsUp = async (kind, rawData = {}
         visibility: AndroidVisibility.PUBLIC,
         ongoing: true,
         autoCancel: false,
+        color: '#DC5C69',
+        showTimestamp: true,
         style: { type: AndroidStyle.BIGTEXT, text: body || title },
         pressAction: { id: 'default', launchActivity: 'default' },
         ...(largeIcon ? { largeIcon } : {}),
@@ -363,6 +445,16 @@ export const initNotifeeChannels = async () => {
         badge: true,
         visibility: AndroidVisibility.PUBLIC,
       }),
+
+      notifee.createChannel({
+        id: CHANNELS.NUDGE,
+        name: '📣 Community & promos',
+        description: 'Optional updates, tips, and light marketing from Socius',
+        importance: AndroidImportance.DEFAULT,
+        lights: false,
+        badge: true,
+        visibility: AndroidVisibility.PUBLIC,
+      }),
     ]);
 
     initialized = true;
@@ -387,6 +479,12 @@ export const handleIncomingCallMessage = async (remoteMessage) => {
         console.log('[FCM] Cancelling alarm for requestId:', requestId);
         NativeCallService.cancelCallNotification(requestId);
       }
+      return true;
+    }
+
+    if (type === 'ADMIN_BROADCAST') {
+      await initNotifeeChannels();
+      await displayAdminBroadcastNotification(remoteMessage);
       return true;
     }
 
@@ -428,14 +526,22 @@ export const handleIncomingCallMessage = async (remoteMessage) => {
     }
 
     if (type.includes('PRESENCE')) {
+      if (await shouldIgnoreIncomingPresenceAlarm(data)) {
+        return false;
+      }
       const requestId = data.requestId || '';
-      const situation = data.situation || 'Safety concern';
+      const situation =
+        data.description ||
+        data.situation ||
+        (data.situationType ? String(data.situationType).replace(/_/g, ' ') : '') ||
+        'Safety concern';
       const distanceMeters = parseInt(data.distanceMeters || '0', 10) || 0;
       const area = data.area || '';
       const userImage = data.userImage || null;
 
       await showPresenceAlarm({
         requestId,
+        requesterId: data.requesterId || data.requester_id || '',
         situation,
         distanceMeters,
         area,
@@ -509,6 +615,7 @@ export const handleIncomingCallMessage = async (remoteMessage) => {
 
 export const showPresenceAlarm = async ({
   requestId,
+  requesterId = '',
   situation = 'Safety concern',
   distanceMeters = 0,
   area = '',
@@ -524,6 +631,7 @@ export const showPresenceAlarm = async ({
   const payload = JSON.stringify({
     type: 'PRESENCE_ALARM',
     requestId,
+    requesterId: String(requesterId || ''),
     situation,
     distanceMeters: String(distanceMeters),
     area,

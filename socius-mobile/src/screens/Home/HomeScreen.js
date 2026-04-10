@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { useWindowDimensions, View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Image, Animated, Easing, Modal, Platform, RefreshControl, ActivityIndicator, Alert, Dimensions, FlatList, TextInput, LayoutAnimation, UIManager } from 'react-native';
+import { useWindowDimensions, View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Image, Animated, Easing, Modal, Platform, RefreshControl, ActivityIndicator, Alert, Dimensions, FlatList, TextInput, LayoutAnimation } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -25,7 +25,6 @@ import { SkeletonBox, SkeletonCircle, SkeletonSpacer } from '../../components/co
 import { connectSocket, getSocket } from '../../services/socket/socket.service';
 import MotionView from '../../components/common/MotionView';
 import MotionPressable from '../../components/common/MotionPressable';
-import { ScrollView as GHScrollView } from 'react-native-gesture-handler';
 
 import DailyHelpRequestCard from '../../features/daily-help/components/cards/DailyHelpRequestCard';
 import NeedPresenceRequestCard from '../../features/need-presence/components/cards/NeedPresenceRequestCard';
@@ -33,8 +32,12 @@ import DailyHelpHistoryCard from '../../features/daily-help/components/cards/Dai
 import NeedPresenceHistoryCard from '../../features/need-presence/components/cards/NeedPresenceHistoryCard';
 
 const HomeScreen = ({ navigation }) => {
-  const { width: SCREEN_WIDTH } = useWindowDimensions();
+  const { width: SCREEN_WIDTH, height: windowHeight } = useWindowDimensions();
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
+  const tabPageMinHeight = useMemo(
+    () => Math.max(420, windowHeight - 168),
+    [windowHeight],
+  );
   const [isAvailable, setIsAvailable] = useState(true);
   const [availabilityWidth, setAvailabilityWidth] = useState(0);
   const [toggleAnim] = useState(new Animated.Value(0));
@@ -77,12 +80,6 @@ const HomeScreen = ({ navigation }) => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
-
-  useEffect(() => {
-    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-      UIManager.setLayoutAnimationEnabledExperimental(true);
-    }
-  }, []);
 
   const setHistoryFilter = useCallback((status) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -437,12 +434,11 @@ const HomeScreen = ({ navigation }) => {
     if (!req?._id) return;
 
     if (req.type === 'presence_request') {
-      // Redirect to Need Presence flow screen
-      navigation.navigate('SomeoneConcern', {
+      const d = req.distanceMeters;
+      navigation.navigate('PresenceRequestDetail', {
         requestId: req._id,
-        situation: req.situationType || 'Safety concern',
-        distanceMeters: req.distanceMeters,
-        area: req?.location?.address || 'Nearby',
+        initialDistanceMeters:
+          typeof d === 'number' && Number.isFinite(d) && d >= 0 ? d : undefined,
       });
       return;
     }
@@ -977,7 +973,7 @@ const HomeScreen = ({ navigation }) => {
 
     const params = map[label];
     if (params) {
-      navigation.navigate('ShareLocation', params);
+      navigation.navigate('BeforeShare', { ...params, note: '' });
       return;
     }
 
@@ -1101,6 +1097,7 @@ const HomeScreen = ({ navigation }) => {
         horizontal
         pagingEnabled
         nestedScrollEnabled
+        removeClippedSubviews={false}
         showsHorizontalScrollIndicator={false}
         keyExtractor={(item) => item}
         getItemLayout={(_, index) => ({
@@ -1119,9 +1116,10 @@ const HomeScreen = ({ navigation }) => {
         )}
         onMomentumScrollEnd={onMomentumScrollEnd}
         renderItem={({ item }) => (
-          <View style={{ width: SCREEN_WIDTH || 375, flex: 1 }}>
+          <View style={{ width: SCREEN_WIDTH || 375, flex: 1, minHeight: tabPageMinHeight }}>
             {item === 'overview' ? (
               <ScrollView
+                style={{ flex: 1 }}
                 contentContainerStyle={[styles.scrollContent, { paddingHorizontal: spacing(20), paddingTop: vscale(12), paddingBottom: vscale(95) }]}
                 showsVerticalScrollIndicator={false}
                 nestedScrollEnabled
@@ -1235,10 +1233,9 @@ const HomeScreen = ({ navigation }) => {
                       Bookmarks
                     </Text>
 
-                    <GHScrollView
+                    <ScrollView
                       horizontal
                       nestedScrollEnabled
-                      directionalLockEnabled
                       keyboardShouldPersistTaps="handled"
                       showsHorizontalScrollIndicator={false}
                       bounces
@@ -1276,7 +1273,7 @@ const HomeScreen = ({ navigation }) => {
                           </Text>
                         </MotionPressable>
                       ))}
-                    </GHScrollView>
+                    </ScrollView>
 
                     <Text
                       style={[

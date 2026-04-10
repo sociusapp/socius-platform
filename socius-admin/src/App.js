@@ -31,6 +31,7 @@ import SubscriptionSettingsPage from './pages/SubscriptionSettingsPage';
 import ScenarioConfigPage from './pages/ScenarioConfigPage';
 import AccountSettingsPage from './pages/AccountSettingsPage';
 import DailyHelpPage from './pages/DailyHelpPage';
+import DailyHelpRequestDetailPage from './pages/DailyHelpRequestDetailPage';
 import IssueTrackerPage from './pages/IssueTrackerPage';
 import IssueDetailsPage from './pages/IssueDetailsPage';
 import PublicLocationsPage from './pages/PublicLocationsPage';
@@ -40,7 +41,6 @@ import GallerySettingsPage from './pages/GallerySettingsPage';
 import BlogTypesPage from './pages/BlogTypesPage';
 import BlogsPage from './pages/BlogsPage';
 import PresenceCatalogPage from './pages/PresenceCatalogPage';
-import HelpCatalogPage from './pages/HelpCatalogPage';
 import PrepareCardsPage from './pages/PrepareCardsPage';
 import PrepareCardEditorPage from './pages/PrepareCardEditorPage';
 import PrepareLearnPage from './pages/PrepareLearnPage';
@@ -139,7 +139,9 @@ function App() {
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/live-awareness" element={<LiveAwarenessPage />} />
             <Route path="/live-awareness/:id" element={<LiveAwarenessDetailsPage />} />
+            <Route path="/daily-help/:kind/:id" element={<DailyHelpRequestDetailPage />} />
             <Route path="/daily-help" element={<DailyHelpPage />} />
+            <Route path="/help-catalog" element={<Navigate to="/daily-help" replace />} />
             <Route path="/incident-review" element={<IncidentReviewPage />} />
             <Route path="/users" element={<UsersVolunteersPage />} />
             <Route path="/users/:userId" element={<UserProfilePage />} />
@@ -161,7 +163,6 @@ function App() {
             <Route path="/blogs" element={<BlogsPage />} />
             <Route path="/community-survey" element={<CommunitySurveyPage />} />
             <Route path="/presence-catalog" element={<PresenceCatalogPage />} />
-            <Route path="/help-catalog" element={<HelpCatalogPage />} />
             <Route path="/prepare-cards" element={<PrepareCardsPage />} />
             <Route path="/prepare-cards/new" element={<PrepareCardEditorPage />} />
             <Route path="/prepare-cards/edit/:id" element={<PrepareCardEditorPage />} />

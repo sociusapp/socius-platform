@@ -9,6 +9,33 @@ const slugify = (value) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
 
+/** Underscore keys align with mobile `reason` (e.g. being_followed). */
+const slugifyItemKey = (value) =>
+  String(value || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+
+/**
+ * Unique slug within a category (mobile sends this as `reason`).
+ */
+const allocateItemSlug = async (categoryId, preferredBase, excludeItemId) => {
+  let base = slugifyItemKey(preferredBase)
+  if (!base) base = 'situation'
+  let candidate = base
+  for (let n = 0; n < 500; n += 1) {
+    const q = { categoryId, slug: candidate }
+    if (excludeItemId) q._id = { $ne: excludeItemId }
+    const exists = await PresenceItem.findOne(q).select('_id').lean()
+    if (!exists) return candidate
+    candidate = `${base}_${n + 1}`
+  }
+  const err = new Error('Could not allocate a unique situation key')
+  err.statusCode = 500
+  throw err
+}
+
 const normalizeUploadPath = (filePath) => {
   if (!filePath) return null
   const normalized = String(filePath).replace(/\\/g, '/')
@@ -136,9 +163,17 @@ const createItem = async (req, res, next) => {
           .split(',')
           .map((t) => t.trim())
           .filter(Boolean)
+    const slugInput = req.body?.slug !== undefined && String(req.body.slug).trim() !== '' ? req.body.slug : null
+    const slug = await allocateItemSlug(
+      categoryId,
+      slugInput || title,
+      null
+    )
+
     const doc = await PresenceItem.create({
       categoryId,
       title,
+      slug,
       description: req.body?.description || '',
       tags: tagsRaw,
       iconName: req.body?.iconName || null,
@@ -160,8 +195,20 @@ const updateItem = async (req, res, next) => {
       err.statusCode = 404
       throw err
     }
+    const prevCategoryId = String(doc.categoryId)
+    const categoryChanged =
+      req.body?.categoryId !== undefined && String(req.body.categoryId) !== prevCategoryId
     if (req.body?.categoryId !== undefined) doc.categoryId = req.body.categoryId
     if (req.body?.title !== undefined) doc.title = String(req.body.title || '').trim()
+
+    const slugExplicit = req.body?.slug !== undefined && String(req.body.slug).trim() !== ''
+    if (slugExplicit) {
+      doc.slug = await allocateItemSlug(String(doc.categoryId), req.body.slug, doc._id)
+    } else if (!doc.slug && doc.title) {
+      doc.slug = await allocateItemSlug(String(doc.categoryId), doc.title, doc._id)
+    } else if (categoryChanged && doc.slug) {
+      doc.slug = await allocateItemSlug(String(doc.categoryId), doc.slug, doc._id)
+    }
     if (req.body?.description !== undefined) doc.description = req.body.description || ''
     if (req.body?.iconName !== undefined) doc.iconName = req.body.iconName || null
     if (req.body?.sortOrder !== undefined) doc.sortOrder = Number(req.body.sortOrder || 0)

@@ -1,7 +1,13 @@
 const ChatSession = require('../models/ChatSession')
 const ChatMessage = require('../models/ChatMessage')
 const User = require('../models/User')
-const { CHAT_SESSION_STATUS } = require('../utils/constants')
+const PresenceRequest = require('../models/PresenceRequest')
+const PresenceMatch = require('../models/PresenceMatch')
+const {
+  CHAT_SESSION_STATUS,
+  PRESENCE_STATUS,
+  PRESENCE_MATCH_STATUS,
+} = require('../utils/constants')
 const logger = require('../utils/logger')
 const { sendChatNotification } = require('./notification.service')
 
@@ -28,7 +34,7 @@ const notifyChatReceiverAsync = async (session, message, senderId) => {
       String(session.requesterId) === String(senderId) ? session.helperId : session.requesterId
     const recipientRole =
       String(receiverId) === String(session.requesterId) ? 'requester' : 'helper'
-    const sender = await User.findById(senderId).select('fullName').lean()
+    const sender = await User.findById(senderId).select('fullName profileImage').lean()
     const preview = summarizeMessage(
       message.messageType || 'text',
       message.text,
@@ -36,11 +42,13 @@ const notifyChatReceiverAsync = async (session, message, senderId) => {
     )
     await sendChatNotification(receiverId, {
       senderName: sender?.fullName || 'Someone',
+      senderImage: sender?.profileImage || '',
       preview,
       sessionId: String(session._id),
       requestId: String(session.requestId),
       messageType: message.messageType || 'text',
       recipientRole,
+      requestType: session.requestType || 'HelpRequest',
     })
   } catch (e) {
     logger.warn('notifyChatReceiverAsync failed', e)
@@ -335,18 +343,85 @@ const deleteClosedSessionMessages = async () => {
   return deletedCount
 }
 
+const PRESENCE_ACTIVE_FOR_CHAT = [
+  PRESENCE_STATUS.ACTIVE,
+  PRESENCE_STATUS.HELPERS_NOTIFIED,
+  PRESENCE_STATUS.HELPERS_ACCEPTED,
+]
+
+const PRESENCE_MATCH_IN_PROGRESS = [
+  PRESENCE_MATCH_STATUS.ACCEPTED,
+  PRESENCE_MATCH_STATUS.EN_ROUTE,
+  PRESENCE_MATCH_STATUS.ARRIVED,
+]
+
+/**
+ * Legacy / failed createSession: accepted presence hai lekin ChatSession nahi bani ho
+ */
+const ensurePresenceChatSession = async (requestId, userId) => {
+  const presence = await PresenceRequest.findById(requestId).lean()
+  if (!presence || !PRESENCE_ACTIVE_FOR_CHAT.includes(presence.status)) return null
+
+  const uid = String(userId)
+  const requesterStr = String(presence.requesterId)
+
+  let helperId = null
+
+  if (requesterStr === uid) {
+    const match = await PresenceMatch.findOne({
+      presenceRequestId: requestId,
+      status: { $in: PRESENCE_MATCH_IN_PROGRESS },
+    })
+      .sort({ acceptedAt: -1 })
+      .lean()
+    if (!match?.helperId) return null
+    helperId = match.helperId
+  } else {
+    const match = await PresenceMatch.findOne({
+      presenceRequestId: requestId,
+      helperId: userId,
+      status: { $in: PRESENCE_MATCH_IN_PROGRESS },
+    }).lean()
+    if (!match?.helperId) return null
+    helperId = match.helperId
+  }
+
+  try {
+    const session = await createSession({
+      requestId,
+      requestType: 'PresenceRequest',
+      requesterId: presence.requesterId,
+      helperId,
+    })
+    return session
+  } catch (e) {
+    logger.warn('ensurePresenceChatSession failed', e)
+    return null
+  }
+}
+
 /**
  * Request ke liye session dhundho
  */
 const getSessionByRequest = async (requestId, userId) => {
-  const session = await ChatSession.findOne({
+  const sessions = await ChatSession.find({
     requestId,
+    status: CHAT_SESSION_STATUS.ACTIVE,
     $or: [{ requesterId: userId }, { helperId: userId }],
   })
+    .sort({ openedAt: -1 })
+    .limit(1)
     .populate('requesterId', 'fullName profileImage phone')
     .populate('helperId', 'fullName profileImage phone')
-  
-  return session
+
+  if (sessions[0]) return sessions[0]
+
+  const ensured = await ensurePresenceChatSession(requestId, userId)
+  if (!ensured) return null
+
+  return ChatSession.findById(ensured._id)
+    .populate('requesterId', 'fullName profileImage phone')
+    .populate('helperId', 'fullName profileImage phone')
 }
 
 module.exports = {

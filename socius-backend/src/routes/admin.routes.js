@@ -6,6 +6,10 @@ const {
   rejectVerification,
   requestResubmission,
   getUsers,
+  exportUsersCsv,
+  getScenarioConfig,
+  patchScenarioConfig,
+  adminClosePresenceRequest,
   getUserDetails,
   limitAccount,
   restoreAccount,
@@ -13,10 +17,12 @@ const {
   awardBadge,
   revokeUserBadge,
   getReports,
+  updateReportReviewStatus,
   resolveReport,
   getDashboardStats,
   getLiveAwareness,
   sendNotification,
+  uploadAdminNotificationImage,
   getDeviceTokenCounts,
   getDeviceTokensForUser,
   attachDeviceToken,
@@ -26,8 +32,15 @@ const {
   getHelpRequestDetails,
   getPresenceRequests,
   getPresenceRequestDetails,
+  getIncidentReview,
   getClosures,
   getClosureDetails,
+  getSubscriptionPlans,
+  updateSubscriptionPlan,
+  getSystemSafeguards,
+  getAuditLogs,
+  getLegalExportHistory,
+  generateLegalExport,
 } = require('../controllers/admin.controller')
 const { authenticate } = require('../middlewares/auth')
 const { requireAdmin } = require('../middlewares/admin')
@@ -38,6 +51,7 @@ const {
   uploadPresenceItemIcon,
   uploadHelpCatalogItemIcon,
   uploadPrepareCardImage,
+  uploadNotificationCampaignImage,
 } = require('../middlewares/upload')
 const helpCategoryController = require('../controllers/helpCategory.controller')
 const presenceCatalogController = require('../controllers/presenceCatalog.controller')
@@ -50,6 +64,19 @@ const communitySurveyController = require('../controllers/communitySurvey.contro
 // All admin routes require auth + admin role
 router.use(authenticate, requireAdmin)
 
+// ─── Subscription catalog (admin-editable plans) ───────────
+router.get('/subscription-plans', getSubscriptionPlans)
+router.patch('/subscription-plans/:planKey', updateSubscriptionPlan)
+
+router.get('/system-safeguards', getSystemSafeguards)
+
+router.get('/scenario-config', getScenarioConfig)
+router.patch('/scenario-config', validate(schemas.scenarioConfigDraft), patchScenarioConfig)
+
+router.get('/audit-logs', getAuditLogs)
+router.get('/legal-exports', getLegalExportHistory)
+router.post('/legal-exports/generate', generateLegalExport)
+
 // ─── Dashboard ────────────────────────────────────────────
 // GET /api/admin/dashboard
 router.get('/dashboard', getDashboardStats)
@@ -59,6 +86,12 @@ router.get('/dashboard', getDashboardStats)
 router.get('/live-awareness', getLiveAwareness)
 
 // ─── Notifications ────────────────────────────────────────
+// POST /api/admin/notifications/upload-image (multipart, field: image)
+router.post(
+  '/notifications/upload-image',
+  uploadNotificationCampaignImage,
+  uploadAdminNotificationImage
+)
 // POST /api/admin/notifications
 router.post('/notifications', sendNotification)
 // GET /api/admin/device-tokens?userIds=1,2,3
@@ -113,6 +146,9 @@ router.delete('/users/:userId/badges', revokeUserBadge)
 // GET /api/admin/reports
 router.get('/reports', getReports)
 
+// PATCH /api/admin/reports/:reportId/status
+router.patch('/reports/:reportId/status', updateReportReviewStatus)
+
 // PATCH /api/admin/reports/:reportId/resolve
 router.patch('/reports/:reportId/resolve', resolveReport)
 
@@ -131,6 +167,15 @@ router.get('/help-requests/:id', getHelpRequestDetails)
 router.get('/presence-requests', getPresenceRequests)
 // GET /api/admin/presence-requests/:id
 router.get('/presence-requests/:id', getPresenceRequestDetails)
+router.post(
+  '/presence-requests/:id/close',
+  validate(schemas.closePresenceRequest),
+  adminClosePresenceRequest
+)
+
+// ─── Incident review (post-event presence + help) ───────────
+// GET /api/admin/incident-review
+router.get('/incident-review', getIncidentReview)
 
 // ─── DailyHelp (Closures) ─────────────────────────────────
 // GET /api/admin/closures

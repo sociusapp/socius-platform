@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 import { useResponsive } from '../../../../utils/responsive';
-import { createPresenceRequest } from '../../../../services/api/needPresence.api';
+import { createPresenceRequest, getActivePresenceRequest } from '../../../../services/api/needPresence.api';
 import { requestLocationPermission, getCurrentPosition, reverseGeocode, getNearbyPlaceName, formatLocationLabel } from '../../../../services/location/geolocation.service';
 import { loadAuth, loadLastKnownLocation, saveLastKnownLocation } from '../../../../services/storage/asyncStorage.service';
 import Button from '../../../../components/common/Button';
@@ -107,6 +107,9 @@ const ShareLocationScreen = ({ navigation, route }) => {
       return;
     }
 
+    const noteForRequest =
+      route?.params?.note !== undefined ? String(route.params.note ?? '') : note;
+
     setSubmitting(true);
     let isSuccess = false;
 
@@ -135,10 +138,10 @@ const ShareLocationScreen = ({ navigation, route }) => {
       }
 
       const position = await getCurrentPosition();
-      const latitude = position?.coords?.latitude;
-      const longitude = position?.coords?.longitude;
+      const latitude = Number(position?.coords?.latitude);
+      const longitude = Number(position?.coords?.longitude);
 
-      if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
         showAlert(
           'Location unavailable',
           'Unable to read your current location. Please try again.',
@@ -170,8 +173,8 @@ const ShareLocationScreen = ({ navigation, route }) => {
               : 'other';
 
       const description =
-        note && note.trim().length > 0
-          ? note.trim()
+        noteForRequest && noteForRequest.trim().length > 0
+          ? noteForRequest.trim()
           : reason === 'being_followed'
             ? 'User reports being followed and wants nearby awareness.'
             : reason === 'unsafe_walk'
@@ -186,35 +189,52 @@ const ShareLocationScreen = ({ navigation, route }) => {
                       ? 'Car issue nearby. User is sharing awareness.'
                   : 'User is sharing their presence with nearby people.';
 
+      const addressOut = String(addressLabel || '')
+        .trim()
+        .slice(0, 500);
+
       const payload = {
         situationType,
         description,
         location: {
           lng: longitude,
           lat: latitude,
-          address: addressLabel || '',
+          address: addressOut,
         },
       };
 
       const response = await createPresenceRequest(token, payload);
 
       if (response?.success) {
+        const requestId =
+          response?.data?.request?._id ||
+          response?.data?.request?.id ||
+          response?.data?._id ||
+          response?.data?.id ||
+          response?.data?.requestId;
+        if (!requestId) {
+          showAlert(
+            'Something went wrong',
+            'The server accepted the request but no request ID was returned. Please try again or contact support.',
+            [{ text: 'OK', onPress: closeAlert }]
+          );
+          return;
+        }
         isSuccess = true;
         setSuccess(true);
         // Do NOT set submitting to false here, to keep button in success state
         // and prevent multiple clicks during the animation delay
-        
+
         // Wait for fly animation before navigating
         setTimeout(() => {
-          const requestId =
-            response?.data?._id ||
-            response?.data?.id ||
-            response?.data?.requestId ||
-            response?.data?.request?._id ||
-            response?.data?.request?.id;
           navigation.reset({
             index: 0,
-            routes: [{ name: 'NearbyMap', params: { requestId, mode: 'requester' } }],
+            routes: [
+              {
+                name: 'AwarenessShared',
+                params: { requestId, reason, category },
+              },
+            ],
           });
         }, 1500);
         return;
@@ -261,10 +281,45 @@ const ShareLocationScreen = ({ navigation, route }) => {
         return;
       }
 
+      if (status === 401) {
+        showAlert(
+          'Session expired',
+          messageFromServer || 'Please sign in again and retry.',
+          [{ text: 'OK', onPress: closeAlert }]
+        );
+        return;
+      }
+
+      if (status === 403 || code === 'VERIFICATION_REQUIRED') {
+        showAlert(
+          'Verification required',
+          messageFromServer ||
+            'Complete identity verification in your profile before you can share a presence request.',
+          [{ text: 'OK', onPress: closeAlert }]
+        );
+        return;
+      }
+
       if (status === 400 && code === 'SELF_HELP_NOT_ALLOWED') {
         showAlert(
           'Not possible',
           messageFromServer || 'You cannot send a request to your own account. Ask another nearby user to be available and try again.',
+          [{ text: 'OK', onPress: closeAlert }]
+        );
+        return;
+      }
+
+      if (status === 400) {
+        const errs = error.response.data?.errors;
+        const detail = Array.isArray(errs)
+          ? errs
+              .map((e) => (typeof e === 'string' ? e : e?.message))
+              .filter(Boolean)
+              .join('\n')
+          : '';
+        showAlert(
+          'Could not send request',
+          detail || messageFromServer || 'Please check the information and try again.',
           [{ text: 'OK', onPress: closeAlert }]
         );
         return;
@@ -287,16 +342,54 @@ const ShareLocationScreen = ({ navigation, route }) => {
         showAlert(
           'Request already active',
           messageFromServer || 'You already have an active presence request.',
-          [{
-            text: 'Open request',
-            onPress: () => {
-              closeAlert();
-              navigation.reset({
-                index: 0,
-                routes: [{ name: 'NearbyMap', params: { mode: 'requester' } }],
-              });
-            }
-          }]
+          [
+            {
+              text: 'Open request',
+              onPress: async () => {
+                closeAlert();
+                try {
+                  const auth = await loadAuth();
+                  const token = auth?.accessToken;
+                  if (!token) {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+                    });
+                    return;
+                  }
+                  const res = await getActivePresenceRequest(token);
+                  const container = res?.data || res;
+                  const active =
+                    container?.request ||
+                    container?.presence ||
+                    container?.activeRequest ||
+                    container;
+                  const activeId = active?._id || active?.id;
+                  if (activeId) {
+                    navigation.reset({
+                      index: 0,
+                      routes: [
+                        {
+                          name: 'NearbyMap',
+                          params: { requestId: String(activeId), mode: 'requester' },
+                        },
+                      ],
+                    });
+                  } else {
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+                    });
+                  }
+                } catch {
+                  navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+                  });
+                }
+              },
+            },
+          ]
         );
         return;
       }
@@ -309,9 +402,23 @@ const ShareLocationScreen = ({ navigation, route }) => {
     } finally {
       if (!isSuccess) {
         setSubmitting(false);
+        if (confirmed) {
+          autoShareTriggeredRef.current = false;
+        }
       }
     }
-  }, [category, closeAlert, navigation, reason, showAlert, submitting, note, locationLabel]);
+  }, [
+    category,
+    closeAlert,
+    confirmed,
+    navigation,
+    note,
+    reason,
+    route?.params?.note,
+    showAlert,
+    submitting,
+    locationLabel,
+  ]);
 
   useEffect(() => {
     if (!confirmed) {
@@ -397,7 +504,7 @@ const ShareLocationScreen = ({ navigation, route }) => {
               title="Share Presence Request"
               onPress={() => {
                 if (submitting) return;
-                navigation.navigate('BeforeShare', { reason, category, note });
+                handleSharePresenceRequest();
               }}
               variant="gradient"
               loading={submitting}

@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { getMessaging, setBackgroundMessageHandler } from '@react-native-firebase/messaging';
 import notifee, { AndroidStyle, EventType } from '@notifee/react-native';
 import {
@@ -6,7 +7,10 @@ import {
   initNotifeeChannels,
   displayBorrowItemActionNotification,
   displayOfferItemActionNotification,
+  displayAndroidForegroundIncomingHeadsUp,
+  displayAdminBroadcastNotification,
 } from './SociusNotificationService';
+import { shouldIgnoreIncomingPresenceAlarm } from '../../utils/presenceIncomingGuard';
 import { buildClosureInitiatedCopy, buildRequestClosedCopy } from '../../utils/closureMessages';
 import {
   displayRequestCompletionPrompt,
@@ -56,10 +60,39 @@ setBackgroundMessageHandler(messaging, async remoteMessage => {
     return;
   }
 
+  // Presence: native incoming-call UI often does not show when the app is killed; always post Notifee
+  // (high-importance tray + action buttons) from the headless JS task.
+  const upperType = String(data.type || '').toUpperCase();
+  const isPresenceAlarmFcm =
+    upperType.includes('PRESENCE_ALARM') ||
+    String(data.type || '').toLowerCase() === 'presence_alarm';
+  if (isPresenceAlarmFcm && Platform.OS === 'android') {
+    await initNotifeeChannels();
+    if (await shouldIgnoreIncomingPresenceAlarm(data)) return;
+    await displayAndroidForegroundIncomingHeadsUp('presence', data);
+    return;
+  }
+
+  const isHelpAlarmFcm =
+    upperType.includes('HELP_REQUEST') ||
+    upperType.includes('REQUEST_REMATCHED') ||
+    String(data.type || '').toLowerCase() === 'help_request';
+  if (isHelpAlarmFcm && Platform.OS === 'android') {
+    await initNotifeeChannels();
+    await displayAndroidForegroundIncomingHeadsUp('help', data);
+    return;
+  }
+
   const handledByCallKeep = await handleIncomingCallMessage(remoteMessage);
   if (handledByCallKeep) return;
 
   if (await handleChatMessageFcm(remoteMessage)) {
+    return;
+  }
+
+  if (type === 'admin_broadcast') {
+    await initNotifeeChannels();
+    await displayAdminBroadcastNotification(remoteMessage);
     return;
   }
 

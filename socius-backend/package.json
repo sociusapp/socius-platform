@@ -7,7 +7,8 @@
     "dev": "NODE_ENV=development nodemon server.js",
     "test": "jest --runInBand",
     "seed:daily-help-blogs": "node scripts/seed-daily-help-blog-topics.js",
-    "seed:static-pages": "node scripts/seed-static-pages.js"
+    "seed:static-pages": "node scripts/seed-static-pages.js",
+    "seed:presence-catalog": "node scripts/seed-presence-catalog.js"
   },
   "keywords": [],
   "author": "",

@@ -63,7 +63,8 @@ const CreateAwarenessScreen = ({ navigation, route }) => {
   ];
 
   const handleSelect = (item) => {
-    navigation.navigate('ShareLocation', { category, reason: item.id || item._id });
+    const reason = item.slug || item.id || item._id;
+    navigation.navigate('BeforeShare', { category, reason, note: '' });
   };
 
   useEffect(() => {
@@ -81,6 +82,13 @@ const CreateAwarenessScreen = ({ navigation, route }) => {
   }, []);
 
   useEffect(() => {
+    const id = route?.params?.categoryId;
+    if (id != null && id !== '') {
+      setActiveCategoryId(id);
+    }
+  }, [route?.params?.categoryId]);
+
+  useEffect(() => {
     let mounted = true;
     const loadCategories = async () => {
       try {
@@ -88,10 +96,12 @@ const CreateAwarenessScreen = ({ navigation, route }) => {
         const data = Array.isArray(res?.data?.items) ? res.data.items : Array.isArray(res?.items) ? res.items : [];
         if (!mounted) return;
         setCategories(data);
-        if (!activeCategoryId && data.length) {
+        setActiveCategoryId((prev) => {
+          if (prev) return prev;
+          if (!data.length) return null;
           const legacy = data.find((c) => String(c.slug || '').toLowerCase() === String(category).toLowerCase());
-          setActiveCategoryId((legacy?._id || data[0]?._id || null));
-        }
+          return legacy?._id || data[0]?._id || null;
+        });
       } catch {
       }
     };
@@ -99,7 +109,7 @@ const CreateAwarenessScreen = ({ navigation, route }) => {
     return () => {
       mounted = false;
     };
-  }, [token, category, activeCategoryId]);
+  }, [token, category]);
 
   useEffect(() => {
     if (!activeCategoryId) return;
@@ -120,7 +130,9 @@ const CreateAwarenessScreen = ({ navigation, route }) => {
   }, [token, activeCategoryId]);
 
   const dynamicTitle = useMemo(() => {
-    const activeCategory = categories.find((c) => c._id === activeCategoryId);
+    const activeCategory = categories.find(
+      (c) => String(c._id) === String(activeCategoryId)
+    );
     return activeCategory?.title || CATEGORY_TITLES[category] || 'Need Calm Presence';
   }, [categories, activeCategoryId, category]);
 

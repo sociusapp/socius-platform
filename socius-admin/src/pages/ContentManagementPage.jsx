@@ -14,17 +14,23 @@ import {
   updateHelpSubcategoryAdmin,
 } from '../services/api/helpSubcategories';
 import { baseURL as ADMIN_API_BASE } from '../services/api/client';
-import { 
-  X, 
-  Edit2, 
-  Trash2, 
+import {
+  X,
+  Edit2,
+  Trash2,
   CheckCircle,
   Plus,
-  GripVertical
+  GripVertical,
+  BookOpen,
+  Shield,
+  ChevronRight,
 } from 'lucide-react';
 
 const ContentManagementPage = ({ initialTab = 'Categories' }) => {
   const { confirm, toast } = useAlert();
+  /** useAlert returns new `toast` each render; never put it in useEffect/useCallback deps. */
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(initialTab);
   const [isEditPanelOpen, setIsEditPanelOpen] = useState(false);
@@ -50,15 +56,6 @@ const ContentManagementPage = ({ initialTab = 'Categories' }) => {
   const [subcategories, setSubcategories] = useState([]);
   const [editingSubcategory, setEditingSubcategory] = useState(null);
 
-  const scenarios = useMemo(
-    () => [
-      { id: 1, name: 'Broken Down Vehicle', risk: 'Medium', status: 'Active' },
-      { id: 2, name: 'Suspicious Activity', risk: 'High', status: 'Draft' },
-      { id: 3, name: 'Lost Child', risk: 'High', status: 'Active' },
-    ],
-    []
-  );
-
   const tabs = [
     'Categories',
     'Sub-categories',
@@ -74,10 +71,10 @@ const ContentManagementPage = ({ initialTab = 'Categories' }) => {
       if (response.success) {
         setStaticPages(response.data);
       }
-    } catch (error) {
-      toast.error('Failed to fetch static pages');
+    } catch {
+      toastRef.current?.error('Failed to fetch static pages');
     }
-  }, [toast]);
+  }, []);
 
   useEffect(() => {
     if (activeTab === 'Static Pages') {
@@ -109,7 +106,7 @@ const ContentManagementPage = ({ initialTab = 'Categories' }) => {
           hasShownCategoryFetchError.current = true;
           const status = error?.response?.status;
           const msg = error?.response?.data?.message || error?.message || 'Failed to fetch help categories';
-          toast.error(`${msg}${status ? ` (HTTP ${status})` : ''}`);
+          toastRef.current?.error(`${msg}${status ? ` (HTTP ${status})` : ''}`);
         }
       }
     };
@@ -117,7 +114,7 @@ const ContentManagementPage = ({ initialTab = 'Categories' }) => {
     return () => {
       cancelled = true;
     };
-  }, [activeTab, toast]);
+  }, [activeTab]);
 
   useEffect(() => {
     if (activeTab !== 'Sub-categories') return;
@@ -136,14 +133,14 @@ const ContentManagementPage = ({ initialTab = 'Categories' }) => {
       } catch (error) {
         if (cancelled) return;
         const msg = error?.response?.data?.message || 'Failed to fetch sub-categories';
-        toast.error(msg);
+        toastRef.current?.error(msg);
       }
     };
     run();
     return () => {
       cancelled = true;
     };
-  }, [activeTab, toast]);
+  }, [activeTab]);
 
   const handleCreatePage = () => {
     navigate('/static-pages/new');
@@ -422,23 +419,6 @@ const ContentManagementPage = ({ initialTab = 'Categories' }) => {
     )},
   ];
 
-  const scenarioColumns = [
-    { header: 'Scenario Name', accessor: 'name', className: 'font-medium text-gray-900 dark:text-white' },
-    { header: 'Risk Tier', accessor: 'risk', render: (row) => (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-        row.risk === 'High' ? 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200' :
-        row.risk === 'Medium' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-200' :
-        'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200'
-      }`}>
-        {row.risk}
-      </span>
-    )},
-    { header: 'Status', accessor: 'status' },
-    { header: 'Action', accessor: 'actions', render: (row) => (
-       <Link to="/content/scenario-config" className="text-socius-red hover:text-brand-dark">Edit</Link>
-    )}
-  ];
-
   const staticPageColumns = [
     { header: 'Title', accessor: 'title', className: 'font-medium text-gray-900 dark:text-white' },
     { header: 'Section', accessor: 'section', render: (row) => (
@@ -473,13 +453,11 @@ const ContentManagementPage = ({ initialTab = 'Categories' }) => {
         String(s?.description || '').toLowerCase().includes(q) ||
         String(s?.parentCategory?.name || '').toLowerCase().includes(q)
       );
-    } else if (activeTab === 'Scenarios') {
-      return scenarios.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
     } else if (activeTab === 'Static Pages') {
       return staticPages.filter(p => p.title.toLowerCase().includes(searchTerm.toLowerCase()));
     }
     return [];
-  }, [activeTab, categories, subcategories, scenarios, staticPages, searchTerm]);
+  }, [activeTab, categories, subcategories, staticPages, searchTerm]);
 
   const handleEditPage = (page) => {
     navigate(`/static-pages/edit/${page.slug}`);
@@ -711,30 +689,144 @@ const ContentManagementPage = ({ initialTab = 'Categories' }) => {
           )}
 
           {activeTab === 'Scenarios' && (
-            <Table 
-              columns={scenarioColumns}
-              data={paginatedData}
-              onSearch={(value) => {
-                setSearchTerm(value);
-                setCurrentPage(1);
-              }}
-              searchPlaceholder="Search scenarios..."
-              pagination={{
-                currentPage,
-                totalPages: Math.ceil(filteredData.length / itemsPerPage),
-                totalItems: filteredData.length,
-                itemsPerPage
-              }}
-              onPageChange={setCurrentPage}
-              actions={
-                <Link 
-                  to="/content/scenario-config" 
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-socius-red hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-socius-red"
+            <div className="max-w-3xl space-y-6">
+              <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                There is no separate “scenarios” API yet. Need presence / awareness copy lives in the{' '}
+                <strong className="text-gray-800 dark:text-gray-200">situations catalog</strong>; risk &amp; guidance lab is
+                below. Daily Help flows use <strong className="text-gray-800 dark:text-gray-200">Categories</strong> on this
+                page.
+              </p>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <Link
+                  to="/presence-catalog"
+                  className="group flex items-start gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm hover:border-socius-red/50 transition-colors"
                 >
-                  <Plus className="mr-2 h-4 w-4" /> Create Scenario
+                  <Shield className="h-10 w-10 text-socius-red shrink-0 opacity-90" />
+                  <div>
+                    <div className="font-semibold text-gray-900 dark:text-white flex items-center gap-1">
+                      Situations catalog
+                      <ChevronRight className="h-4 w-4 opacity-60 group-hover:translate-x-0.5 transition-transform" />
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Presence categories &amp; situation items shown in the app.
+                    </p>
+                  </div>
                 </Link>
-              }
-            />
+                <Link
+                  to="/content/scenario-config"
+                  className="group flex items-start gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm hover:border-socius-red/50 transition-colors"
+                >
+                  <BookOpen className="h-10 w-10 text-socius-red shrink-0 opacity-90" />
+                  <div>
+                    <div className="font-semibold text-gray-900 dark:text-white flex items-center gap-1">
+                      Scenario configuration
+                      <ChevronRight className="h-4 w-4 opacity-60 group-hover:translate-x-0.5 transition-transform" />
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Draft awareness rules (UI prototype — wire API when backend exists).
+                    </p>
+                  </div>
+                </Link>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'Do / Don\'t Guidance' && (
+            <div className="max-w-3xl space-y-6">
+              <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                Do / don’t copy is not stored in a dedicated CMS table yet. Use the tools below so guidance stays consistent
+                with what users actually see.
+              </p>
+              <ul className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
+                <li className="flex gap-2">
+                  <span className="text-socius-red font-bold">•</span>
+                  <span>
+                    <strong>Daily Help</strong> — titles &amp; descriptions:{' '}
+                    <button
+                      type="button"
+                      onClick={() => handleTabChange('Categories')}
+                      className="text-socius-red font-medium hover:underline"
+                    >
+                      Categories
+                    </button>
+                    ,{' '}
+                    <button
+                      type="button"
+                      onClick={() => handleTabChange('Sub-categories')}
+                      className="text-socius-red font-medium hover:underline"
+                    >
+                      Sub-categories
+                    </button>
+                    .
+                  </span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="text-socius-red font-bold">•</span>
+                  <span>
+                    <strong>Need presence</strong> — situation labels &amp; icons:{' '}
+                    <Link to="/presence-catalog" className="text-socius-red font-medium hover:underline">
+                      Situations catalog
+                    </Link>
+                    .
+                  </span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="text-socius-red font-bold">•</span>
+                  <span>
+                    <strong>Legal / safety pages</strong> — long-form text:{' '}
+                    <button
+                      type="button"
+                      onClick={() => handleTabChange('Static Pages')}
+                      className="text-socius-red font-medium hover:underline"
+                    >
+                      Static Pages
+                    </button>
+                    .
+                  </span>
+                </li>
+              </ul>
+            </div>
+          )}
+
+          {activeTab === 'Preparedness Content' && (
+            <div className="max-w-3xl space-y-6">
+              <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                Preparedness content is maintained on its own admin screens (live APIs). This tab is a shortcut — no
+                duplicate editor here.
+              </p>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <Link
+                  to="/prepare-cards"
+                  className="group flex items-start gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm hover:border-socius-red/50 transition-colors"
+                >
+                  <BookOpen className="h-10 w-10 text-socius-red shrink-0 opacity-90" />
+                  <div>
+                    <div className="font-semibold text-gray-900 dark:text-white flex items-center gap-1">
+                      Prepare cards
+                      <ChevronRight className="h-4 w-4 opacity-60 group-hover:translate-x-0.5 transition-transform" />
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      “Prepare &amp; Stay Ready” cards in the mobile app.
+                    </p>
+                  </div>
+                </Link>
+                <Link
+                  to="/prepare-learn"
+                  className="group flex items-start gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm hover:border-socius-red/50 transition-colors"
+                >
+                  <Shield className="h-10 w-10 text-socius-red shrink-0 opacity-90" />
+                  <div>
+                    <div className="font-semibold text-gray-900 dark:text-white flex items-center gap-1">
+                      Prepare — Learn more
+                      <ChevronRight className="h-4 w-4 opacity-60 group-hover:translate-x-0.5 transition-transform" />
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Learn-more chips &amp; settings for the Prepare tab.
+                    </p>
+                  </div>
+                </Link>
+              </div>
+            </div>
           )}
 
           {activeTab === 'Static Pages' && (
@@ -764,11 +856,6 @@ const ContentManagementPage = ({ initialTab = 'Categories' }) => {
             />
           )}
 
-          {activeTab !== 'Categories' && activeTab !== 'Sub-categories' && activeTab !== 'Scenarios' && activeTab !== 'Static Pages' && (
-             <div className="text-center py-10 text-gray-500">
-                Content for {activeTab} will be implemented soon.
-             </div>
-          )}
         </div>
 
         {/* Right Side: Edit Panel */}

@@ -152,6 +152,9 @@ const declinePresence = async (req, res, next) => {
     if (err.code === PRESENCE_ERRORS.REQUEST_NOT_FOUND) {
       return badRequest(res, err.message, null, err.code)
     }
+    if (err.code === PRESENCE_ERRORS.MATCH_NOT_FOUND) {
+      return badRequest(res, err.message, null, err.code)
+    }
     next(err)
   }
 }

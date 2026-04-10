@@ -214,9 +214,9 @@ const schemas = {
       address: Joi.string()
         .optional()
         .allow('')
-        .max(200)
+        .max(500)
         .messages({
-          'string.max': 'Address must be less than 200 characters'
+          'string.max': 'Address must be less than 500 characters'
         }),
     })
       .required()
@@ -233,7 +233,7 @@ const schemas = {
         'number.max': 'Maximum helpers cannot exceed 5',
         'number.integer': 'Maximum helpers must be a whole number'
       }),
-  }),
+  }).prefs({ convert: true }),
   
   // Update presence request
   updatePresenceRequest: Joi.object({
@@ -281,6 +281,10 @@ const schemas = {
         'any.only': 'Closure reason must be one of: calm_mediation, no_longer_needed, situation_changed, chose_to_step_away, emergency_services_called',
         'any.required': 'Closure reason is required'
       }),
+  }),
+
+  scenarioConfigDraft: Joi.object({
+    formData: Joi.object().unknown(true).required(),
   }),
   
   // Nearby presence requests query

@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Table from '../components/common/Table';
-import { issueTrackerApi, issueTrackerBaseURL, ISSUE_TRACKER_TOKEN_KEY } from '../services/api/client';
+import { api, baseURL } from '../services/api/client';
 import { useAlert } from '../hooks/useAlert';
 import { useAuth } from '../context/AuthContext';
 
@@ -35,12 +35,10 @@ const IssueTrackerPage = () => {
   const { toast } = useAlert();
   const { user } = useAuth();
   const isDeveloper = !!user?.isDeveloper;
+  const isAdmin = !!user?.isAdmin;
+  const showIssueActions = isDeveloper || isAdmin;
   const [issues, setIssues] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [showIssueTrackerLogin, setShowIssueTrackerLogin] = useState(false);
-  const [issueTrackerEmail, setIssueTrackerEmail] = useState('');
-  const [issueTrackerPassword, setIssueTrackerPassword] = useState('');
-  const [issueTrackerAuthLoading, setIssueTrackerAuthLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [categoryFilter, setCategoryFilter] = useState('All');
@@ -56,7 +54,7 @@ const IssueTrackerPage = () => {
 
   const fetchAIStats = async () => {
     try {
-      const res = await issueTrackerApi.get('/admin-issues/stats/performance');
+      const res = await api.get('/admin-issues/stats/performance');
       if (res?.data?.success) {
         setAIStats(res.data.data);
       }
@@ -68,7 +66,7 @@ const IssueTrackerPage = () => {
   const fetchIssues = async () => {
     setIsLoading(true);
     try {
-      const response = await issueTrackerApi.get('/admin-issues');
+      const response = await api.get('/admin-issues');
       if (response.data.success) {
         setIssues(response.data.data);
       }
@@ -76,8 +74,7 @@ const IssueTrackerPage = () => {
       const statusCode = error?.response?.status;
       const message = error?.response?.data?.message || error?.message || 'Failed to fetch issues';
       if (statusCode === 401) {
-        toast.error('Live Issue Tracker login required');
-        setShowIssueTrackerLogin(true);
+        toast.error('Session expired or not authorized. Please sign in again.');
       } else {
         toast.error(message);
       }
@@ -86,48 +83,10 @@ const IssueTrackerPage = () => {
     }
   };
 
-  const handleIssueTrackerLogin = async (e) => {
-    e.preventDefault();
-    setIssueTrackerAuthLoading(true);
-    try {
-      const path = isDeveloper ? '/auth/developer-login' : '/auth/admin-login';
-      const res = await issueTrackerApi.post(path, {
-        email: issueTrackerEmail,
-        password: issueTrackerPassword,
-      });
-
-      const { success, data, message } = res?.data || {};
-      if (!success || !data?.accessToken) {
-        toast.error(message || 'Login failed');
-        return;
-      }
-
-      localStorage.setItem(ISSUE_TRACKER_TOKEN_KEY, data.accessToken);
-      setShowIssueTrackerLogin(false);
-      setIssueTrackerPassword('');
-      toast.success('Connected to Live Issue Tracker');
-      fetchIssues();
-      if (isDeveloper) fetchAIStats();
-    } catch (err) {
-      const apiMessage =
-        err?.response?.data?.message ||
-        err?.response?.data?.errors?.[0]?.message;
-      toast.error(apiMessage || 'Login failed');
-    } finally {
-      setIssueTrackerAuthLoading(false);
-    }
-  };
-
   useEffect(() => {
     fetchIssues();
     if (isDeveloper) fetchAIStats();
   }, [isDeveloper]);
-
-  useEffect(() => {
-    if (!issueTrackerEmail && user?.email) {
-      setIssueTrackerEmail(user.email);
-    }
-  }, [issueTrackerEmail, user?.email]);
 
   const filteredIssues = (issues || []).filter((i) => {
     const statusOk = statusFilter === 'All' || i?.status === statusFilter;
@@ -442,7 +401,7 @@ const IssueTrackerPage = () => {
     }
 
     try {
-      const response = await issueTrackerApi.post('/admin-issues', formData, {
+      const response = await api.post('/admin-issues', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -475,7 +434,7 @@ const IssueTrackerPage = () => {
 
   const updateStatus = async (id, newStatus) => {
     try {
-      const response = await issueTrackerApi.patch(`/admin-issues/${id}`, { status: newStatus });
+      const response = await api.patch(`/admin-issues/${id}`, { status: newStatus });
       if (response.data.success) {
         toast.success(`Status updated to ${newStatus}`);
         setIssues(issues.map(issue =>
@@ -490,7 +449,7 @@ const IssueTrackerPage = () => {
 
   const updateAIEnabled = async (id, enabled) => {
     try {
-      const response = await issueTrackerApi.patch(`/admin-issues/${id}`, { aiEnabled: enabled });
+      const response = await api.patch(`/admin-issues/${id}`, { aiEnabled: enabled });
       if (response.data.success) {
         toast.success(enabled ? 'AI automation enabled' : 'AI automation disabled');
         const updated = response.data.data;
@@ -509,7 +468,7 @@ const IssueTrackerPage = () => {
   const deleteIssue = async (id) => {
     if (window.confirm('Are you sure you want to delete this issue?')) {
       try {
-        const response = await issueTrackerApi.delete(`/admin-issues/${id}`);
+        const response = await api.delete(`/admin-issues/${id}`);
         if (response.data.success) {
           toast.success('Issue deleted');
           setIssues(issues.filter(issue => issue.id !== id && issue._id !== id));
@@ -604,31 +563,37 @@ const IssueTrackerPage = () => {
         </div>
       )
     },
-    ...(isDeveloper ? [{
+    ...(showIssueActions ? [{
       header: 'Actions',
       render: (row) => {
         const issueId = row._id || row.id;
         return (
           <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-            <label className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-              <input
-                type="checkbox"
-                checked={!!row.aiEnabled}
-                onChange={(e) => updateAIEnabled(issueId, e.target.checked)}
-                className="h-3.5 w-3.5 rounded border-gray-300 dark:border-gray-600"
-              />
-              AI
-            </label>
-            <select
-              value={row.status}
-              onChange={(e) => updateStatus(issueId, e.target.value)}
-              className="text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-1 outline-none focus:ring-1 focus:ring-socius-red"
-            >
-              <option value="Pending">Pending</option>
-              <option value="In Progress">In Progress</option>
-              <option value="Completed">Completed</option>
-            </select>
+            {isDeveloper ? (
+              <>
+                <label className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                  <input
+                    type="checkbox"
+                    checked={!!row.aiEnabled}
+                    onChange={(e) => updateAIEnabled(issueId, e.target.checked)}
+                    className="h-3.5 w-3.5 rounded border-gray-300 dark:border-gray-600"
+                  />
+                  AI
+                </label>
+                <select
+                  value={row.status}
+                  onChange={(e) => updateStatus(issueId, e.target.value)}
+                  className="text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-1 outline-none focus:ring-1 focus:ring-socius-red"
+                >
+                  <option value="Pending">Pending</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="Completed">Completed</option>
+                </select>
+              </>
+            ) : null}
             <button
+              type="button"
+              title="Delete issue"
               onClick={(e) => {
                 e.stopPropagation();
                 deleteIssue(issueId);
@@ -645,71 +610,6 @@ const IssueTrackerPage = () => {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-12 animate-in fade-in slide-in-from-bottom-4 duration-300">
-      {showIssueTrackerLogin ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-xl p-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Live Issue Tracker Login</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Live server se data lane ke liye login required hai.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-                onClick={() => setShowIssueTrackerLogin(false)}
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <form className="mt-4 space-y-3" onSubmit={handleIssueTrackerLogin}>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
-                <input
-                  type="email"
-                  value={issueTrackerEmail}
-                  onChange={(e) => setIssueTrackerEmail(e.target.value)}
-                  className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-socius-red/50 dark:text-white"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
-                <input
-                  type="password"
-                  value={issueTrackerPassword}
-                  onChange={(e) => setIssueTrackerPassword(e.target.value)}
-                  className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-socius-red/50 dark:text-white"
-                  required
-                />
-              </div>
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="submit"
-                  disabled={issueTrackerAuthLoading}
-                  className="flex-1 bg-socius-red text-white py-2.5 rounded-lg font-bold hover:bg-red-700 transition-colors disabled:opacity-50"
-                >
-                  {issueTrackerAuthLoading ? 'Connecting...' : 'Connect'}
-                </button>
-                <button
-                  type="button"
-                  className="px-4 py-2.5 rounded-lg font-bold border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                  onClick={() => {
-                    try {
-                      localStorage.removeItem(ISSUE_TRACKER_TOKEN_KEY);
-                    } catch { }
-                    setShowIssueTrackerLogin(false);
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      ) : null}
       {/* Header with AI Performance */}
       <div className="flex flex-col gap-6">
         <div className="flex items-center justify-between">
@@ -720,7 +620,7 @@ const IssueTrackerPage = () => {
             </h1>
             <p className="text-gray-500 mt-1">Manage and track project issues, bugs, and feature requests.</p>
             <div className="mt-2 text-xs text-gray-500">
-              Data source: <span className="font-mono">{String(issueTrackerBaseURL || '')}</span>
+              Data source: <span className="font-mono">{String(baseURL || '')}</span>
             </div>
           </div>
           <button

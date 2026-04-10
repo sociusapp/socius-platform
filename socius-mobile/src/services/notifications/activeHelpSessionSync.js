@@ -1,5 +1,7 @@
 import { AppState, Platform } from 'react-native';
+import axios from 'axios';
 import notifee from '@notifee/react-native';
+import { baseURL } from '../api/client';
 import { getMyActiveHelpRequest } from '../api/incident.api';
 import { loadAuth } from '../storage/asyncStorage.service';
 import {
@@ -9,9 +11,28 @@ import {
 } from './activeHelpSessionNotification';
 
 const POLL_MS = 30000;
+/** Avoid spamming Metro when the device cannot reach the API (wrong host, backend down, airplane mode). */
+const NETWORK_WARN_THROTTLE_MS = 120000;
+let lastNetworkWarnAt = 0;
 
 /** Previously synced request ids — used to cancel notifications when a session disappears server-side */
 let lastDesiredIds = new Set();
+
+function isTransientNetworkError(e) {
+  if (axios.isAxiosError?.(e)) {
+    const code = String(e.code || '');
+    if (['ERR_NETWORK', 'ECONNABORTED', 'ETIMEDOUT'].includes(code)) return true;
+    if (!e.response && String(e.message || '').toLowerCase().includes('network')) return true;
+  }
+  return false;
+}
+
+function shouldEmitNetworkHint() {
+  const now = Date.now();
+  if (now - lastNetworkWarnAt < NETWORK_WARN_THROTTLE_MS) return false;
+  lastNetworkWarnAt = now;
+  return true;
+}
 
 /**
  * Parse `/help-request/active` payload (same shapes as SplashScreen).
@@ -105,9 +126,20 @@ export async function refreshActiveHelpSessionNotifications() {
 
     await applySessionsFromPayload(res.data);
   } catch (e) {
-    if (__DEV__) {
-      console.warn('[activeHelpSessionSync] refresh failed', e?.message || e);
+    if (!__DEV__) return;
+
+    if (isTransientNetworkError(e)) {
+      if (shouldEmitNetworkHint()) {
+        console.warn(
+          '[activeHelpSessionSync] cannot reach API (network). Progress notifications not updated. baseURL:',
+          baseURL,
+          '\nTip: from a real device, set EXPO_PUBLIC_API_BASE_URL to http://<your computer LAN IP>:<port>/api (not localhost). Emulator: Android use 10.0.2.2.',
+        );
+      }
+      return;
     }
+
+    console.warn('[activeHelpSessionSync] refresh failed', e?.message || e);
   }
 }
 

@@ -73,6 +73,33 @@ const formatVoiceDuration = (sec) => {
 
 const QUICK_EMOJIS = ['😊', '👍', '❤️', '😂', '🙏', '😮', '✅', '👋'];
 
+/** JWT payload read-only (matches backend `generateTokens` field `id`). */
+const readUserIdFromAccessToken = (token) => {
+  if (!token || typeof token !== 'string') return null;
+  try {
+    const b64url = token.split('.')[1];
+    if (!b64url) return null;
+    const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+    const pad = (4 - (b64.length % 4)) % 4;
+    const padded = b64 + (pad ? '='.repeat(pad) : '');
+    const raw =
+      typeof globalThis.atob === 'function' ? globalThis.atob(padded) : null;
+    if (!raw) return null;
+    const payload = JSON.parse(raw);
+    const id = payload?.id ?? payload?.userId ?? payload?.sub;
+    return id != null ? String(id) : null;
+  } catch {
+    return null;
+  }
+};
+
+const otherChatParticipantId = (session, currentUserId) => {
+  if (!session || currentUserId == null) return null;
+  const rid = session.requesterId?._id ?? session.requesterId;
+  const hid = session.helperId?._id ?? session.helperId;
+  return String(rid) === String(currentUserId) ? hid : rid;
+};
+
 /** App-aligned pink / white palette */
 const WA_COLORS = {
   sentBubble: '#FDECEF',
@@ -684,9 +711,6 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
     try {
       const auth = await loadAuth();
       console.log('ChatModal: Auth loaded:', auth);
-      if (auth?.userId) {
-        setUserId(auth.userId);
-      }
       const token = auth?.accessToken;
 
       if (!token) {
@@ -694,12 +718,22 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
         return;
       }
 
+      const resolvedUserId =
+        auth?.userId != null && auth.userId !== ''
+          ? String(auth.userId)
+          : readUserIdFromAccessToken(token);
+      if (resolvedUserId) {
+        setUserId(resolvedUserId);
+      }
+
       const chatSessionResponse = await getSessionByRequest(token, requestId);
       if (chatSessionResponse?.success && chatSessionResponse?.data) {
         const sessionData = chatSessionResponse.data;
         setSession(sessionData); // Triggers socket setup and message loading
-        
+
         lastRequestIdRef.current = requestId;
+      } else if (chatSessionResponse?.success) {
+        setSession(null);
       }
     } catch (error) {
       console.error('Error initializing chat:', error);
@@ -735,9 +769,8 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
 
     const socket = getSocket();
     if (socket && socket.connected) {
-      const receiverId = session.requesterId._id === userId 
-        ? session.helperId._id 
-        : session.requesterId._id;
+      const receiverId = otherChatParticipantId(session, userId);
+      if (!receiverId) return;
 
       if (text.length > 0) {
         socket.emit('chat:typing', {
@@ -768,21 +801,20 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
   const handleSend = async () => {
     // Ensure inputText is a string before trimming
     const trimmedText = (inputText || '').trim();
-    if (!trimmedText || !session) return;
+    if (!trimmedText || !session || userId == null) return;
     
     // Stop typing immediately when sending
     if (localTypingTimeoutRef.current) {
       clearTimeout(localTypingTimeoutRef.current);
       const socket = getSocket();
       if (socket && socket.connected) {
-         const receiverId = session.requesterId._id === userId 
-          ? session.helperId._id 
-          : session.requesterId._id;
-          
-        socket.emit('chat:stop_typing', {
-          sessionId: session._id,
-          receiverId
-        });
+        const receiverId = otherChatParticipantId(session, userId);
+        if (receiverId) {
+          socket.emit('chat:stop_typing', {
+            sessionId: session._id,
+            receiverId
+          });
+        }
       }
     }
 
@@ -1287,6 +1319,20 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
   const userImage = getFullImageUrl(targetUser?.profileImage);
   const displayName = otherUserName || targetUser?.fullName || 'User';
 
+  /** Bubble ke upar — apna / saamne wale ka naam (session se), WhatsApp-style grouping. */
+  const myChatName =
+    session && userId != null
+      ? String(session.requesterId?._id ?? session.requesterId) === String(userId)
+        ? session.requesterId?.fullName?.trim() || 'You'
+        : session.helperId?.fullName?.trim() || 'You'
+      : 'You';
+  const theirChatName =
+    session && userId != null
+      ? String(session.requesterId?._id ?? session.requesterId) === String(userId)
+        ? session.helperId?.fullName?.trim() || displayName
+        : session.requesterId?.fullName?.trim() || displayName
+      : displayName;
+
   const startCall = async () => {
     if (!session || !userId || chatBlockedRef.current) return;
     const otherId = String(session.requesterId?._id) === String(userId) ? session.helperId?._id : session.requesterId?._id;
@@ -1413,7 +1459,7 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
     );
   };
 
-  const renderMessage = ({ item }) => {
+  const renderMessage = ({ item, index: flatIndex }) => {
     if (item.isSystem) {
       return (
         <View style={styles.systemMessageRow}>
@@ -1430,6 +1476,15 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
     
     const msgSenderId = item.senderId?._id ?? item.senderId;
     const isMyMessage = String(msgSenderId) === String(userId);
+    const chronIndex = messages.length > 0 ? messages.length - 1 - flatIndex : -1;
+    const prevChron =
+      chronIndex > 0 && chronIndex < messages.length ? messages[chronIndex - 1] : null;
+    const showSenderName =
+      chronIndex >= 0 &&
+      (!prevChron ||
+        prevChron.isSystem ||
+        String(prevChron.senderId?._id ?? prevChron.senderId) !== String(msgSenderId));
+    const senderLabel = isMyMessage ? myChatName : theirChatName;
     const hasReactions = item.reactions && item.reactions.length > 0;
     const mt = item.messageType || 'text';
     const att = item.attachment || {};
@@ -1565,6 +1620,23 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
               hasReactions && { marginBottom: 24 },
             ]}
           >
+            <View
+              style={[
+                styles.messageStack,
+                isMyMessage ? styles.messageStackMine : styles.messageStackTheirs,
+              ]}
+            >
+            {showSenderName ? (
+              <Text
+                style={[
+                  styles.senderNameLabel,
+                  isMyMessage ? styles.senderNameLabelMine : styles.senderNameLabelTheirs,
+                ]}
+                numberOfLines={1}
+              >
+                {senderLabel}
+              </Text>
+            ) : null}
             <Pressable 
               onLongPress={(e) => openReactionPicker(item, isMyMessage, e)} 
               delayLongPress={140}
@@ -1610,6 +1682,7 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
               </View>
               {renderReactions(item, isMyMessage)}
             </Pressable>
+            </View>
           </View>
         </SwipeableMessage>
     );
@@ -2030,6 +2103,31 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     paddingLeft: 6,
     paddingRight: 16,
+  },
+  messageStack: {
+    maxWidth: '92%',
+  },
+  messageStackMine: {
+    alignItems: 'flex-end',
+  },
+  messageStackTheirs: {
+    alignItems: 'flex-start',
+  },
+  senderNameLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 3,
+    maxWidth: '100%',
+  },
+  senderNameLabelMine: {
+    color: '#9CA3AF',
+    alignSelf: 'flex-end',
+    paddingRight: 2,
+  },
+  senderNameLabelTheirs: {
+    color: '#C84D59',
+    alignSelf: 'flex-start',
+    paddingLeft: 2,
   },
   bubbleOuter: {
     position: 'relative',

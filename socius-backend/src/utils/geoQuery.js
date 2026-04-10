@@ -31,8 +31,15 @@ const findNearbyAvailableUsers = async ({
     if (redisUserIds && redisUserIds.length > 0) {
       logger.info(`Redis found ${redisUserIds.length} potential users nearby.`)
 
+      // MongoDB does not reliably combine $in + $nin on _id in one object — filter excluded ids in JS.
+      const excludeSet = new Set((excludeIds || []).map((id) => String(id)))
+      const filteredRedisIds = redisUserIds.map((id) => String(id)).filter((id) => id && !excludeSet.has(id))
+
+      if (filteredRedisIds.length === 0) {
+        logger.info('[findNearbyAvailableUsers] Redis: all nearby ids were excluded; using MongoDB fallback')
+      } else {
       const query = {
-        _id: { $in: redisUserIds, $nin: excludeIds || [] },
+        _id: { $in: filteredRedisIds },
         accountStatus: { $in: ['active', 'pending_review', 'limited'] },
         isDeleted: false,
       }
@@ -52,6 +59,7 @@ const findNearbyAvailableUsers = async ({
       
       if (users.length > 0) {
         return users
+      }
       }
     }
 

@@ -1,64 +1,55 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { HandHelping, Radio, Shield, ListTodo } from 'lucide-react';
+import toast from 'react-hot-toast';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Table from '../components/common/Table';
-import { useAlert } from '../hooks/useAlert';
 import { api } from '../services/api/client';
+import { formatDateTime, safeText } from './daily-help/dailyHelpDetailShared';
 
 const TABS = [
-  { key: 'help', label: 'Help Requests' },
-  { key: 'presence', label: 'Presence Requests' },
-  { key: 'closures', label: 'Closures' },
-  { key: 'attempts', label: 'Request Attempts' },
+  { key: 'help', label: 'Help Requests', shortLabel: 'Help', icon: HandHelping },
+  { key: 'presence', label: 'Presence', shortLabel: 'Presence', icon: Radio },
+  { key: 'closures', label: 'Closures', shortLabel: 'Closures', icon: Shield },
+  { key: 'attempts', label: 'Attempts', shortLabel: 'Attempts', icon: ListTodo },
 ];
 
-const formatDateTime = (value) => {
-  if (!value) return '-';
-  try {
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return '-';
-    return d.toLocaleString();
-  } catch {
-    return '-';
+export { extractApproxLatLng } from './daily-help/dailyHelpDetailShared';
+
+const TAB_KEYS = new Set(TABS.map((t) => t.key));
+
+const normalizeListResponse = (body) => {
+  const payload = body?.data;
+  if (!payload) return { items: [], total: 0 };
+  if (Array.isArray(payload.items)) {
+    return { items: payload.items, total: Number(payload.total) || payload.items.length };
   }
-};
-
-const safeText = (value) => {
-  const s = String(value || '').trim();
-  return s || '-';
-};
-
-export const extractApproxLatLng = (detailType, detailData) => {
-  const location =
-    detailType === 'help'
-      ? detailData?.request?.location
-      : detailData?.location;
-
-  const coords = location?.coordinatesApprox || location?.coordinates;
-  if (!Array.isArray(coords) || coords.length < 2) return null;
-
-  const lng = Number(coords[0]);
-  const lat = Number(coords[1]);
-
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-
-  return {
-    lat,
-    lng,
-    label: location?.address || location?.whereToFindText || null,
-  };
+  if (Array.isArray(payload)) {
+    return { items: payload, total: payload.length };
+  }
+  return { items: [], total: 0 };
 };
 
 const DailyHelpPage = () => {
-  const { toast } = useAlert();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const tab = tabParam && TAB_KEYS.has(tabParam) ? tabParam : 'help';
 
-  const [tab, setTab] = useState('help');
+  const setTab = useCallback((key) => {
+    if (!TAB_KEYS.has(key)) return;
+    if (key === 'help') setSearchParams({}, { replace: true });
+    else setSearchParams({ tab: key }, { replace: true });
+  }, [setSearchParams]);
 
   const [helpStatus, setHelpStatus] = useState('All');
   const [helpCategory, setHelpCategory] = useState('All');
   const [helpPage, setHelpPage] = useState(1);
   const [helpSearch, setHelpSearch] = useState('');
+  const [helpSearchDebounced, setHelpSearchDebounced] = useState('');
   const [helpLoading, setHelpLoading] = useState(false);
   const [helpItems, setHelpItems] = useState([]);
   const [helpTotal, setHelpTotal] = useState(0);
@@ -80,67 +71,40 @@ const DailyHelpPage = () => {
   const [attemptItems, setAttemptItems] = useState([]);
   const [attemptTotal, setAttemptTotal] = useState(0);
   const [attemptSearch, setAttemptSearch] = useState('');
-
-  const [detailOpen, setDetailOpen] = useState(false);
-  const [detailType, setDetailType] = useState(null);
-  const [detailId, setDetailId] = useState(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailData, setDetailData] = useState(null);
+  const [attemptSearchDebounced, setAttemptSearchDebounced] = useState('');
 
   const itemsPerPage = 20;
 
-  const closeDetail = useCallback(() => {
-    setDetailOpen(false);
-    setDetailType(null);
-    setDetailId(null);
-    setDetailLoading(false);
-    setDetailData(null);
-  }, []);
-
-  const openDetail = useCallback(async (type, id) => {
-    setDetailOpen(true);
-    setDetailType(type);
-    setDetailId(id);
-    setDetailLoading(true);
-    setDetailData(null);
-
-    try {
-      if (type === 'help') {
-        const res = await api.get(`/admin/help-requests/${encodeURIComponent(id)}`);
-        const body = res?.data;
-        if (body?.success) {
-          setDetailData(body.data);
-        } else {
-          toast.error(body?.message || 'Failed to load help request');
-        }
-      } else if (type === 'presence') {
-        const res = await api.get(`/admin/presence-requests/${encodeURIComponent(id)}`);
-        const body = res?.data;
-        if (body?.success) {
-          setDetailData(body.data);
-        } else {
-          toast.error(body?.message || 'Failed to load presence request');
-        }
-      } else if (type === 'closure') {
-        const res = await api.get(`/admin/closures/${encodeURIComponent(id)}`);
-        const body = res?.data;
-        if (body?.success) {
-          setDetailData(body.data);
-        } else {
-          toast.error(body?.message || 'Failed to load closure');
-        }
-      } else {
-        toast.error('Unsupported detail type');
-      }
-    } catch (e) {
-      toast.error('Network error while loading details');
-    } finally {
-      setDetailLoading(false);
-    }
-  }, [toast]);
+  useEffect(() => {
+    const t = location.state?.fromTab;
+    if (!t || !TAB_KEYS.has(t)) return;
+    if (t === 'help') setSearchParams({}, { replace: true });
+    else setSearchParams({ tab: t }, { replace: true });
+  }, [location.state?.fromTab, setSearchParams]);
 
   useEffect(() => {
-    let cancelled = false;
+    const t = setTimeout(() => setHelpSearchDebounced(helpSearch.trim()), 320);
+    return () => clearTimeout(t);
+  }, [helpSearch]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setAttemptSearchDebounced(attemptSearch.trim()), 320);
+    return () => clearTimeout(t);
+  }, [attemptSearch]);
+
+  const openDetail = useCallback(
+    (type, id) => {
+      navigate(`/daily-help/${type}/${id}`, { state: { fromTab: tab } });
+    },
+    [navigate, tab]
+  );
+
+  useEffect(() => {
+    if (tab !== 'help') return undefined;
+
+    const ac = new AbortController();
+    let active = true;
+
     const load = async () => {
       setHelpLoading(true);
       try {
@@ -150,144 +114,179 @@ const DailyHelpPage = () => {
         };
         if (helpStatus !== 'All') params.status = helpStatus;
         if (helpCategory !== 'All') params.category = helpCategory;
-        if (helpSearch) params.q = helpSearch;
+        if (helpSearchDebounced) params.q = helpSearchDebounced;
 
-        const res = await api.get('/admin/help-requests', { params });
+        const res = await api.get('/admin/help-requests', { params, signal: ac.signal });
         const body = res?.data;
-        if (!cancelled) {
-          if (body?.success && body?.data) {
-            setHelpItems(body.data.items || []);
-            setHelpTotal(body.data.total || 0);
-          } else {
-            setHelpItems([]);
-            setHelpTotal(0);
-          }
-        }
-      } catch {
-        if (!cancelled) {
+        if (!active) return;
+        if (body?.success) {
+          const { items: list, total } = normalizeListResponse(body);
+          const normalized = list.map((r) => ({
+            ...r,
+            id: r?.id != null ? String(r.id) : String(r?._id ?? ''),
+          }));
+          setHelpItems(normalized);
+          setHelpTotal(total);
+        } else {
           setHelpItems([]);
           setHelpTotal(0);
-          toast.error('Failed to load help requests');
+          toast.error(body?.message || 'Failed to load help requests');
         }
+      } catch (e) {
+        if (e?.name === 'CanceledError' || e?.code === 'ERR_CANCELED') return;
+        if (!active) return;
+        setHelpItems([]);
+        setHelpTotal(0);
+        toast.error(e?.response?.data?.message || 'Failed to load help requests');
       } finally {
-        if (!cancelled) setHelpLoading(false);
+        if (active) setHelpLoading(false);
       }
     };
 
-    if (tab === 'help') load();
+    load();
     return () => {
-      cancelled = true;
+      active = false;
+      ac.abort();
     };
-  }, [tab, helpPage, helpStatus, helpCategory, helpSearch, toast]);
+  }, [tab, helpPage, helpStatus, helpCategory, helpSearchDebounced, itemsPerPage]);
 
   useEffect(() => {
-    let cancelled = false;
+    if (tab !== 'presence') return undefined;
+
+    const ac = new AbortController();
+    let active = true;
+
     const load = async () => {
       setPresenceLoading(true);
       try {
         const params = { page: presencePage, limit: itemsPerPage };
         if (presenceStatus !== 'All') params.status = presenceStatus;
-        const res = await api.get('/admin/presence-requests', { params });
+        const res = await api.get('/admin/presence-requests', { params, signal: ac.signal });
         const body = res?.data;
-        if (!cancelled) {
-          if (body?.success && body?.data) {
-            setPresenceItems(body.data.items || []);
-            setPresenceTotal(body.data.total || 0);
-          } else {
-            setPresenceItems([]);
-            setPresenceTotal(0);
-          }
-        }
-      } catch {
-        if (!cancelled) {
+        if (!active) return;
+        if (body?.success) {
+          const { items: list, total } = normalizeListResponse(body);
+          const normalized = list.map((r) => ({
+            ...r,
+            id: r?.id != null ? String(r.id) : String(r?._id ?? ''),
+          }));
+          setPresenceItems(normalized);
+          setPresenceTotal(total);
+        } else {
           setPresenceItems([]);
           setPresenceTotal(0);
-          toast.error('Failed to load presence requests');
+          toast.error(body?.message || 'Failed to load presence requests');
         }
+      } catch (e) {
+        if (e?.name === 'CanceledError' || e?.code === 'ERR_CANCELED') return;
+        if (!active) return;
+        setPresenceItems([]);
+        setPresenceTotal(0);
+        toast.error(e?.response?.data?.message || 'Failed to load presence requests');
       } finally {
-        if (!cancelled) setPresenceLoading(false);
+        if (active) setPresenceLoading(false);
       }
     };
 
-    if (tab === 'presence') load();
+    load();
     return () => {
-      cancelled = true;
+      active = false;
+      ac.abort();
     };
-  }, [tab, presencePage, presenceStatus, toast]);
+  }, [tab, presencePage, presenceStatus, itemsPerPage]);
 
   useEffect(() => {
-    let cancelled = false;
+    if (tab !== 'closures') return undefined;
+
+    const ac = new AbortController();
+    let active = true;
+
     const load = async () => {
       setClosureLoading(true);
       try {
         const params = { page: closurePage, limit: itemsPerPage };
         if (closureStatus !== 'All') params.status = closureStatus;
-        const res = await api.get('/admin/closures', { params });
+        const res = await api.get('/admin/closures', { params, signal: ac.signal });
         const body = res?.data;
-        if (!cancelled) {
-          if (body?.success && body?.data) {
-            setClosureItems(body.data.items || []);
-            setClosureTotal(body.data.total || 0);
-          } else {
-            setClosureItems([]);
-            setClosureTotal(0);
-          }
-        }
-      } catch {
-        if (!cancelled) {
+        if (!active) return;
+        if (body?.success) {
+          const { items: list, total } = normalizeListResponse(body);
+          const normalized = list.map((r) => ({
+            ...r,
+            id: r?.id != null ? String(r.id) : String(r?._id ?? ''),
+          }));
+          setClosureItems(normalized);
+          setClosureTotal(total);
+        } else {
           setClosureItems([]);
           setClosureTotal(0);
-          toast.error('Failed to load closures');
+          toast.error(body?.message || 'Failed to load closures');
         }
+      } catch (e) {
+        if (e?.name === 'CanceledError' || e?.code === 'ERR_CANCELED') return;
+        if (!active) return;
+        setClosureItems([]);
+        setClosureTotal(0);
+        toast.error(e?.response?.data?.message || 'Failed to load closures');
       } finally {
-        if (!cancelled) setClosureLoading(false);
+        if (active) setClosureLoading(false);
       }
     };
 
-    if (tab === 'closures') load();
+    load();
     return () => {
-      cancelled = true;
+      active = false;
+      ac.abort();
     };
-  }, [tab, closurePage, closureStatus, toast]);
+  }, [tab, closurePage, closureStatus, itemsPerPage]);
 
   useEffect(() => {
-    let cancelled = false;
+    if (tab !== 'attempts') return undefined;
+
+    const ac = new AbortController();
+    let active = true;
+
     const load = async () => {
       setAttemptLoading(true);
       try {
         const params = { page: attemptPage, limit: itemsPerPage };
-        if (attemptSearch) {
-          if (/^[a-f0-9]{24}$/i.test(attemptSearch)) params.requesterId = attemptSearch;
-          if (attemptSearch === 'help_request' || attemptSearch === 'presence_request') params.requestKind = attemptSearch;
-        }
-        const res = await api.get('/admin/request-attempts', { params });
-        const body = res?.data;
-        if (!cancelled) {
-          if (body?.success && body?.data) {
-            setAttemptItems(body.data.items || []);
-            setAttemptTotal(body.data.total || 0);
-          } else {
-            setAttemptItems([]);
-            setAttemptTotal(0);
+        if (attemptSearchDebounced) {
+          if (/^[a-f0-9]{24}$/i.test(attemptSearchDebounced)) {
+            params.requesterId = attemptSearchDebounced;
+          }
+          if (attemptSearchDebounced === 'help_request' || attemptSearchDebounced === 'presence_request') {
+            params.requestKind = attemptSearchDebounced;
           }
         }
-      } catch {
-        if (!cancelled) {
+        const res = await api.get('/admin/request-attempts', { params, signal: ac.signal });
+        const body = res?.data;
+        if (!active) return;
+        if (body?.success) {
+          const { items: list, total } = normalizeListResponse(body);
+          setAttemptItems(list);
+          setAttemptTotal(total);
+        } else {
           setAttemptItems([]);
           setAttemptTotal(0);
-          toast.error('Failed to load request attempts');
+          toast.error(body?.message || 'Failed to load request attempts');
         }
+      } catch (e) {
+        if (e?.name === 'CanceledError' || e?.code === 'ERR_CANCELED') return;
+        if (!active) return;
+        setAttemptItems([]);
+        setAttemptTotal(0);
+        toast.error(e?.response?.data?.message || 'Failed to load request attempts');
       } finally {
-        if (!cancelled) setAttemptLoading(false);
+        if (active) setAttemptLoading(false);
       }
     };
 
-    if (tab === 'attempts') load();
+    load();
     return () => {
-      cancelled = true;
+      active = false;
+      ac.abort();
     };
-  }, [tab, attemptPage, attemptSearch, toast]);
-
+  }, [tab, attemptPage, attemptSearchDebounced, itemsPerPage]);
   const helpColumns = useMemo(
     () => [
       {
@@ -538,187 +537,144 @@ const DailyHelpPage = () => {
     attemptTotal,
   ]);
 
-  const detailTitle = useMemo(() => {
-    if (detailType === 'help') return 'Help Request Details';
-    if (detailType === 'presence') return 'Presence Request Details';
-    if (detailType === 'closure') return 'Closure Details';
-    return 'Details';
-  }, [detailType]);
-
-  const detailBody = useMemo(() => {
-    if (detailLoading) {
-      return (
-        <div className="p-6">
-          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-3" />
-          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-3" />
-          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-2/3" />
-        </div>
-      );
-    }
-
-    if (!detailData) {
-      return (
-        <div className="p-6 text-sm text-gray-500 dark:text-gray-400">
-          No details available.
-        </div>
-      );
-    }
-
-    const coords = extractApproxLatLng(detailType, detailData);
-    const mapsUrl = coords ? `https://www.google.com/maps?q=${coords.lat},${coords.lng}` : null;
-
-    return (
-      <div className="p-6 space-y-4">
-        <div className="text-xs text-gray-500 dark:text-gray-400">
-          ID: <span className="font-mono">{safeText(detailId)}</span>
-        </div>
-        {coords ? (
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-2">
-            <div className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-              Location (Approx)
-            </div>
-            {coords.label ? (
-              <div className="text-sm text-gray-800 dark:text-gray-200">
-                {safeText(coords.label)}
-              </div>
-            ) : null}
-            <div className="text-sm text-gray-700 dark:text-gray-300 font-mono">
-              Lat: {String(coords.lat)} · Lng: {String(coords.lng)}
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                className="text-xs px-3 py-1.5"
-                onClick={() => {
-                  if (mapsUrl) window.open(mapsUrl, '_blank');
-                }}
-              >
-                Open in Google Maps
-              </Button>
-            </div>
-          </div>
-        ) : null}
-        <pre className="text-xs bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-4 overflow-auto">
-          {JSON.stringify(detailData, null, 2)}
-        </pre>
-      </div>
-    );
-  }, [detailData, detailId, detailLoading, detailType]);
-
   return (
     <div className="flex flex-col pb-10">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-800 dark:text-white">DailyHelp</h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Help requests, presence requests, closures, and matching telemetry (admin read-only)
+        <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Request queues</h1>
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+          Help (Daily Help), Need Presence, session closures, and match attempts — one place, separate tabs (admin read-only)
         </p>
       </div>
 
-      <Card className="p-4 mb-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div className="inline-flex rounded-md shadow-sm w-full md:w-auto" role="group">
-            {TABS.map((t, idx) => (
-              <motion.button
-                key={t.key}
-                whileTap={{ scale: 0.98 }}
-                whileHover={{ scale: 1.01 }}
-                type="button"
-                onClick={() => setTab(t.key)}
-                className={`flex-1 md:flex-none px-4 py-2 text-sm font-medium border ${
-                  idx === 0 ? 'rounded-l-lg' : ''
-                } ${idx === TABS.length - 1 ? 'rounded-r-lg' : ''} ${
-                  tab === t.key
-                    ? 'bg-socius-red text-white border-socius-red'
-                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
-                }`}
-              >
-                {t.label}
-              </motion.button>
-            ))}
+      <Card className="p-4 sm:p-5 mb-6 border-gray-200/90 dark:border-gray-700/90 shadow-sm">
+        <div
+          className="rounded-2xl border border-gray-200/90 dark:border-gray-600/80 bg-gradient-to-b from-gray-100/95 to-gray-50/90 dark:from-gray-800/90 dark:to-gray-900/70 overflow-hidden"
+          aria-label="Request queue views"
+        >
+          <div
+            role="tablist"
+            className="flex p-1 sm:p-1.5 gap-1 overflow-x-auto overscroll-x-contain [scrollbar-width:thin] [-webkit-overflow-scrolling:touch] border-b border-gray-200/70 dark:border-gray-700/80 bg-black/[0.02] dark:bg-black/15"
+          >
+            {TABS.map((t) => {
+              const Icon = t.icon;
+              const active = tab === t.key;
+              return (
+                <motion.button
+                  key={t.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  whileTap={{ scale: 0.98 }}
+                  whileHover={{ scale: active ? 1 : 1.01 }}
+                  onClick={() => setTab(t.key)}
+                  className={`group relative flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-xl px-3 sm:px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-all duration-200 min-w-[calc(50%-0.25rem)] sm:min-w-[8.5rem] md:min-w-[9.25rem] ${
+                    active
+                      ? 'bg-socius-red text-white shadow-md shadow-red-900/15 dark:shadow-red-950/50 ring-1 ring-red-900/10 dark:ring-red-400/20 z-10'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-white/85 dark:hover:bg-gray-700/55'
+                  }`}
+                >
+                  <Icon
+                    className={`h-4 w-4 shrink-0 transition-opacity ${active ? 'opacity-100' : 'opacity-65 group-hover:opacity-90'}`}
+                    strokeWidth={active ? 2.25 : 2}
+                  />
+                  <span className="truncate sm:hidden">{t.shortLabel}</span>
+                  <span className="truncate hidden sm:inline">{t.label}</span>
+                </motion.button>
+              );
+            })}
           </div>
 
-          {tab === 'help' ? (
-            <div className="flex flex-col sm:flex-row gap-3">
-              <select
-                value={helpStatus}
-                onChange={(e) => {
-                  setHelpStatus(e.target.value);
-                  setHelpPage(1);
-                }}
-                className="block w-full sm:w-48 pl-3 pr-10 py-2 text-sm border-gray-300 focus:outline-none focus:ring-socius-red focus:border-socius-red rounded-md border dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-              >
-                {['All', 'open', 'matching', 'matched', 'active', 'closing', 'closed', 'cancelled', 'auto_closed'].map((s) => (
-                  <option key={s} value={s === 'All' ? 'All' : s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={helpCategory}
-                onChange={(e) => {
-                  setHelpCategory(e.target.value);
-                  setHelpPage(1);
-                }}
-                className="block w-full sm:w-56 pl-3 pr-10 py-2 text-sm border-gray-300 focus:outline-none focus:ring-socius-red focus:border-socius-red rounded-md border dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-              >
-                <option value="All">All categories</option>
-                {[
-                  'print_document',
-                  'tool_repair',
-                  'carry_lift',
-                  'transport_help',
-                  'household_help',
-                  'study_office_help',
-                  'tech_help',
-                  'general_help',
-                  'calm_presence',
-                  'care_support',
-                  'medical_awareness',
-                  'language_support',
-                  'elder_assistance',
-                  'community_upkeep',
-                ].map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+          <div className="px-3 py-3 sm:px-4 sm:py-3.5 bg-white/70 dark:bg-gray-950/35">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <p className="text-[11px] leading-snug text-gray-500 dark:text-gray-400 lg:max-w-[40%] order-2 lg:order-1">
+                {tab === 'attempts'
+                  ? 'Filters for this tab: use the table search below.'
+                  : 'Choose a tab above, then narrow the list with these filters.'}
+              </p>
+              <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 w-full lg:w-auto lg:justify-end order-1 lg:order-2">
+                {tab === 'help' ? (
+                  <>
+                    <select
+                      value={helpStatus}
+                      onChange={(e) => {
+                        setHelpStatus(e.target.value);
+                        setHelpPage(1);
+                      }}
+                      className="block w-full sm:w-48 pl-3 pr-10 py-2.5 text-sm rounded-xl border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-socius-red/40 focus:border-socius-red dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+                    >
+                      {['All', 'open', 'matching', 'matched', 'active', 'closing', 'closed', 'cancelled', 'auto_closed'].map((s) => (
+                        <option key={s} value={s === 'All' ? 'All' : s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={helpCategory}
+                      onChange={(e) => {
+                        setHelpCategory(e.target.value);
+                        setHelpPage(1);
+                      }}
+                      className="block w-full sm:w-56 pl-3 pr-10 py-2.5 text-sm rounded-xl border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-socius-red/40 focus:border-socius-red dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+                    >
+                      <option value="All">All categories</option>
+                      {[
+                        'print_document',
+                        'tool_repair',
+                        'carry_lift',
+                        'transport_help',
+                        'household_help',
+                        'study_office_help',
+                        'tech_help',
+                        'general_help',
+                        'calm_presence',
+                        'care_support',
+                        'medical_awareness',
+                        'language_support',
+                        'elder_assistance',
+                        'community_upkeep',
+                      ].map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                ) : null}
+                {tab === 'presence' ? (
+                  <select
+                    value={presenceStatus}
+                    onChange={(e) => {
+                      setPresenceStatus(e.target.value);
+                      setPresencePage(1);
+                    }}
+                    className="block w-full sm:w-56 pl-3 pr-10 py-2.5 text-sm rounded-xl border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-socius-red/40 focus:border-socius-red dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+                  >
+                    {['All', 'active', 'helpers_notified', 'helpers_accepted', 'closed', 'cancelled', 'auto_closed'].map((s) => (
+                      <option key={s} value={s === 'All' ? 'All' : s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+                {tab === 'closures' ? (
+                  <select
+                    value={closureStatus}
+                    onChange={(e) => {
+                      setClosureStatus(e.target.value);
+                      setClosurePage(1);
+                    }}
+                    className="block w-full sm:w-64 pl-3 pr-10 py-2.5 text-sm rounded-xl border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-socius-red/40 focus:border-socius-red dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+                  >
+                    {['All', 'initiated', 'awaiting_other_party', 'evidence_required', 'auto_closed_penalty', 'closed', 'disputed'].map((s) => (
+                      <option key={s} value={s === 'All' ? 'All' : s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+              </div>
             </div>
-          ) : tab === 'presence' ? (
-            <div className="flex flex-col sm:flex-row gap-3">
-              <select
-                value={presenceStatus}
-                onChange={(e) => {
-                  setPresenceStatus(e.target.value);
-                  setPresencePage(1);
-                }}
-                className="block w-full sm:w-56 pl-3 pr-10 py-2 text-sm border-gray-300 focus:outline-none focus:ring-socius-red focus:border-socius-red rounded-md border dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-              >
-                {['All', 'active', 'helpers_notified', 'helpers_accepted', 'closed', 'cancelled', 'auto_closed'].map((s) => (
-                  <option key={s} value={s === 'All' ? 'All' : s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : tab === 'closures' ? (
-            <div className="flex flex-col sm:flex-row gap-3">
-              <select
-                value={closureStatus}
-                onChange={(e) => {
-                  setClosureStatus(e.target.value);
-                  setClosurePage(1);
-                }}
-                className="block w-full sm:w-64 pl-3 pr-10 py-2 text-sm border-gray-300 focus:outline-none focus:ring-socius-red focus:border-socius-red rounded-md border dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-              >
-                {['All', 'initiated', 'awaiting_other_party', 'evidence_required', 'auto_closed_penalty', 'closed', 'disputed'].map((s) => (
-                  <option key={s} value={s === 'All' ? 'All' : s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : null}
+          </div>
         </div>
       </Card>
 
@@ -732,31 +688,6 @@ const DailyHelpPage = () => {
         pagination={currentTable.pagination}
         onPageChange={currentTable.onPageChange}
       />
-
-      {detailOpen ? (
-        <div className="fixed inset-0 z-50">
-          <div
-            className="absolute inset-0 bg-black/40"
-            onClick={closeDetail}
-          />
-          <div className="absolute right-0 top-0 h-full w-full sm:w-[560px] bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 shadow-xl overflow-y-auto">
-            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-bold text-gray-900 dark:text-white">
-                  {detailTitle}
-                </h3>
-                <div className="text-xs text-gray-500 dark:text-gray-400">
-                  {safeText(detailType)} · {safeText(detailId)}
-                </div>
-              </div>
-              <Button variant="ghost" onClick={closeDetail}>
-                Close
-              </Button>
-            </div>
-            {detailBody}
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 };

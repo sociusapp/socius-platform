@@ -2,7 +2,7 @@ const PresenceRequest = require('../models/PresenceRequest')
 const PresenceMatch = require('../models/PresenceMatch')
 const HelpRequest = require('../models/HelpRequest')
 const Verification = require('../models/Verification')
-const { emitToUser } = require('../config/socket')
+const { emitToUser, emitToRoom } = require('../config/socket')
 const { findHelpersForPresence } = require('./location.service')
 const { sendPresenceAlarm } = require('./notification.service')
 const { PRESENCE_STATUS, PRESENCE_MATCH_STATUS, HELP_REQUEST_STATUS, GEO, AUTO_CLOSE } = require('../utils/constants')
@@ -362,6 +362,52 @@ const acceptPresence = async (helperId, presenceRequestId) => {
       )
     }
 
+    // Already accepted / in progress — safe retry (double tap, resume from notification).
+    const existingAccepted = await PresenceMatch.findOne({
+      presenceRequestId,
+      helperId,
+      status: {
+        $in: [
+          PRESENCE_MATCH_STATUS.ACCEPTED,
+          PRESENCE_MATCH_STATUS.EN_ROUTE,
+          PRESENCE_MATCH_STATUS.ARRIVED,
+        ],
+      },
+    })
+
+    if (existingAccepted) {
+      const activeRequest = await PresenceRequest.findById(presenceRequestId)
+      if (!activeRequest) {
+        throw createPresenceError(
+          'Presence request not found',
+          PRESENCE_ERROR_CODES.REQUEST_NOT_FOUND,
+          404
+        )
+      }
+      if (
+        activeRequest.status === PRESENCE_STATUS.CLOSED ||
+        activeRequest.status === PRESENCE_STATUS.CANCELLED
+      ) {
+        throw createPresenceError(
+          'Presence request is no longer active',
+          PRESENCE_ERROR_CODES.REQUEST_CLOSED,
+          409
+        )
+      }
+      try {
+        const chatService = require('./chat.service')
+        await chatService.createSession({
+          requestId: presenceRequestId,
+          requestType: 'PresenceRequest',
+          requesterId: activeRequest.requesterId,
+          helperId,
+        })
+      } catch (e) {
+        logger.warn('[PresenceService] createSession on idempotent accept failed', e)
+      }
+      return { request: activeRequest, match: existingAccepted }
+    }
+
     // Find the match
     const match = await PresenceMatch.findOne({
       presenceRequestId,
@@ -413,6 +459,18 @@ const acceptPresence = async (helperId, presenceRequestId) => {
   })
 
   try {
+    const chatService = require('./chat.service')
+    await chatService.createSession({
+      requestId: presenceRequestId,
+      requestType: 'PresenceRequest',
+      requesterId: request.requesterId,
+      helperId,
+    })
+  } catch (e) {
+    logger.error('[PresenceService] Failed to create chat session', e)
+  }
+
+  try {
     emitToUser(String(request.requesterId), 'presence:accepted', {
       presenceRequestId: String(request._id),
       helperId: String(helperId),
@@ -435,25 +493,117 @@ const acceptPresence = async (helperId, presenceRequestId) => {
 }
 
 /**
- * Helper ne decline kiya
+ * Helper ne alarm decline kiya ya active session se step away
  */
 const declinePresence = async (helperId, presenceRequestId) => {
-  await PresenceMatch.findOneAndUpdate(
+  const User = require('../models/User')
+
+  let match = await PresenceMatch.findOneAndUpdate(
     { presenceRequestId, helperId, status: PRESENCE_MATCH_STATUS.ALERTED },
-    { status: PRESENCE_MATCH_STATUS.DECLINED, respondedAt: new Date() }
+    { $set: { status: PRESENCE_MATCH_STATUS.DECLINED, respondedAt: new Date() } },
+    { new: true }
   )
-  try {
-    const req = await PresenceRequest.findById(presenceRequestId).select('requesterId').lean()
-    if (req?.requesterId) {
-      emitToUser(String(req.requesterId), 'presence:declined', {
-        presenceRequestId: String(presenceRequestId),
-        helperId: String(helperId),
-        status: 'declined',
-      })
-    }
-  } catch (e) {
-    logger.error('presence:declined notifications failed', e)
+
+  let steppedAwayFromActive = false
+
+  if (!match) {
+    match = await PresenceMatch.findOneAndUpdate(
+      {
+        presenceRequestId,
+        helperId,
+        status: {
+          $in: [
+            PRESENCE_MATCH_STATUS.ACCEPTED,
+            PRESENCE_MATCH_STATUS.EN_ROUTE,
+            PRESENCE_MATCH_STATUS.ARRIVED,
+          ],
+        },
+      },
+      {
+        $set: {
+          status: PRESENCE_MATCH_STATUS.CLOSED,
+          closedAt: new Date(),
+          respondedAt: new Date(),
+          'helperFeedback.closureReason': 'chose_to_step_away',
+          'helperFeedback.closedAt': new Date(),
+        },
+      },
+      { new: true }
+    )
+    steppedAwayFromActive = !!match
   }
+
+  if (!match) {
+    throw createPresenceError(
+      'Presence match not found or already updated',
+      PRESENCE_ERROR_CODES.MATCH_NOT_FOUND,
+      404
+    )
+  }
+
+  const helperUser = await User.findById(helperId).select('fullName profileImage').lean()
+  const roomPayload = {
+    presenceRequestId: String(presenceRequestId),
+    helperId: String(helperId),
+    fullName: helperUser?.fullName || 'Helper',
+    profileImage: helperUser?.profileImage || null,
+    reason: steppedAwayFromActive ? 'stepped_away' : 'declined',
+  }
+
+  try {
+    emitToRoom(`presence:${presenceRequestId}`, 'presence:helper_left', roomPayload)
+  } catch (e) {
+    logger.error('presence:helper_left emit failed', e)
+  }
+
+  if (match.status === PRESENCE_MATCH_STATUS.DECLINED) {
+    try {
+      const req = await PresenceRequest.findById(presenceRequestId).select('requesterId').lean()
+      if (req?.requesterId) {
+        emitToUser(String(req.requesterId), 'presence:declined', {
+          presenceRequestId: String(presenceRequestId),
+          helperId: String(helperId),
+          status: 'declined',
+        })
+      }
+    } catch (e) {
+      logger.error('presence:declined notifications failed', e)
+    }
+  }
+
+  if (steppedAwayFromActive) {
+    try {
+      const acceptedCount = await PresenceMatch.countDocuments({
+        presenceRequestId,
+        status: {
+          $in: [
+            PRESENCE_MATCH_STATUS.ACCEPTED,
+            PRESENCE_MATCH_STATUS.EN_ROUTE,
+            PRESENCE_MATCH_STATUS.ARRIVED,
+          ],
+        },
+      })
+      await PresenceRequest.findByIdAndUpdate(presenceRequestId, { totalAccepted: acceptedCount })
+    } catch (e) {
+      logger.warn('[declinePresence] totalAccepted update failed', e)
+    }
+
+    try {
+      const chatService = require('./chat.service')
+      const ChatSession = require('../models/ChatSession')
+      const sessions = await ChatSession.find({
+        requestId: presenceRequestId,
+        helperId,
+        status: 'active',
+      })
+      for (const s of sessions) {
+        await chatService.closeSession(s._id)
+      }
+    } catch (e) {
+      logger.warn('[declinePresence] close chat sessions failed', e)
+    }
+  }
+
   return { message: 'Declined' }
 }
 
@@ -580,6 +730,17 @@ const cancelPresenceRequest = async (requesterId, presenceRequestId) => {
     { status: PRESENCE_MATCH_STATUS.DECLINED }
   )
 
+  try {
+    const ChatSession = require('../models/ChatSession')
+    const { closeSession } = require('./chat.service')
+    const sessions = await ChatSession.find({ requestId: presenceRequestId })
+    for (const s of sessions) {
+      await closeSession(s._id)
+    }
+  } catch (e) {
+    logger.warn('[PresenceService] cancel: close chat sessions failed', e)
+  }
+
   return request
   } catch (error) {
     logger.error('Error in cancelPresenceRequest:', error)
@@ -662,7 +823,10 @@ const getPresenceById = async (userId, presenceRequestId) => {
       )
     }
     
-    const request = await PresenceRequest.findById(presenceRequestId)
+    const request = await PresenceRequest.findById(presenceRequestId).populate(
+      'requesterId',
+      'fullName profileImage createdAt isIdentityVerified isPhoneVerified role',
+    )
     if (!request) {
       throw createPresenceError(
         'Presence request not found',
@@ -671,7 +835,7 @@ const getPresenceById = async (userId, presenceRequestId) => {
       )
     }
 
-    const isRequester = String(request.requesterId) === String(userId)
+    const isRequester = String(request.requesterId?._id || request.requesterId) === String(userId)
     const isHelper = await PresenceMatch.exists({ presenceRequestId, helperId: userId })
     
     if (!isRequester && !isHelper) {

@@ -1,22 +1,47 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Info, Shield, Lock, AlertTriangle } from 'lucide-react';
 import { useAlert } from '../hooks/useAlert';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
+import toast from 'react-hot-toast';
+import { api } from '../services/api/client';
+
+const DEFAULT_FORM = {
+  scenarioName: 'Broken Down Vehicle',
+  primaryCategory: 'Calm Presence',
+  shortDescription: 'A person is stranded due to vehicle trouble and requests nearby awareness.',
+  riskTier: 'Medium',
+  safetyGuidance: '• Stay in public view\n• Do not approach if uncomfortable.\n• You may leave at any time\n• Contact authorities if you feel unsafe.',
+  lockGuidance: true,
+};
 
 const ScenarioConfigPage = () => {
-  const { confirm, toast } = useAlert();
+  const { confirm } = useAlert();
   const [isSaving, setIsSaving] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
-  const [formData, setFormData] = useState({
-    scenarioName: 'Broken Down Vehicle',
-    primaryCategory: 'Calm Presence',
-    shortDescription: 'A person is stranded due to vehicle trouble and requests nearby awareness.',
-    riskTier: 'Medium',
-    safetyGuidance: '• Stay in public view\n• Do not approach if uncomfortable.\n• You may leave at any time\n• Contact authorities if you feel unsafe.',
-    lockGuidance: true
-  });
+  const [formData, setFormData] = useState(DEFAULT_FORM);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.get('/admin/scenario-config');
+        const saved = res?.data?.data?.data;
+        if (!cancelled && saved && typeof saved === 'object') {
+          setFormData((prev) => ({ ...prev, ...saved }));
+        }
+      } catch {
+        if (!cancelled) toast.error('Could not load saved scenario draft (using defaults)');
+      } finally {
+        if (!cancelled) setDraftLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const riskTiers = [
     {
@@ -51,29 +76,41 @@ const ScenarioConfigPage = () => {
     setFormData(prev => ({ ...prev, riskTier: tierId }));
   };
 
+  const persistDraft = async () => {
+    await api.patch('/admin/scenario-config', { formData });
+  };
+
   const handleSaveDraft = async () => {
     setIsSaving(true);
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setIsSaving(false);
-    toast.success('Scenario draft saved');
+    try {
+      await persistDraft();
+      toast.success('Scenario draft saved to server');
+    } catch (e) {
+      toast.error(e?.response?.data?.message || e?.message || 'Save failed');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handlePublish = async () => {
     const result = await confirm({
-      title: 'Publish Scenario?',
-      text: "This scenario will become active on the platform.",
+      title: 'Save as current draft?',
+      text: 'This stores the form in the admin database. The live app still uses Presence catalog and mobile copy — there is no separate “production” switch yet.',
       icon: 'question',
-      confirmButtonText: 'Yes, publish',
+      confirmButtonText: 'Yes, save draft',
       confirmButtonColor: 'bg-blue-600 hover:bg-blue-700 text-white',
     });
-    
+
     if (result.isConfirmed) {
       setIsPublishing(true);
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      setIsPublishing(false);
-      toast.success('Scenario published successfully');
+      try {
+        await persistDraft();
+        toast.success('Draft updated — wire mobile to this data when ready');
+      } catch (e) {
+        toast.error(e?.response?.data?.message || e?.message || 'Save failed');
+      } finally {
+        setIsPublishing(false);
+      }
     }
   };
 
@@ -92,7 +129,10 @@ const ScenarioConfigPage = () => {
         className="mb-6 pt-6"
       >
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Scenario Configuration</h1>
-        <p className="mt-1 text-gray-600 dark:text-gray-400">Defines how awareness is shared and limited for this scenario.</p>
+        <p className="mt-1 text-gray-600 dark:text-gray-400">
+          Draft stored per deployment via <code className="text-xs rounded bg-gray-100 dark:bg-gray-800 px-1">PATCH /api/admin/scenario-config</code>.
+          {!draftLoaded ? ' Loading…' : null}
+        </p>
       </motion.div>
 
       <div className="space-y-6">
@@ -312,7 +352,7 @@ const ScenarioConfigPage = () => {
               loading={isPublishing}
               disabled={isSaving || isPublishing}
             >
-              Publish Scenario
+              Commit draft
             </Button>
           </div>
         </div>

@@ -1,339 +1,269 @@
-import React from 'react';
-import { 
-  Lock, 
-  AlertTriangle,
-} from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { useAlert } from '../hooks/useAlert';
+import toast from 'react-hot-toast';
+import {
+  Shield,
+  MapPin,
+  Clock,
+  KeyRound,
+  Scale,
+  Users,
+  Server,
+  ArrowRight,
+  BookOpen,
+  Bell,
+} from 'lucide-react';
 import Card from '../components/common/Card';
-import Button from '../components/common/Button';
+import { api } from '../services/api/client';
+
+const fmtMinutes = (m) => {
+  const n = Number(m);
+  if (!Number.isFinite(n)) return '—';
+  if (n >= 60 && n % 60 === 0) return `${n / 60} hr`;
+  return `${n} min`;
+};
+
+const Stat = ({ label, value, hint }) => (
+  <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/60 px-4 py-3">
+    <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</p>
+    <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-white tabular-nums">{value}</p>
+    {hint ? <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{hint}</p> : null}
+  </div>
+);
+
+const Shortcut = ({ to, title, desc, icon: Icon }) => (
+  <Link
+    to={to}
+    className="group flex items-start gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/40 p-4 transition hover:border-socius-red/60 hover:bg-red-50/30 dark:hover:bg-red-950/20"
+  >
+    <div className="rounded-lg bg-gray-100 dark:bg-gray-700 p-2 text-gray-600 dark:text-gray-300 group-hover:bg-socius-red/10 group-hover:text-socius-red">
+      <Icon className="h-5 w-5" />
+    </div>
+    <div className="min-w-0 flex-1">
+      <div className="flex items-center gap-1 font-medium text-gray-900 dark:text-white">
+        {title}
+        <ArrowRight className="h-4 w-4 opacity-0 transition group-hover:opacity-100 text-socius-red shrink-0" />
+      </div>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{desc}</p>
+    </div>
+  </Link>
+);
 
 const SystemSettingsPage = () => {
-  const { confirm, toast } = useAlert();
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const handleSaveChanges = async () => {
-    const isConfirmed = await confirm({
-      title: 'Save System Changes?',
-      text: "You are about to modify platform-wide safety settings.",
-      icon: 'warning',
-      confirmButtonText: 'Yes, save changes',
-      confirmButtonColor: '#3085d6',
-    });
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.get('/admin/system-safeguards');
+        const payload = res?.data?.data;
+        if (!cancelled && payload) setData(payload);
+        else if (!cancelled) toast.error('Invalid response from server');
+      } catch (e) {
+        if (!cancelled) toast.error(e?.response?.data?.message || 'Failed to load system snapshot');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-    if (isConfirmed) {
-      toast.success('System settings updated successfully');
-    }
-  };
+  const op = data?.operational;
+  const env = data?.environment;
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.5 }}
-      className="flex flex-col min-h-screen pb-10"
+      transition={{ duration: 0.4 }}
+      className="flex flex-col max-w-6xl mx-auto pb-12"
     >
-      {/* Header */}
       <motion.div
-        initial={{ opacity: 0, y: -20 }}
+        initial={{ opacity: 0, y: -12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="mb-6"
+        transition={{ delay: 0.05 }}
+        className="mb-8"
       >
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">System Settings & Safeguards</h1>
-        <p className="mt-1 text-gray-500 dark:text-gray-400">Platform-wide limits, safety rules, and non-negotiable boundaries</p>
-      </motion.div>
-
-      <div className="space-y-6">
-        
-        {/* Platform Boundaries */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
-        <Card className="overflow-hidden p-0">
-          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex items-center gap-2">
-            <Lock className="w-5 h-5 text-gray-500" />
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Platform Boundaries</h2>
-          </div>
-          <div className="p-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-              {[
-                "No dispatching of people",
-                "No instruction to intervene",
-                "No enforcement authority",
-                "No patrols or teams",
-                "No live tracking of users",
-                "No public incident feeds"
-              ].map((boundary, index) => (
-                <motion.div 
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                  key={index} 
-                  className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700 last:border-0"
-                >
-                  <div className="flex items-center gap-2">
-                    <Lock className="w-4 h-4 text-socius-red" />
-                    <span className="text-sm font-medium text-gray-900 dark:text-white">{boundary}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs text-gray-500 italic">
-                    <Lock className="w-3 h-3" />
-                    <span>This setting cannot be changed</span>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        </Card>
-        </motion.div>
-
-        {/* Incident Safety Limits */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-        >
-        <Card className="overflow-hidden p-0">
-          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex items-center gap-2">
-            <Lock className="w-5 h-5 text-gray-500" />
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Incident Safety Limits</h2>
-          </div>
-          <div className="p-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Max volunteers per incident:</label>
-                <div className="flex items-center gap-2">
-                  <select className="form-select block w-20 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-socius-red focus:ring focus:ring-socius-red focus:ring-opacity-50 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                    <option>5</option>
-                    <option>10</option>
-                  </select>
-                  <span className="text-xs text-gray-500 italic">Caps enforced by system</span>
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Max incident visibility radius:</label>
-                <div className="flex items-center gap-2">
-                  <select className="form-select block w-20 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-socius-red focus:ring focus:ring-socius-red focus:ring-opacity-50 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                    <option>5 km</option>
-                  </select>
-                  <span className="text-xs text-gray-500 italic">Caps enforced by system</span>
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Max incident visibility radius:</label>
-                <div className="flex items-center gap-2">
-                  <div className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-700 dark:text-gray-300 font-medium">
-                    5 km
-                  </div>
-                  <span className="text-xs text-gray-500 italic">Caps enforced by system</span>
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Incident type escalation rules:</label>
-                <div className="flex items-center gap-2">
-                  <div className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-700 dark:text-gray-300 font-medium">
-                    Routing-only
-                  </div>
-                  <span className="text-xs text-gray-500 italic">Caps enforced by system</span>
-                </div>
-              </div>
-              <div className="flex items-center justify-between md:col-span-2">
-                 <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Incident auto-close timeout:</label>
-                 <div className="flex items-center gap-2">
-                  <select className="form-select block w-32 rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-socius-red focus:ring focus:ring-socius-red focus:ring-opacity-50 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                    <option>60 minutes</option>
-                  </select>
-                 </div>
-              </div>
-            </div>
-          </div>
-        </Card>
-        </motion.div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Notification Safeguards */}
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.4 }}
-          >
-          <Card className="overflow-hidden p-0">
-            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex items-center gap-2">
-              <Lock className="w-5 h-5 text-gray-500" />
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Notification Safeguards</h2>
-            </div>
-            <div className="p-6 space-y-4">
-              {[
-                "Rate-limit notifications per user",
-                "Prevent repeated alerts in same cluster",
-                "Cool-down period after cancellation",
-                "Disable notifications during system stress"
-              ].map((item, index) => (
-                <div key={index} className="flex items-center justify-between pb-2 border-b border-gray-100 dark:border-gray-700 last:border-0 last:pb-0">
-                  <span className="text-sm font-medium text-gray-900 dark:text-white">{item}</span>
-                  <span className="text-xs text-gray-500 italic">Caps enforced by system</span>
-                </div>
-              ))}
-            </div>
-          </Card>
-          </motion.div>
-
-          {/* Police Escalation Constraints */}
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.4 }}
-          >
-          <Card className="overflow-hidden p-0">
-            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex items-center gap-2">
-              <Lock className="w-5 h-5 text-gray-500" />
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Police Escalation Constraints</h2>
-            </div>
-            <div className="p-6 space-y-4">
-              {[
-                "Escalation is user-initiated only",
-                "No admin-triggered escalation",
-                "Police profiles receive awareness only",
-                "No response enforcement"
-              ].map((item, index) => (
-                <div key={index} className="flex items-center justify-between pb-2 border-b border-gray-100 dark:border-gray-700 last:border-0 last:pb-0">
-                  <div className="flex items-center gap-2">
-                    <Lock className="w-4 h-4 text-socius-red" />
-                    <span className="text-sm font-medium text-gray-900 dark:text-white">{item}</span>
-                  </div>
-                  <span className="text-xs text-gray-500 italic">Caps enforced by system</span>
-                </div>
-              ))}
-            </div>
-          </Card>
-          </motion.div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Content Safety Controls */}
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.5 }}
-          >
-          <Card className="overflow-hidden p-0">
-            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex items-center gap-2">
-              <Lock className="w-5 h-5 text-gray-500" />
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Content Safety Controls</h2>
-            </div>
-            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="flex flex-col gap-1">
-                <span className="text-sm font-medium text-gray-900 dark:text-white">Incident categories</span>
-                <span className="text-xs text-gray-500 italic">Caps enforced by system</span>
-              </div>
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-2">
-                  <Lock className="w-3 h-3 text-gray-500" />
-                  <span className="text-sm font-medium text-gray-900 dark:text-white">Scenario text templates</span>
-                </div>
-                <span className="text-xs text-gray-500 italic">Caps enforced by system</span>
-              </div>
-              <div className="flex flex-col gap-1">
-                <span className="text-sm font-medium text-gray-900 dark:text-white">Scenario text templates</span>
-                <span className="text-xs text-gray-500 italic">Caps enforced by system</span>
-              </div>
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-2">
-                  <Lock className="w-3 h-3 text-gray-500" />
-                  <span className="text-sm font-medium text-gray-900 dark:text-white">Forbidden words list</span>
-                </div>
-                <span className="text-xs text-gray-500 italic">View-only - Language controls prevent misinterpretation</span>
-              </div>
-            </div>
-          </Card>
-          </motion.div>
-
-          {/* Emergency Fail-Safes */}
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.5 }}
-          >
-          <Card className="overflow-hidden p-0">
-            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex items-center gap-2">
-              <Lock className="w-5 h-5 text-gray-500" />
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Emergency Fail-Safes</h2>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="flex items-center justify-between pb-2 border-b border-gray-100 dark:border-gray-700">
-                <div className="flex items-center gap-2">
-                  <Lock className="w-4 h-4 text-socius-red" />
-                  <span className="text-sm font-medium text-gray-900 dark:text-white">System-wide pause (multi-admin approval)</span>
-                </div>
-                <span className="text-xs text-gray-500 italic">Caps enforced by system</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Lock className="w-4 h-4 text-socius-red" />
-                  <span className="text-sm font-medium text-gray-900 dark:text-white">Emergency message template</span>
-                </div>
-                <span className="text-xs text-gray-500 italic">Caps enforced by system</span>
-              </div>
-            </div>
-          </Card>
-          </motion.div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Data & Logging Safeguards */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.6 }}
-          >
-          <Card className="overflow-hidden p-0">
-            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex items-center gap-2">
-              <Lock className="w-5 h-5 text-gray-500" />
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Data & Logging Safeguards</h2>
-            </div>
-            <div className="p-6 space-y-4">
-              {[
-                "Incident data retention period",
-                "Auto-anonymization timeline",
-                "Export restrictions"
-              ].map((item, index) => (
-                <div key={index} className="flex items-center justify-between pb-2 border-b border-gray-100 dark:border-gray-700 last:border-0 last:pb-0">
-                  <span className="text-sm font-medium text-gray-900 dark:text-white">{item}</span>
-                  <span className="text-xs text-gray-500 italic">Caps enforced by system</span>
-                </div>
-              ))}
-            </div>
-          </Card>
-          </motion.div>
-        </div>
-
-      </div>
-
-      {/* Footer Actions */}
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.7 }}
-        className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-gray-200 dark:border-gray-700 pt-6"
-      >
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          These safeguards ensure Socius remains an information-sharing and awareness platform, not an enforcement or response system.
-          <span className="ml-2 inline-flex gap-2">
-             <span className="flex items-center gap-1 text-socius-red font-medium"><AlertTriangle className="w-3 h-3" /> No real-time controls</span>
-             <span className="flex items-center gap-1 text-socius-red font-medium"><AlertTriangle className="w-3 h-3" /> No user targeting</span>
-             <span className="flex items-center gap-1 text-socius-red font-medium"><AlertTriangle className="w-3 h-3" /> No authority override</span>
-          </span>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">System Settings &amp; Safeguards</h1>
+        <p className="mt-1 text-gray-600 dark:text-gray-400 max-w-3xl">
+          Live values from this deployment: <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">constants.js</code>{' '}
+          and non-secret environment hints. Use the shortcuts to edit content and policies that have their own admin
+          screens.
         </p>
-        <div className="flex gap-3">
-          <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm" onClick={handleSaveChanges}>
-            Save Changes
-          </Button>
-          <Button variant="secondary" className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 shadow-sm">
-            View Change Log
-          </Button>
-        </div>
+        <p className="mt-2 text-xs text-amber-800 dark:text-amber-200/90 bg-amber-50 dark:bg-amber-950/40 border border-amber-100 dark:border-amber-900/50 rounded-lg px-3 py-2 inline-block">
+          Operational numbers are read-only here. To change them, update{' '}
+          <span className="font-mono">socius-backend/src/utils/constants.js</span> or env and redeploy.
+        </p>
       </motion.div>
+
+      {loading ? (
+        <p className="text-gray-500 dark:text-gray-400 py-12 text-center">Loading snapshot…</p>
+      ) : !data ? (
+        <p className="text-red-600 dark:text-red-400 py-12 text-center">Could not load system snapshot.</p>
+      ) : (
+        <div className="space-y-8">
+          <motion.section
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+          >
+            <Card className="overflow-hidden p-0">
+              <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80 flex items-center gap-2">
+                <Shield className="w-5 h-5 text-socius-red" />
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Product principles</h2>
+              </div>
+              <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                {(data.productPrinciples || []).map((p, i) => (
+                  <div
+                    key={i}
+                    className="rounded-lg border border-gray-100 dark:border-gray-700/80 p-4 bg-gray-50/50 dark:bg-gray-900/20"
+                  >
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{p.title}</h3>
+                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{p.body}</p>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </motion.section>
+
+          <motion.section
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+          >
+            <h2 className="text-sm font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-3">
+              Operational parameters
+            </h2>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card className="p-0 overflow-hidden">
+                <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2 bg-gray-50 dark:bg-gray-800/50">
+                  <MapPin className="w-4 h-4 text-gray-500" />
+                  <span className="font-medium text-gray-900 dark:text-white">Geo &amp; matching</span>
+                </div>
+                <div className="p-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <Stat label="Default radius" value={`${op?.geo?.defaultRadiusMeters ?? '—'} m`} hint="Daily Help nearby" />
+                  <Stat label="Presence alert radius" value={`${op?.geo?.presenceRadiusMeters ?? '—'} m`} />
+                  <Stat label="Max radius" value={`${op?.geo?.maxRadiusMeters ?? '—'} m`} hint="Upper cap" />
+                </div>
+              </Card>
+
+              <Card className="p-0 overflow-hidden">
+                <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2 bg-gray-50 dark:bg-gray-800/50">
+                  <Clock className="w-4 h-4 text-gray-500" />
+                  <span className="font-medium text-gray-900 dark:text-white">Auto-close &amp; retention</span>
+                </div>
+                <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Stat
+                    label="Help request (open/matching)"
+                    value={fmtMinutes(op?.autoClose?.helpRequestMinutes)}
+                    hint="Before match"
+                  />
+                  <Stat
+                    label="After helper accepts"
+                    value={fmtMinutes(op?.autoClose?.helpMatchedExtensionMinutes)}
+                    hint="Extension window"
+                  />
+                  <Stat label="Presence request idle" value={fmtMinutes(op?.autoClose?.presenceRequestMinutes)} />
+                  <Stat label="Chat cleanup" value={`${op?.autoClose?.chatDeleteAfterHours ?? '—'} hr`} hint="After session close" />
+                </div>
+              </Card>
+
+              <Card className="p-0 overflow-hidden">
+                <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2 bg-gray-50 dark:bg-gray-800/50">
+                  <Users className="w-4 h-4 text-gray-500" />
+                  <span className="font-medium text-gray-900 dark:text-white">Need presence helpers</span>
+                </div>
+                <div className="p-5 grid grid-cols-3 gap-3">
+                  <Stat label="Min" value={op?.presenceHelpers?.min ?? '—'} />
+                  <Stat label="Max" value={op?.presenceHelpers?.max ?? '—'} />
+                  <Stat label="Default target" value={op?.presenceHelpers?.default ?? '—'} />
+                </div>
+              </Card>
+
+              <Card className="p-0 overflow-hidden">
+                <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2 bg-gray-50 dark:bg-gray-800/50">
+                  <Scale className="w-4 h-4 text-gray-500" />
+                  <span className="font-medium text-gray-900 dark:text-white">Community balance nudges</span>
+                </div>
+                <div className="p-5 grid grid-cols-2 gap-3">
+                  <Stat label="Threshold (delta)" value={op?.communityBalance?.nudgeThreshold ?? '—'} hint="helps sent − given" />
+                  <Stat label="Cooldown" value={`${op?.communityBalance?.nudgeCooldownDays ?? '—'} days`} />
+                </div>
+              </Card>
+
+              <Card className="p-0 overflow-hidden lg:col-span-2">
+                <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2 bg-gray-50 dark:bg-gray-800/50">
+                  <KeyRound className="w-4 h-4 text-gray-500" />
+                  <span className="font-medium text-gray-900 dark:text-white">OTP (phone login)</span>
+                </div>
+                <div className="p-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <Stat label="Expiry" value={`${op?.otp?.expiryMinutes ?? '—'} min`} />
+                  <Stat label="Length" value={op?.otp?.length ?? '—'} />
+                  <Stat label="Max attempts" value={op?.otp?.maxAttempts ?? '—'} />
+                  <Stat label="Resend after" value={`${op?.otp?.resendAfterSeconds ?? '—'} sec`} />
+                </div>
+              </Card>
+            </div>
+          </motion.section>
+
+          <motion.section
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            <h2 className="text-sm font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-3">
+              Environment (non-secret)
+            </h2>
+            <Card className="p-0 overflow-hidden">
+              <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2 bg-gray-50 dark:bg-gray-800/50">
+                <Server className="w-4 h-4 text-gray-500" />
+                <span className="font-medium text-gray-900 dark:text-white">Deployment hints</span>
+              </div>
+              <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <Stat label="NODE_ENV" value={env?.nodeEnv ?? '—'} />
+                <Stat
+                  label="PUBLIC_ORIGIN / SOCIUS_PUBLIC_ORIGIN"
+                  value={env?.publicOriginConfigured ? 'Set' : 'Not set'}
+                  hint="FCM image URLs, absolute links"
+                />
+                <Stat
+                  label="UPLOADS_ROOT"
+                  value={env?.uploadsRootConfigured ? 'Set' : 'Default path'}
+                />
+                <Stat
+                  label="Notification image TTL"
+                  value={`${env?.notificationCampaignImageTtlDays ?? '—'} days`}
+                  hint="Admin campaign uploads"
+                />
+              </div>
+            </Card>
+          </motion.section>
+
+          <motion.section
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 }}
+          >
+            <h2 className="text-sm font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-3">
+              Where to configure related policies
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Shortcut to="/risk-tiers" title="Risk tiers & safeguards" desc="Governance rules surfaced in their own flow." icon={Shield} />
+              <Shortcut to="/notifications" title="FCM broadcasts" desc="Admin campaigns, deep links, images." icon={Bell} />
+              <Shortcut to="/prepare-cards" title="Prepare cards & Learn more" desc="Preparedness copy and learn-more chips." icon={BookOpen} />
+              <Shortcut to="/presence-catalog" title="Situations catalog" desc="Need Presence tiles and copy." icon={MapPin} />
+              <Shortcut to="/subscriptions" title="Subscription plans" desc="Pricing and feature flags per plan." icon={Users} />
+              <Shortcut to="/verification" title="Verification queue" desc="Identity review and appeals queue." icon={KeyRound} />
+              <Shortcut to="/audit-logs" title="Audit logs" desc="Administrative actions trail." icon={Clock} />
+            </div>
+          </motion.section>
+        </div>
+      )}
     </motion.div>
   );
 };

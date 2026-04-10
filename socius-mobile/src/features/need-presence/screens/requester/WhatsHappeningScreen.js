@@ -3,7 +3,6 @@ import { View, Text, StyleSheet, ScrollView, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../../../components/common/Header';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useResponsive } from '../../../../utils/responsive';
 import MotionPressable from '../../../../components/common/MotionPressable';
 import MotionTextInput from '../../../../components/common/MotionTextInput';
@@ -35,6 +34,7 @@ const WhatsHappeningScreen = ({ navigation }) => {
       searchText: '#111827',
       divider: '#E8EAED',
       iconMuted: '#999999',
+      iconAccent: '#C94444',
     }),
     []
   );
@@ -153,22 +153,28 @@ const WhatsHappeningScreen = ({ navigation }) => {
               }, { backgroundColor: colors.cardBg, borderColor: colors.cardBorder }]}
               onPress={() => navigateToCreate(cat)}
             >
-              <LinearGradient 
-                colors={["#F6C7C4", "#E96A5C"]} 
-                start={{ x: 0, y: 0 }} 
-                end={{ x: 1, y: 1 }} 
-                style={[styles.iconPill, { width: scale(40), height: scale(40), borderRadius: scale(20), marginRight: spacing(12) }]}
+              <View
+                style={[
+                  styles.iconPill,
+                  {
+                    width: scale(48),
+                    height: scale(48),
+                    borderRadius: scale(24),
+                    marginRight: spacing(12),
+                    backgroundColor: '#FFFFFF',
+                  },
+                ]}
               >
                 {cat.iconPath ? (
                   <Image
                     source={{ uri: buildAssetUrl(cat.iconPath) }}
-                    style={{ width: scale(22), height: scale(22), borderRadius: scale(11) }}
+                    style={{ width: scale(28), height: scale(28), borderRadius: scale(14) }}
                     resizeMode="cover"
                   />
                 ) : (
-                  <Icon name={cat.iconName || 'account-group'} size={scale(22)} color="#FFFFFF" />
+                  <Icon name={cat.iconName || 'account-group'} size={scale(28)} color={colors.iconAccent} />
                 )}
-              </LinearGradient>
+              </View>
               <View style={styles.cardContent}>
                 <Text style={[styles.cardTitle, { fontSize: ms(15), marginBottom: vscale(4), color: colors.textPrimary }]}>{cat.title || 'Presence category'}</Text>
                 <Text style={[styles.cardDesc, { fontSize: ms(12), color: colors.textSecondary }]}>{cat.description || 'Select to continue'}</Text>

@@ -30,9 +30,48 @@ const UsersVolunteersPage = () => {
 
   const handleExport = async () => {
     setIsExporting(true);
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    setIsExporting(false);
-    toast.success('User list exported successfully');
+    try {
+      const params = {};
+      if (searchTerm.trim()) params.search = searchTerm.trim();
+      if (accountStatusFilter) {
+        params.accountStatus =
+          accountStatusFilter === 'Active'
+            ? 'active'
+            : accountStatusFilter === 'Limited'
+              ? 'limited'
+              : accountStatusFilter === 'Suspended'
+                ? 'suspended'
+                : undefined;
+      }
+      if (verificationFilter) {
+        params.verification =
+          verificationFilter === 'Approved'
+            ? 'approved'
+            : verificationFilter === 'Rejected'
+              ? 'failed'
+              : verificationFilter === 'Pending'
+                ? 'pending'
+                : undefined;
+      }
+      if (roleFilter === 'Volunteer') params.availability = 'volunteer';
+      if (roleFilter === 'User') params.availability = 'community';
+
+      const res = await api.get('/admin/users/export', { params, responseType: 'blob' });
+      const blob = res.data;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `socius-users-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success('CSV export downloaded');
+    } catch (e) {
+      toast.error(e?.response?.data?.message || e?.message || 'Export failed');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const handleClearFilters = async () => {
@@ -64,20 +103,30 @@ const UsersVolunteersPage = () => {
       else if (v === 'failed') verificationLabel = 'Rejected';
       else if (v === 'pending' || v === 'review_requested' || v === 'not_submitted') verificationLabel = 'Pending';
 
+      const hasCoords =
+        item.location?.coordinates &&
+        typeof item.location.coordinates[0] === 'number' &&
+        typeof item.location.coordinates[1] === 'number' &&
+        (item.location.coordinates[0] !== 0 || item.location.coordinates[1] !== 0);
+      const lat = hasCoords ? item.location.coordinates[1] : null;
+      const lng = hasCoords ? item.location.coordinates[0] : null;
+      const city = item.cityArea != null ? String(item.cityArea).trim() : '';
+
+      let locationDisplay = 'Not set';
+      if (city) locationDisplay = city;
+      else if (hasCoords) locationDisplay = 'On map';
+
       return {
         id,
         name,
         role: roleLabel,
         accountStatus: accountStatusLabel,
         verification: verificationLabel,
-        flags: 0,
+        flags: Number(item.reportCount) || 0,
         lastActivity: item.updatedAt ? new Date(item.updatedAt).toLocaleString() : '-',
-        location: (item.location?.coordinates && 
-                   typeof item.location.coordinates[0] === 'number' && 
-                   typeof item.location.coordinates[1] === 'number' && 
-                   (item.location.coordinates[0] !== 0 || item.location.coordinates[1] !== 0)) 
-          ? `${item.location.coordinates[1].toFixed(6)}, ${item.location.coordinates[0].toFixed(6)}` 
-          : 'Not Set',
+        locationDisplay,
+        locationLat: lat,
+        locationLng: lng,
       };
     } catch (error) {
       console.error('Error mapping user:', error, item);
@@ -196,10 +245,9 @@ const UsersVolunteersPage = () => {
 
   const totalPages = Math.ceil(filteredData.length / itemsPerPage) || 1;
 
-  const handleLocationClick = async (locationStr) => {
-    if (!locationStr || locationStr === 'Not Set') return;
-    const [lat, lng] = locationStr.split(',').map(s => s.trim());
-    const url = `https://www.google.com/maps?q=${lat},${lng}`;
+  const openLocationOnMap = (row) => {
+    if (row?.locationLat == null || row?.locationLng == null) return;
+    const url = `https://www.google.com/maps?q=${row.locationLat},${row.locationLng}`;
     window.open(url, '_blank');
   };
 
@@ -236,21 +284,28 @@ const UsersVolunteersPage = () => {
       )
     },
     { header: 'Flags', accessor: 'flags', className: 'text-center' },
-    { 
-      header: 'Location', 
-      accessor: 'location', 
-      className: 'text-xs text-gray-500',
-      render: (row) => (
-        <button 
-          onClick={(e) => {
-            e.stopPropagation();
-            handleLocationClick(row.location);
-          }}
-          className={`hover:text-socius-red transition-colors ${row.location !== 'Not Set' ? 'cursor-pointer underline' : 'cursor-default'}`}
-        >
-          {row.location}
-        </button>
-      )
+    {
+      header: 'Location',
+      accessor: 'locationDisplay',
+      className: 'text-xs text-gray-500 max-w-[12rem]',
+      render: (row) => {
+        const canMap = row.locationLat != null && row.locationLng != null;
+        return (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              openLocationOnMap(row);
+            }}
+            title={canMap ? 'Open approximate coordinates in Google Maps' : undefined}
+            className={`text-left w-full truncate hover:text-socius-red transition-colors ${
+              canMap ? 'cursor-pointer underline' : 'cursor-default no-underline'
+            }`}
+          >
+            {row.locationDisplay}
+          </button>
+        );
+      },
     },
     { header: 'Last Activity', accessor: 'lastActivity', className: 'text-xs text-gray-500' },
     { 

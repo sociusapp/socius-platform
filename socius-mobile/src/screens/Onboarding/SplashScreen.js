@@ -1,7 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image } from 'react-native';
+import React, { useEffect, useRef, useMemo } from 'react';
+import { View, StyleSheet, Image, Text, Platform } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useResponsive } from '../../utils/responsive';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loadActiveHelpRequestId, loadActivePresenceAssignmentId, loadAuth } from '../../services/storage/asyncStorage.service';
 import { getHome } from '../../services/api/user.api';
@@ -9,35 +8,75 @@ import { getMyActiveHelpRequest, getActivePresenceRequest, getPresenceById } fro
 import notifee from '@notifee/react-native';
 import * as ExpoSplashScreen from 'expo-splash-screen';
 import { PENDING_DAILY_HELP_PICK_KEY } from '../../features/daily-help/components/DailyHelpActivePickModalHost';
+import { useResponsive } from '../../utils/responsive';
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const awaitNextFrames = () =>
+  new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(resolve);
+    });
+  });
+
+const SURFACE_READY_FALLBACK_MS = 600;
 
 /**
- * App bootstrap: native splash is hidden ASAP so Android 12+ doesn’t keep the tiny system icon
- * on screen for seconds; this screen shows larger branding while auth/route work runs.
+ * Seamless splash: native prebuild uses the same `icon-03.png` as this screen. `hideAsync` runs only
+ * after layout + `Image.onLoad` so the bitmap is painted before the system splash is removed (no flash).
+ * Text appears only on JS — logo + #fff stay visually continuous from native.
  */
 const SplashScreen = () => {
   const navigation = useNavigation();
-  const { width, ms, vscale } = useResponsive();
   const navigatedRef = useRef(false);
-  const logoSize = Math.min(width * 0.72, 420);
-  const [logs, setLogs] = useState([]);
+  const { width, ms, vscale } = useResponsive();
+
+  const surfaceReady = useMemo(() => {
+    let layoutDone = false;
+    let imageDone = false;
+    let resolveFn;
+    const promise = new Promise((r) => {
+      resolveFn = r;
+    });
+    let settled = false;
+    const trySettle = () => {
+      if (settled || !layoutDone || !imageDone) return;
+      settled = true;
+      resolveFn();
+      ExpoSplashScreen.hideAsync().catch(() => {});
+    };
+    return {
+      promise,
+      onLayout: () => {
+        layoutDone = true;
+        trySettle();
+      },
+      onImageLoaded: () => {
+        imageDone = true;
+        trySettle();
+      },
+    };
+  }, []);
+
+  const logoSize = Math.min(width * 0.38, 228);
+
   const addLog = (m) => {
-    if (!__DEV__) return;
-    setLogs((prev) => [...prev.slice(-8), `${new Date().toISOString().split('T')[1]?.slice(0, 8)} ${m}`]);
-    console.log('[Splash]', m);
+    if (__DEV__) console.log('[Splash]', m);
   };
 
   useEffect(() => {
-    ExpoSplashScreen.hideAsync().catch(() => {});
-
     const hideThenReset = async (routes) => {
       if (navigatedRef.current) return;
+      await Promise.race([surfaceReady.promise, delay(SURFACE_READY_FALLBACK_MS)]);
+      if (navigatedRef.current) return;
       navigatedRef.current = true;
+      navigation.reset({ index: 0, routes });
+      await awaitNextFrames();
       try {
         await ExpoSplashScreen.hideAsync();
       } catch (e) {
         /* already hidden */
       }
-      navigation.reset({ index: 0, routes });
     };
 
     const init = async () => {
@@ -125,14 +164,17 @@ const SplashScreen = () => {
       };
 
       try {
-        try {
-          const initialNotification = await notifee.getInitialNotification();
-          if (initialNotification?.notification?.data?.type === 'PRESENCE_ALARM' || initialNotification?.notification?.data?.type === 'HELP_REQUEST') {
-            addLog('initial notif present');
-          }
-        } catch (e) {
-          addLog(`initial notif error: ${String(e?.message || e)}`);
-        }
+        void notifee
+          .getInitialNotification()
+          .then((initialNotification) => {
+            if (
+              initialNotification?.notification?.data?.type === 'PRESENCE_ALARM' ||
+              initialNotification?.notification?.data?.type === 'HELP_REQUEST'
+            ) {
+              addLog('initial notif present');
+            }
+          })
+          .catch((e) => addLog(`initial notif error: ${String(e?.message || e)}`));
 
         addLog('loading token');
         const { accessToken } = await loadAuth();
@@ -150,14 +192,15 @@ const SplashScreen = () => {
           /* ignore */
         }
 
-        try {
-          addLog('checking active requests');
-          const helperPresenceId = await loadActivePresenceAssignmentId().catch(() => null);
-          const [helpRes, presenceRes] = await Promise.allSettled([
-            getMyActiveHelpRequest(accessToken),
-            helperPresenceId ? getPresenceById(accessToken, helperPresenceId) : getActivePresenceRequest(accessToken),
-          ]);
+        addLog('checking active requests + home (parallel)');
+        const helperPresenceId = await loadActivePresenceAssignmentId().catch(() => null);
+        const [helpRes, presenceRes, homeRes] = await Promise.allSettled([
+          getMyActiveHelpRequest(accessToken),
+          helperPresenceId ? getPresenceById(accessToken, helperPresenceId) : getActivePresenceRequest(accessToken),
+          getHome(accessToken),
+        ]);
 
+        try {
           if (helpRes.status === 'fulfilled' && helpRes.value?.success && helpRes.value?.data) {
             const helpPayload = helpRes.value.data || {};
             const reqList =
@@ -294,17 +337,13 @@ const SplashScreen = () => {
         }
 
         let shouldShowProfileReview = false;
-        try {
-          addLog('fetching home');
-          const homeResponse = await getHome(accessToken);
-          if (homeResponse?.success && homeResponse?.data?.verificationStatus) {
-            const status = homeResponse.data.verificationStatus;
-            if (['pending', 'review_requested', 'not_submitted'].includes(status)) {
-              shouldShowProfileReview = true;
-            }
+        if (homeRes.status === 'fulfilled' && homeRes.value?.success && homeRes.value?.data?.verificationStatus) {
+          const status = homeRes.value.data.verificationStatus;
+          if (['pending', 'review_requested', 'not_submitted'].includes(status)) {
+            shouldShowProfileReview = true;
           }
-        } catch (e) {
-          addLog(`home error: ${String(e?.message || e)}`);
+        } else if (homeRes.status === 'rejected') {
+          addLog(`home error: ${String(homeRes.reason?.message || homeRes.reason)}`);
         }
 
         clearTimeout(emergency);
@@ -323,53 +362,21 @@ const SplashScreen = () => {
     };
 
     init();
-  }, [navigation]);
+  }, [navigation, surfaceReady]);
 
   return (
-    <View style={styles.container} pointerEvents="box-none">
-      <View style={styles.brandWrap} pointerEvents="none">
+    <View style={styles.container}>
+      <View style={styles.brandWrap} onLayout={surfaceReady.onLayout}>
         <Image
           source={require('../../assets/icons/icon-03.png')}
           resizeMode="contain"
-          style={{ width: logoSize, height: logoSize }}
+          style={{ width: logoSize, height: logoSize, marginBottom: -vscale(14) }}
           accessibilityIgnoresInvertColors
+          onLoad={surfaceReady.onImageLoaded}
         />
-        <Text style={[styles.brandTitle, { fontSize: ms(34), marginTop: vscale(20) }]}>Socius</Text>
-        <Text style={[styles.brandTag, { fontSize: ms(18), marginTop: vscale(10) }]}>You're not alone.</Text>
+        <Text style={[styles.brandTitle, { fontSize: ms(32), marginTop: vscale(4) }]}>Socius</Text>
+        <Text style={[styles.brandTag, { fontSize: ms(17), marginTop: vscale(5) }]}>You're not alone.</Text>
       </View>
-      {__DEV__ && (
-        <View style={styles.debugBox} pointerEvents="box-none">
-          <ScrollView style={{ maxHeight: 120 }}>
-            {logs.map((l, i) => (
-              <Text key={i} style={styles.debugText}>
-                {l}
-              </Text>
-            ))}
-          </ScrollView>
-          <View style={styles.debugRow}>
-            <TouchableOpacity
-              onPress={() => {
-                navigatedRef.current = true;
-                ExpoSplashScreen.hideAsync().catch(() => {});
-                navigation.reset({ index: 0, routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }] });
-              }}
-              style={styles.debugBtn}
-            >
-              <Text style={styles.debugBtnText}>Continue</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => {
-                navigatedRef.current = true;
-                ExpoSplashScreen.hideAsync().catch(() => {});
-                navigation.reset({ index: 0, routes: [{ name: 'PhoneVerification' }] });
-              }}
-              style={styles.debugBtn}
-            >
-              <Text style={styles.debugBtnText}>Sign In</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
     </View>
   );
 };
@@ -389,43 +396,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1A1C1E',
     textAlign: 'center',
+    ...(Platform.OS === 'android' ? { includeFontPadding: false } : {}),
   },
   brandTag: {
     fontWeight: '400',
     color: '#42474E',
     textAlign: 'center',
-    lineHeight: 26,
+    lineHeight: 24,
     paddingHorizontal: 16,
-  },
-  debugBox: {
-    position: 'absolute',
-    bottom: 20,
-    left: 20,
-    right: 20,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    padding: 10,
-    borderRadius: 8,
-  },
-  debugText: {
-    color: '#fff',
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  debugRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 8,
-  },
-  debugBtn: {
-    backgroundColor: '#1e88e5',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-  },
-  debugBtnText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
+    ...(Platform.OS === 'android' ? { includeFontPadding: false } : {}),
   },
 });
 

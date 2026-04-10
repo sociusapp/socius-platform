@@ -115,6 +115,7 @@ import BeforeShareScreen from '../features/need-presence/screens/requester/Befor
 import ShareLocationScreen from '../features/need-presence/screens/requester/ShareLocationScreen';
 import NearDubaiedAreaScreen from '../features/need-presence/screens/responder/NearDubaiedAreaScreen';
 import RequestSharedScreen from '../features/need-presence/screens/requester/RequestSharedScreen';
+import AwarenessSharedScreen from '../features/need-presence/screens/requester/AwarenessSharedScreen';
 import MultiplePeopleScreen from '../features/need-presence/screens/responder/MultiplePeopleScreen';
 import PeopleListScreen from '../features/need-presence/screens/responder/PeopleListScreen';
 import SafetyGuidanceScreen from '../features/need-presence/screens/requester/SafetyGuidanceScreen';
@@ -266,6 +267,7 @@ const StackNavigator = () => {
       <Stack.Screen name="ShareLocation" component={ShareLocationScreen} />
       <Stack.Screen name="NearDubaiedArea" component={NearDubaiedAreaScreen} />
       <Stack.Screen name="RequestShared" component={RequestSharedScreen} />
+      <Stack.Screen name="AwarenessShared" component={AwarenessSharedScreen} />
       <Stack.Screen name="MultiplePeople" component={MultiplePeopleScreen} />
       <Stack.Screen name="PeopleList" component={PeopleListScreen} />
       <Stack.Screen name="SafetyGuidance" component={SafetyGuidanceScreen} />

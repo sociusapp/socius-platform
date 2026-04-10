@@ -1,5 +1,14 @@
 import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
-import { NavigationContainer, createNavigationContainerRef, CommonActions } from '@react-navigation/native';
+import { NavigationContainer, createNavigationContainerRef, CommonActions, DefaultTheme } from '@react-navigation/native';
+
+const SOCIUS_NAVIGATION_THEME = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    background: '#FFFFFF',
+    card: '#FFFFFF',
+  },
+};
 import notifee, { AndroidStyle, EventType } from '@notifee/react-native';
 import { AppState, NativeEventEmitter, NativeModules, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -13,6 +22,7 @@ import {
   displayAndroidForegroundIncomingHeadsUp,
   displayBorrowItemActionNotification,
   displayOfferItemActionNotification,
+  displayAdminBroadcastNotification,
 } from '../services/notifications/SociusNotificationService';
 import { connectSocket, emitStatusUpdate, appEvents } from '../services/socket/socket.service';
 import CustomAlert from '../components/common/CustomAlert';
@@ -49,11 +59,28 @@ import {
   isUserOnHelpMeetingScreen,
   shouldShowRequestStatusModal,
   normalizeRecipientRole,
+  isPresenceChatNotification,
+  presenceNearbyMapModeFromChatNotification,
 } from './helpNotificationNavigation';
+import { shouldIgnoreIncomingPresenceAlarm } from '../utils/presenceIncomingGuard';
 
 const { SociusCallModule } = NativeModules;
 
 export const navigationRef = createNavigationContainerRef();
+
+function navigateFromChatMessageNotification(nav, data) {
+  const requestId = data?.requestId;
+  if (!nav?.isReady?.() || !requestId) return;
+  appEvents.emit('open_chat', { requestId: String(requestId) });
+  if (isPresenceChatNotification(data)) {
+    nav.navigate('NearbyMap', {
+      requestId: String(requestId),
+      mode: presenceNearbyMapModeFromChatNotification(data),
+    });
+    return;
+  }
+  void navigateToHelpMeeting(nav, { requestId: String(requestId), data, openChat: true });
+}
 
 /** Native full-screen incoming call UI only when the app is truly backgrounded — not `inactive` (iOS) or brief blur. */
 const shouldDelegateIncomingToNativeAndroid = () =>
@@ -162,7 +189,18 @@ const handleNotifeeNavigation = async (navRef, notification, pressAction) => {
     return;
   }
 
-  if (!navRef.isReady()) return;
+  if (!navRef.isReady()) {
+    if (
+      earlyType === 'presence_alarm' ||
+      earlyType.includes('presence_alarm') ||
+      earlyType === 'admin_broadcast'
+    ) {
+      setTimeout(() => {
+        void handleNotifeeNavigation(navRef, notification, pressAction);
+      }, 600);
+    }
+    return;
+  }
   const nav = navRef;
 
   if (
@@ -181,8 +219,7 @@ const handleNotifeeNavigation = async (navRef, notification, pressAction) => {
     return;
   }
   if (earlyType === 'chat_message' && data.requestId) {
-    appEvents.emit('open_chat', { requestId: data.requestId });
-    await navigateToHelpMeeting(nav, { requestId: data.requestId, data, openChat: true });
+    navigateFromChatMessageNotification(nav, data);
     return;
   }
   if (earlyType === 'review_decision') {
@@ -200,29 +237,33 @@ const handleNotifeeNavigation = async (navRef, notification, pressAction) => {
   }
 
   const type = data.type;
+  const typeLower = String(type || '').toLowerCase();
 
-  if (type === 'PRESENCE_ALARM') {
+  if (typeLower === 'admin_broadcast') {
+    await navigateAdminBroadcastDeepLink(nav, data);
+    return;
+  }
+
+  if (
+    typeLower === 'presence_alarm' ||
+    typeLower.includes('presence_alarm') ||
+    String(type || '').includes('PRESENCE_ALARM')
+  ) {
+    if (actionId === 'decline_presence') {
+      return;
+    }
     const requestId = data.requestId || data.presenceId || data.id;
     const distanceMetersRaw = data.distanceMeters ?? data.distance_meters ?? data.distance;
-    
-    // Emit sync event for requester
-    loadAuth().then(auth => {
-      const userId = auth?.user?._id || auth?.user?.id || auth?.userId;
-      if (requestId && userId) {
-        emitStatusUpdate(requestId, 'accepted', { type: 'PRESENCE_ALARM', userId });
-      }
-    });
+    const initialDm = distanceMetersRaw ? Number(distanceMetersRaw) : undefined;
 
-    nav.navigate('SomeoneConcern', {
+    nav.navigate('PresenceRequestDetail', {
       requestId,
-      situation: data.situation,
-      distanceMeters: distanceMetersRaw ? Number(distanceMetersRaw) : 0,
-      area: data.area || data.cityArea || data.locationLabel,
+      initialDistanceMeters: Number.isFinite(initialDm) && initialDm >= 0 ? initialDm : undefined,
     });
     return;
   }
 
-  const t = String(type || '').toLowerCase();
+  const t = typeLower;
   if (t === 'help_request' || t === 'request_rematched') {
     const requestId = data.requestId;
     
@@ -309,6 +350,73 @@ const navigateAfterReviewDecision = (navRef, approvedRaw) => {
       ],
     })
   );
+};
+
+/**
+ * Admin FCM / Notifee broadcasts carry `deepLink` in data (see admin NotificationCenter).
+ * Resets to a sane stack then opens the matching tab or stack screen.
+ * Skips navigation if there is no session yet (avoids blank stack / racing Splash).
+ */
+const navigateAdminBroadcastDeepLink = async (navRef, data = {}) => {
+  if (!navRef?.isReady?.()) return;
+  try {
+    const auth = await loadAuth();
+    if (!auth?.accessToken) return;
+  } catch {
+    return;
+  }
+
+  const link = String(data.deepLink || '').trim().toLowerCase() || 'home';
+
+  const resetToMainTab = (tabName) => {
+    navRef.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [
+          {
+            name: 'MainApp',
+            state: {
+              routes: [{ name: tabName }],
+            },
+          },
+        ],
+      })
+    );
+  };
+
+  const pushAfterReset = (screenName, params = {}) => {
+    setTimeout(() => {
+      try {
+        if (navRef.isReady()) {
+          navRef.navigate(screenName, params);
+        }
+      } catch (e) {
+        if (__DEV__) console.warn('[AdminDeepLink] navigate failed', screenName, e?.message);
+      }
+    }, 380);
+  };
+
+  switch (link) {
+    case 'home':
+      resetToMainTab('HomeTab');
+      return;
+    case 'daily_help':
+      resetToMainTab('CommunityTab');
+      return;
+    case 'need_presence':
+      resetToMainTab('CommunityTab');
+      pushAfterReset('WhatsHappening');
+      return;
+    case 'verification':
+      resetToMainTab('HomeTab');
+      pushAfterReset('VerificationReview');
+      return;
+    case 'profile':
+      resetToMainTab('ProfileTab');
+      return;
+    default:
+      resetToMainTab('HomeTab');
+  }
 };
 
 const AppNavigator = () => {
@@ -542,10 +650,15 @@ const AppNavigator = () => {
 
       const pendingPresence = await AsyncStorage.getItem('PENDING_PRESENCE_MODAL');
       if (pendingPresence) {
-        setIncomingPresenceData(JSON.parse(pendingPresence));
-        setIncomingPresenceStatus('notified');
-        setIncomingPresenceVisible(true);
-        ensurePendingIncomingRingtone();
+        const parsed = JSON.parse(pendingPresence);
+        if (await shouldIgnoreIncomingPresenceAlarm(parsed)) {
+          await AsyncStorage.removeItem('PENDING_PRESENCE_MODAL');
+        } else {
+          setIncomingPresenceData(parsed);
+          setIncomingPresenceStatus('notified');
+          setIncomingPresenceVisible(true);
+          ensurePendingIncomingRingtone();
+        }
       }
 
       const pendingBorrow = await loadPendingBorrowItemOpen();
@@ -729,20 +842,31 @@ const AppNavigator = () => {
 
     const unsubscribeOpened = onNotificationOpened((remoteMessage) => {
       const data = remoteMessage?.data || {};
-      const run = () => {
+      const run = async () => {
         if (!navigationRef.isReady()) {
-          setTimeout(run, 600);
+          setTimeout(() => {
+            void run();
+          }, 600);
           return;
         }
 
         const type = String(data.type || '').toLowerCase();
 
+        if (type === 'admin_broadcast') {
+          void navigateAdminBroadcastDeepLink(navigationRef, data);
+          return;
+        }
+
         if (type === 'presence_alarm' || type.includes('presence_alarm')) {
+          if (await shouldIgnoreIncomingPresenceAlarm(data)) {
+            return;
+          }
           const requestId = data.requestId || data.presenceId || data.id;
           const distanceMetersRaw = data.distanceMeters ?? data.distance_meters ?? data.distance;
           NativeCallService.startPresenceAlarmRingtone();
           setIncomingPresenceData({
             requestId,
+            requesterId: data.requesterId || data.requester_id || '',
             situation: data.description || data.situation || data.situationType || 'Safety concern',
             requesterName: data.requesterName || 'Someone',
             distanceMeters: distanceMetersRaw ? Number(distanceMetersRaw) : 0,
@@ -770,12 +894,7 @@ const AppNavigator = () => {
         }
 
         if (type === 'chat_message' && data.requestId) {
-          appEvents.emit('open_chat', { requestId: data.requestId });
-          void navigateToHelpMeeting(navigationRef, {
-            requestId: data.requestId,
-            data,
-            openChat: true,
-          });
+          navigateFromChatMessageNotification(navigationRef, data);
           return;
         }
         if (type === 'borrow_item_request' && data.requestId) {
@@ -857,7 +976,7 @@ const AppNavigator = () => {
         }
       };
 
-      run();
+      void run();
     });
 
     const unsubscribeForeground = onMessageForeground(async remoteMessage => {
@@ -871,6 +990,13 @@ const AppNavigator = () => {
       }
       if (lowerType === 'review_decision') {
         showReviewDecisionAlert(data);
+        return;
+      }
+      if (lowerType === 'admin_broadcast') {
+        if (Platform.OS === 'android') {
+          await initNotifeeChannels();
+          await displayAdminBroadcastNotification(remoteMessage);
+        }
         return;
       }
       if (lowerType === 'borrow_item_request' && data.requestId && data.borrowId) {
@@ -938,6 +1064,10 @@ const AppNavigator = () => {
 
       if (isPresenceAlarm) {
         logIncomingAlert('FCM presence → in-app alarm modal + tray heads-up', { requestId: data.requestId });
+        if (await shouldIgnoreIncomingPresenceAlarm(data)) {
+          logIncomingAlert('FCM presence → skipped (device is requester)', { requestId: data.requestId });
+          return;
+        }
         try {
           NativeCallService.startPresenceAlarmRingtone();
         } catch (e) {}
@@ -946,6 +1076,7 @@ const AppNavigator = () => {
         const distanceMetersRaw = data.distanceMeters ?? data.distance_meters ?? data.distance;
         setIncomingPresenceData({
           requestId,
+          requesterId: data.requesterId || data.requester_id || '',
           situation: data.description || data.situation || data.situationType || 'Safety concern',
           requesterName: data.requesterName || 'Someone',
           distanceMeters: distanceMetersRaw ? Number(distanceMetersRaw) : 0,
@@ -1285,6 +1416,10 @@ const AppNavigator = () => {
         }
 
         const lt = String(data.type || '').toLowerCase();
+        if (lt === 'admin_broadcast') {
+          void navigateAdminBroadcastDeepLink(navigationRef, data);
+          return;
+        }
         if (
           lt === 'request_completion_prompt' &&
           data.requestId &&
@@ -1303,12 +1438,7 @@ const AppNavigator = () => {
         }
 
         if (lt === 'chat_message' && data.requestId) {
-          appEvents.emit('open_chat', { requestId: data.requestId });
-          void navigateToHelpMeeting(navigationRef, {
-            requestId: data.requestId,
-            data,
-            openChat: true,
-          });
+          navigateFromChatMessageNotification(navigationRef, data);
           return;
         }
         if (lt === 'review_decision') {
@@ -1504,7 +1634,7 @@ const AppNavigator = () => {
         }
         return;
       }
-      handleNotifeeNavigation(navigationRef, notification, pressAction);
+      await handleNotifeeNavigation(navigationRef, notification, pressAction);
     });
 
     const flushPendingBorrowOpen = async () => {
@@ -1982,7 +2112,7 @@ const AppNavigator = () => {
 
   return (
     <>
-      <NavigationContainer ref={navigationRef}>
+      <NavigationContainer ref={navigationRef} theme={SOCIUS_NAVIGATION_THEME}>
         <StackNavigator />
       </NavigationContainer>
       {/* Community/Daily Help Notification Modal — remount per requestId so RN Modal animates reliably */}
@@ -2064,12 +2194,27 @@ const AppNavigator = () => {
           NativeCallService.stopRingtone();
           const snapshot = incomingPresenceData;
           const rid = snapshot?.requestId;
-          if (navigationRef.isReady() && rid) {
-            navigationRef.navigate('PresenceRequestDetail', { requestId: rid });
-          }
-          setIncomingPresenceVisible(false);
-          setIncomingPresenceData(null);
-          setIncomingPresenceStatus('notified');
+          const run = async () => {
+            if (rid && (await shouldIgnoreIncomingPresenceAlarm({ ...snapshot, requestId: rid }))) {
+              setIncomingPresenceVisible(false);
+              setIncomingPresenceData(null);
+              setIncomingPresenceStatus('notified');
+              return;
+            }
+            if (navigationRef.isReady() && rid) {
+              const d0 = snapshot?.distanceMeters;
+              const initialDm =
+                typeof d0 === 'number' && Number.isFinite(d0) && d0 >= 0 ? d0 : undefined;
+              navigationRef.navigate('PresenceRequestDetail', {
+                requestId: rid,
+                initialDistanceMeters: initialDm,
+              });
+            }
+            setIncomingPresenceVisible(false);
+            setIncomingPresenceData(null);
+            setIncomingPresenceStatus('notified');
+          };
+          void run();
         }}
       />
       <CustomAlert

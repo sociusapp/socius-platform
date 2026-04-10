@@ -8,14 +8,14 @@ import MotionView from '../../../../components/common/MotionView';
 
 const BeforeShareScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
-  const { reason, category, note, requestId } = route?.params || {};
+  const { reason, category, note } = route?.params || {};
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
       
       <View style={[styles.header, { paddingHorizontal: spacing(16), paddingVertical: vscale(12), borderBottomWidth: scale(1) }]}>
         <TouchableOpacity
-          onPress={() => navigation.navigate('NearbyMap', { requestId, mode: 'requester' })}
+          onPress={() => navigation.goBack()}
           style={[styles.backButton, { padding: scale(4), marginLeft: -spacing(8) }]}
         >
           <Icon name="chevron-left" size={scale(32)} color="#5A5A5A" />
@@ -60,7 +60,7 @@ const BeforeShareScreen = ({ navigation, route }) => {
             <TouchableOpacity 
               style={[styles.primaryButton, { height: vscale(56), borderRadius: scale(28), marginBottom: vscale(16), shadowRadius: scale(8), elevation: scale(5) }]}
               activeOpacity={0.8}
-              onPress={() => navigation.navigate('ShareLocation', { reason, category, note, confirmed: true })}
+              onPress={() => navigation.navigate('ShareLocation', { reason, category, note })}
             >
               <LinearGradient
                 colors={['#D84D42', '#C63F34']}

@@ -1,5 +1,6 @@
-import notifee, { AndroidImportance } from '@notifee/react-native';
+import notifee, { AndroidImportance, AndroidStyle, AndroidVisibility } from '@notifee/react-native';
 import { CHANNELS, initNotifeeChannels } from '../notifications/SociusNotificationService';
+import { baseURL } from '../api/client';
 
 /** When this matches incoming FCM `sessionId`, tray notifications are skipped (chat modal is open). */
 let activeChatSessionId = null;
@@ -41,17 +42,34 @@ export async function handleChatMessageFcm(remoteMessage) {
   await initNotifeeChannels();
   const sender = data.senderName || 'Someone';
   const preview = data.preview || 'New message';
+  const requestType = String(data.requestType || '').toLowerCase();
+  const contextLabel =
+    requestType === 'presencerequest' || requestType === 'presence_request'
+      ? 'Presence chat'
+      : 'Help chat';
+  const body = `${contextLabel}: ${preview}`;
+  const senderImageRaw = String(data.senderImage || '').trim();
+  const apiRoot = String(baseURL || '').replace(/\/api\/?$/, '');
+  const senderLargeIcon =
+    senderImageRaw.length > 0
+      ? senderImageRaw.startsWith('http://') || senderImageRaw.startsWith('https://')
+        ? senderImageRaw
+        : `${apiRoot}${senderImageRaw.startsWith('/') ? '' : '/'}${senderImageRaw}`
+      : null;
 
   try {
     await notifee.displayNotification({
       id: chatNotificationId(sessionId),
       title: `💬 ${sender}`,
-      body: preview,
+      body,
       android: {
         channelId: CHANNELS.UPDATES,
         importance: AndroidImportance.HIGH,
         pressAction: { id: 'default', launchActivity: 'default' },
         tag: chatNotificationId(sessionId),
+        style: { type: AndroidStyle.BIGTEXT, text: body },
+        visibility: AndroidVisibility.PUBLIC,
+        ...(senderLargeIcon ? { largeIcon: senderLargeIcon } : {}),
       },
       data: {
         type: 'chat_message',
@@ -62,6 +80,8 @@ export async function handleChatMessageFcm(remoteMessage) {
         messageType: String(data.messageType || 'text'),
         // Required for role-aware deep link when the tray notification is tapped (FCM includes this).
         recipientRole: String(data.recipientRole || ''),
+        requestType: String(data.requestType || ''),
+        senderImage: senderImageRaw,
       },
     });
   } catch (e) {

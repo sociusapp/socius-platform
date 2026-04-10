@@ -1,5 +1,7 @@
+const path = require('path')
 const verificationService = require('../services/verification.service')
 const adminService = require('../services/admin.service')
+const NotificationCampaignAsset = require('../models/NotificationCampaignAsset')
 const { adminAwardBadge, revokeBadge } = require('../services/badge.service')
 const {
   sendVerificationResultNotification,
@@ -71,6 +73,38 @@ const getUsers = async (req, res, next) => {
   } catch (err) { next(err) }
 }
 
+const exportUsersCsv = async (req, res, next) => {
+  try {
+    const csv = await adminService.exportUsersCsv(req.query)
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+    res.setHeader('Content-Disposition', 'attachment; filename="socius-users.csv"')
+    res.send(`\ufeff${csv}`)
+  } catch (err) {
+    next(err)
+  }
+}
+
+const getScenarioConfig = async (req, res, next) => {
+  try {
+    const data = await adminService.getScenarioConfigDraft()
+    return success(res, data)
+  } catch (err) { next(err) }
+}
+
+const patchScenarioConfig = async (req, res, next) => {
+  try {
+    const data = await adminService.upsertScenarioConfigDraft(req.user._id, req.body)
+    return success(res, data, 'Scenario draft saved')
+  } catch (err) { next(err) }
+}
+
+const adminClosePresenceRequest = async (req, res, next) => {
+  try {
+    await adminService.adminClosePresenceRequest(req.params.id, req.user._id, req.body)
+    return success(res, { id: req.params.id }, 'Presence request closed')
+  } catch (err) { next(err) }
+}
+
 const getUserDetails = async (req, res, next) => {
   try {
     const data = await adminService.getUserDetails(req.params.userId)
@@ -126,6 +160,19 @@ const getReports = async (req, res, next) => {
   } catch (err) { next(err) }
 }
 
+const updateReportReviewStatus = async (req, res, next) => {
+  try {
+    const report = await adminService.updateReportReviewStatus(
+      req.params.reportId,
+      req.user._id,
+      req.body
+    )
+    return success(res, report, 'Report updated')
+  } catch (err) {
+    next(err)
+  }
+}
+
 const resolveReport = async (req, res, next) => {
   try {
     const report = await adminService.resolveReport(req.params.reportId, req.user._id, req.body)
@@ -155,10 +202,55 @@ const getLiveAwareness = async (req, res, next) => {
 
 const sendNotification = async (req, res, next) => {
   try {
-    const { userIds, title, body, priority } = req.body || {}
-    const result = await adminService.sendAdminNotification({ userIds, title, body, priority })
+    const result = await adminService.sendAdminNotification(req.body || {})
     return success(res, result, 'Notification sent')
-  } catch (err) { next(err) }
+  } catch (err) {
+    next(err)
+  }
+}
+
+const TTL_DAYS_RAW = Number(process.env.NOTIFICATION_CAMPAIGN_IMAGE_TTL_DAYS)
+const NOTIFICATION_IMAGE_TTL_DAYS = Number.isFinite(TTL_DAYS_RAW)
+  ? Math.min(90, Math.max(1, TTL_DAYS_RAW))
+  : 7
+
+/** POST multipart: field name `image` — stored under uploads/notification-campaigns, auto-deleted after TTL. */
+const uploadAdminNotificationImage = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      const err = new Error('Image file is required (field name: image)')
+      err.statusCode = 400
+      throw err
+    }
+    const rel = path.posix.join('notification-campaigns', req.file.filename)
+    const expiresAt = new Date(Date.now() + NOTIFICATION_IMAGE_TTL_DAYS * 24 * 60 * 60 * 1000)
+    await NotificationCampaignAsset.create({
+      relativePath: rel,
+      originalName: req.file.originalname,
+      mimeType: req.file.mimetype,
+      size: req.file.size,
+      uploadedBy: req.user?._id || null,
+      expiresAt,
+    })
+    const publicPath = `/uploads/${rel}`
+    let origin = String(process.env.PUBLIC_ORIGIN || process.env.SOCIUS_PUBLIC_ORIGIN || '')
+      .trim()
+      .replace(/\/+$/, '')
+    if (!origin) {
+      const proto = (req.get('x-forwarded-proto') || req.protocol || 'http').split(',')[0].trim()
+      const host = (req.get('x-forwarded-host') || req.get('host') || '').split(',')[0].trim()
+      if (host) origin = `${proto}://${host}`
+    }
+    const imageUrl = origin ? `${origin}${publicPath}` : publicPath
+    return success(res, {
+      imageUrl,
+      publicPath,
+      expiresAt: expiresAt.toISOString(),
+      ttlDays: NOTIFICATION_IMAGE_TTL_DAYS,
+    })
+  } catch (err) {
+    next(err)
+  }
 }
 
 // ─── Device Tokens ────────────────────────────────────────
@@ -236,6 +328,15 @@ const getPresenceRequestDetails = async (req, res, next) => {
   } catch (err) { next(err) }
 }
 
+const getIncidentReview = async (req, res, next) => {
+  try {
+    const data = await adminService.getIncidentReview(req.query)
+    return success(res, data)
+  } catch (err) {
+    next(err)
+  }
+}
+
 const getClosures = async (req, res, next) => {
   try {
     const data = await adminService.getClosures(req.query)
@@ -250,6 +351,54 @@ const getClosureDetails = async (req, res, next) => {
   } catch (err) { next(err) }
 }
 
+const getSubscriptionPlans = async (req, res, next) => {
+  try {
+    const data = await adminService.getSubscriptionPlansForAdmin()
+    return success(res, { items: data })
+  } catch (err) { next(err) }
+}
+
+const updateSubscriptionPlan = async (req, res, next) => {
+  try {
+    const { planKey } = req.params
+    const data = await adminService.updateSubscriptionPlanByKey(planKey, req.body || {}, req.user?._id)
+    return success(res, data, 'Plan updated')
+  } catch (err) { next(err) }
+}
+
+const getSystemSafeguards = async (req, res, next) => {
+  try {
+    const data = adminService.getSystemSafeguardsSnapshot()
+    return success(res, data)
+  } catch (err) { next(err) }
+}
+
+const getAuditLogs = async (req, res, next) => {
+  try {
+    const data = await adminService.getAdminAuditLogs(req.query)
+    return success(res, data)
+  } catch (err) { next(err) }
+}
+
+const getLegalExportHistory = async (req, res, next) => {
+  try {
+    const data = await adminService.listLegalExportRecords(req.query)
+    return success(res, data)
+  } catch (err) { next(err) }
+}
+
+const generateLegalExport = async (req, res, next) => {
+  try {
+    const bundle = await adminService.generateLegalExportBundle(req.user._id, req.body || {})
+    const filename = `socius-legal-export-${Date.now()}.json`
+    res.setHeader('Content-Type', 'application/json; charset=utf-8')
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+    return res.status(200).send(JSON.stringify(bundle, null, 2))
+  } catch (err) {
+    next(err)
+  }
+}
+
 module.exports = {
   getPendingVerifications,
   getVerificationDetails,
@@ -257,6 +406,10 @@ module.exports = {
   rejectVerification,
   requestResubmission,
   getUsers,
+  exportUsersCsv,
+  getScenarioConfig,
+  patchScenarioConfig,
+  adminClosePresenceRequest,
   getUserDetails,
   limitAccount,
   restoreAccount,
@@ -264,10 +417,12 @@ module.exports = {
   awardBadge,
   revokeUserBadge,
   getReports,
+  updateReportReviewStatus,
   resolveReport,
   getDashboardStats,
   getLiveAwareness,
   sendNotification,
+  uploadAdminNotificationImage,
   getDeviceTokenCounts,
   getDeviceTokensForUser,
   attachDeviceToken,
@@ -277,6 +432,13 @@ module.exports = {
   getHelpRequestDetails,
   getPresenceRequests,
   getPresenceRequestDetails,
+  getIncidentReview,
   getClosures,
   getClosureDetails,
+  getSubscriptionPlans,
+  updateSubscriptionPlan,
+  getSystemSafeguards,
+  getAuditLogs,
+  getLegalExportHistory,
+  generateLegalExport,
 }

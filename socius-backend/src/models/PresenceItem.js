@@ -9,6 +9,8 @@ const presenceItemSchema = new mongoose.Schema(
       index: true,
     },
     title: { type: String, required: true, trim: true, maxlength: 120 },
+    /** Stable key per category for mobile (ShareLocation `reason` / situation mapping). */
+    slug: { type: String, default: null, trim: true, lowercase: true, maxlength: 80, index: true },
     description: { type: String, default: '', trim: true, maxlength: 300 },
     tags: [{ type: String, trim: true, lowercase: true, maxlength: 40 }],
     iconName: { type: String, default: null, trim: true, maxlength: 80 },
@@ -20,6 +22,7 @@ const presenceItemSchema = new mongoose.Schema(
 )
 
 presenceItemSchema.index({ categoryId: 1, isActive: 1, sortOrder: 1, createdAt: -1 })
+presenceItemSchema.index({ categoryId: 1, slug: 1 })
 
 module.exports = mongoose.model('PresenceItem', presenceItemSchema)
 

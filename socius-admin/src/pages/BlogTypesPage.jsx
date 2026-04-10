@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { blogTypeApi, getFullImageUrl } from '../services/api/blog';
+import Button from '../components/common/Button';
+
+const inputClass =
+  'w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-socius-red focus:border-transparent text-sm';
 
 const BlogTypesPage = () => {
   const [types, setTypes] = useState([]);
@@ -27,6 +32,7 @@ const BlogTypesPage = () => {
   const fetchTypes = async () => {
     try {
       setLoading(true);
+      setError(null);
       const response = await blogTypeApi.getAll();
       setTypes(response.items || []);
     } catch (err) {
@@ -76,7 +82,7 @@ const BlogTypesPage = () => {
   };
 
   const handleIconChange = (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (file) {
       setIconFile(file);
       setIconPreview(URL.createObjectURL(file));
@@ -122,216 +128,247 @@ const BlogTypesPage = () => {
     setFormData({ ...formData, slug });
   };
 
-  if (loading) return <div className="p-8">Loading...</div>;
+  if (loading) {
+    return (
+      <div className="p-6 md:p-8 text-gray-500 dark:text-gray-400 animate-pulse">
+        Loading blog types…
+      </div>
+    );
+  }
 
   return (
-    <div className="p-8">
-      <div className="flex justify-between items-center mb-6">
+    <div className="p-6 md:p-8 max-w-6xl">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold">Blog Types</h1>
-          <p className="text-sm text-gray-600 mt-1 max-w-xl">
-            These appear as <strong>Daily Help topics</strong> on the mobile Community screen (only types marked Active). Add matching articles under <strong>Blogs</strong> so each topic opens content when tapped.
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Blog types</h1>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 max-w-2xl leading-relaxed">
+            <strong className="text-gray-800 dark:text-gray-200">Blog types</strong> are the topic tiles on the mobile{' '}
+            <strong className="text-gray-800 dark:text-gray-200">Community</strong> screen (only <em>Active</em> types
+            show). Each type can have one or more{' '}
+            <Link to="/blogs" className="text-socius-red font-medium hover:underline">
+              blog posts
+            </Link>{' '}
+            — the actual articles users open when they tap a topic.
           </p>
         </div>
-        <button
-          onClick={() => handleOpenModal()}
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-        >
-          + Add Blog Type
-        </button>
+        <Button variant="primary" type="button" onClick={() => handleOpenModal()} className="shrink-0">
+          + Add blog type
+        </Button>
       </div>
 
-      {error && (
-        <div className="mb-4 p-4 bg-red-100 text-red-700 rounded">
+      {error ? (
+        <div className="mb-4 p-4 rounded-lg bg-red-50 dark:bg-red-950/40 text-red-800 dark:text-red-200 border border-red-200 dark:border-red-900/60 text-sm">
           {error}
         </div>
-      )}
+      ) : null}
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <table className="min-w-full">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Icon</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Slug</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sort Order</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200">
-            {types.map((type) => (
-              <tr key={type._id}>
-                <td className="px-6 py-4">
-                  {type.iconUrl ? (
-                    <img
-                      src={getFullImageUrl(type.iconUrl)}
-                      alt={type.name}
-                      className="w-12 h-12 object-cover rounded"
-                    />
-                  ) : (
-                    <div className="w-12 h-12 bg-gray-200 rounded flex items-center justify-center text-gray-400">
-                      No Icon
-                    </div>
-                  )}
-                </td>
-                <td className="px-6 py-4 font-medium">{type.name}</td>
-                <td className="px-6 py-4 text-gray-500">{type.slug}</td>
-                <td className="px-6 py-4">{type.sortOrder}</td>
-                <td className="px-6 py-4">
-                  <span className={`px-2 py-1 rounded text-xs ${type.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                    {type.isActive ? 'Active' : 'Inactive'}
-                  </span>
-                </td>
-                <td className="px-6 py-4">
-                  <button
-                    onClick={() => handleOpenModal(type)}
-                    className="text-blue-600 hover:text-blue-900 mr-3"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => handleDelete(type._id)}
-                    className="text-red-600 hover:text-red-900"
-                  >
-                    Delete
-                  </button>
-                </td>
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/90 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full">
+            <thead className="bg-gray-50 dark:bg-gray-900/60 border-b border-gray-200 dark:border-gray-700">
+              <tr>
+                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  Icon
+                </th>
+                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  Name
+                </th>
+                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  Slug
+                </th>
+                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  Sort
+                </th>
+                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  Status
+                </th>
+                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  Actions
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+              {types.map((type) => (
+                <tr key={type._id} className="hover:bg-gray-50/80 dark:hover:bg-gray-900/30 transition-colors">
+                  <td className="px-5 py-4">
+                    {type.iconUrl ? (
+                      <img
+                        src={getFullImageUrl(type.iconUrl)}
+                        alt={type.name}
+                        className="w-12 h-12 object-cover rounded-lg ring-1 ring-gray-200 dark:ring-gray-600"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center text-[10px] text-gray-500 dark:text-gray-400 text-center px-1">
+                        No icon
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-5 py-4 text-sm font-medium text-gray-900 dark:text-white">{type.name}</td>
+                  <td className="px-5 py-4 text-sm font-mono text-gray-600 dark:text-gray-300 break-all max-w-[12rem]">
+                    {type.slug}
+                  </td>
+                  <td className="px-5 py-4 text-sm text-gray-700 dark:text-gray-300 tabular-nums">{type.sortOrder}</td>
+                  <td className="px-5 py-4">
+                    <span
+                      className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        type.isActive
+                          ? 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-200'
+                          : 'bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+                      }`}
+                    >
+                      {type.isActive ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
+                  <td className="px-5 py-4 text-sm">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenModal(type)}
+                      className="text-socius-red hover:text-red-700 dark:hover:text-red-400 font-medium mr-4"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(type._id)}
+                      className="text-red-600 dark:text-red-400 hover:underline font-medium"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {modalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <h2 className="text-xl font-bold mb-4">
-              {editingType ? 'Edit Blog Type' : 'Add Blog Type'}
+      {modalOpen ? (
+        <div className="fixed inset-0 bg-black/60 dark:bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
+              {editingType ? 'Edit blog type' : 'Add blog type'}
             </h2>
-            
-            <form onSubmit={handleSubmit}>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label htmlFor="bt-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Name *
+                </label>
                 <input
+                  id="bt-name"
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={inputClass}
                   required
                 />
               </div>
 
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Slug *</label>
+              <div>
+                <label htmlFor="bt-slug" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Slug *
+                </label>
                 <div className="flex gap-2">
                   <input
+                    id="bt-slug"
                     type="text"
                     value={formData.slug}
                     onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
-                    className="flex-1 px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className={`${inputClass} flex-1 font-mono text-xs`}
                     required
                   />
-                  <button
-                    type="button"
-                    onClick={generateSlug}
-                    className="px-3 py-2 bg-gray-200 rounded hover:bg-gray-300"
-                  >
+                  <Button type="button" variant="secondary" onClick={generateSlug} className="shrink-0">
                     Generate
-                  </button>
+                  </Button>
                 </div>
               </div>
 
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+              <div>
+                <label htmlFor="bt-desc" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Description
+                </label>
                 <textarea
+                  id="bt-desc"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={inputClass}
                   rows={2}
                 />
               </div>
 
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Mobile icon (optional)</label>
+              <div>
+                <label htmlFor="bt-iconName" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Mobile icon (optional)
+                </label>
                 <input
+                  id="bt-iconName"
                   type="text"
                   value={formData.iconName}
                   onChange={(e) => setFormData({ ...formData, iconName: e.target.value })}
-                  className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g. hand-heart (MaterialCommunityIcons)"
+                  className={inputClass}
+                  placeholder="e.g. hand-heart"
                 />
-                <p className="text-xs text-gray-500 mt-1">Used on the app when no image icon is uploaded.</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">When no image is uploaded.</p>
               </div>
 
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Icon image</label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleIconChange}
-                  className="w-full"
-                />
-                {iconPreview && (
-                  <img
-                    src={iconPreview}
-                    alt="Preview"
-                    className="mt-2 w-20 h-20 object-cover rounded"
-                  />
-                )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Icon image</label>
+                <input type="file" accept="image/*" onChange={handleIconChange} className="w-full text-sm text-gray-600 dark:text-gray-300" />
+                {iconPreview ? (
+                  <img src={iconPreview} alt="Preview" className="mt-2 w-20 h-20 object-cover rounded-lg ring-1 ring-gray-200 dark:ring-gray-600" />
+                ) : null}
               </div>
 
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Color</label>
+              <div>
+                <label htmlFor="bt-color" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Color
+                </label>
                 <input
+                  id="bt-color"
                   type="color"
                   value={formData.color}
                   onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                  className="w-full h-10 rounded"
+                  className="w-full h-10 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800"
                 />
               </div>
 
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Sort Order</label>
+              <div>
+                <label htmlFor="bt-sort" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Sort order
+                </label>
                 <input
+                  id="bt-sort"
                   type="number"
                   value={formData.sortOrder}
-                  onChange={(e) => setFormData({ ...formData, sortOrder: parseInt(e.target.value) || 0 })}
-                  className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  onChange={(e) => setFormData({ ...formData, sortOrder: parseInt(e.target.value, 10) || 0 })}
+                  className={inputClass}
                 />
               </div>
 
-              <div className="mb-6">
-                <label className="flex items-center">
+              <div>
+                <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={formData.isActive}
                     onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-                    className="mr-2"
+                    className="rounded border-gray-300 text-socius-red focus:ring-socius-red"
                   />
-                  <span className="text-sm font-medium text-gray-700">Active</span>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Active</span>
                 </label>
               </div>
 
-              <div className="flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={handleCloseModal}
-                  className="px-4 py-2 border rounded hover:bg-gray-100"
-                >
+              <div className="flex justify-end gap-3 pt-2">
+                <Button type="button" variant="secondary" onClick={handleCloseModal}>
                   Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                >
+                </Button>
+                <Button type="submit" variant="primary">
                   {editingType ? 'Update' : 'Create'}
-                </button>
+                </Button>
               </div>
             </form>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 };

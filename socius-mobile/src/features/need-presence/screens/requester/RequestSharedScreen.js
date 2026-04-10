@@ -526,7 +526,12 @@ const RequestSharedScreen = ({ navigation, route }) => {
             <MotionPressable 
               style={[styles.waitingButton, { height: vscale(52), borderRadius: scale(26), marginBottom: vscale(16) }]} 
               activeOpacity={0.8}
-              onPress={() => navigation.navigate('AwarenessShared')}
+              onPress={() => {
+                const rid = route?.params?.requestId || activeRequestId;
+                if (rid) {
+                  navigation.navigate('NearbyMap', { requestId: rid, mode: 'requester' });
+                }
+              }}
             >
               <Text style={[styles.waitingButtonText, { fontSize: ms(16) }]}>Continue waiting</Text>
             </MotionPressable>

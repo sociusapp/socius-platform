@@ -27,7 +27,7 @@ const getMultipleUserTokens = async (userIds) => {
 /**
  * Single user ko notification bhejo
  */
-const notifyUser = async (userId, { title, body, data = {}, priority = 'normal' }) => {
+const notifyUser = async (userId, { title, body, data = {}, priority = 'normal', imageUrl = null }) => {
   const tokens = await getUserTokens(userId)
   if (!tokens.length) {
     logger.warn(`No active tokens for user: ${userId}`)
@@ -38,7 +38,7 @@ const notifyUser = async (userId, { title, body, data = {}, priority = 'normal' 
   let failureCount = 0
   for (const token of tokens) {
     // eslint-disable-next-line no-await-in-loop
-    const r = await sendToDeviceWithRetry({ token, title, body, data, priority })
+    const r = await sendToDeviceWithRetry({ token, title, body, data, priority, imageUrl })
     if (r && r.success) successCount++
     else failureCount++
   }
@@ -49,7 +49,7 @@ const notifyUser = async (userId, { title, body, data = {}, priority = 'normal' 
 /**
  * Multiple users ko notification bhejo
  */
-const notifyMultipleUsers = async (userIds, { title, body, data = {}, priority = 'normal' }) => {
+const notifyMultipleUsers = async (userIds, { title, body, data = {}, priority = 'normal', imageUrl = null }) => {
   const tokenDocs = await getMultipleUserTokens(userIds)
   const tokens = tokenDocs.map((t) => t.token)
 
@@ -58,7 +58,7 @@ const notifyMultipleUsers = async (userIds, { title, body, data = {}, priority =
     return { success: false, tokensFound: 0, successCount: 0, failureCount: 0 }
   }
 
-  const result = await sendToMultipleDevices({ tokens, title, body, data, priority })
+  const result = await sendToMultipleDevices({ tokens, title, body, data, priority, imageUrl })
   const successCount = result?.successCount ?? 0
   const failureCount = result?.failureCount ?? 0
   const responses = Array.isArray(result?.responses) ? result.responses : []
@@ -182,12 +182,14 @@ const sendPresenceAlarm = async (helperIds, presenceRequest, helpersNearby = [])
     const distanceMeters = helper ? helper.distanceMeters : 0
 
     // eslint-disable-next-line no-await-in-loop
+    const requesterIdRaw = presenceRequest.requesterId?._id || presenceRequest.requesterId
     const r = await notifyUser(String(helperId), {
       title: 'Socius . Presence Alert',
       body: String(presenceRequest.description || 'Someone nearby needs support').slice(0, 140),
       data: {
         type: NOTIFICATION_TYPE.PRESENCE_ALARM,
         requestId: String(presenceRequest._id),
+        requesterId: requesterIdRaw ? String(requesterIdRaw) : '',
         situationType: presenceRequest.situationType,
         requesterName,
         description: presenceRequest.description || '',
@@ -226,7 +228,16 @@ const sendMatchedNotification = async (requesterId, helperName, requestId) => {
  */
 const sendChatNotification = async (
   receiverId,
-  { senderName, preview, sessionId, requestId, messageType = 'text', recipientRole = '' }
+  {
+    senderName,
+    senderImage = '',
+    preview,
+    sessionId,
+    requestId,
+    messageType = 'text',
+    recipientRole = '',
+    requestType = 'HelpRequest',
+  }
 ) => {
   const prev = String(preview || '').slice(0, 180)
   await notifyUser(String(receiverId), {
@@ -235,9 +246,11 @@ const sendChatNotification = async (
       sessionId: String(sessionId || ''),
       requestId: String(requestId || ''),
       senderName: String(senderName || 'Someone'),
+      senderImage: String(senderImage || ''),
       preview: prev,
       messageType: String(messageType || 'text'),
       recipientRole: String(recipientRole || ''),
+      requestType: String(requestType || 'HelpRequest'),
     },
     priority: NOTIFICATION_PRIORITY.NORMAL,
   })

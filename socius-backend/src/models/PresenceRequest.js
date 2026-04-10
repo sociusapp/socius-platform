@@ -37,7 +37,7 @@ const presenceRequestSchema = new mongoose.Schema(
         type: [Number], // [longitude, latitude]
         required: true,
       },
-      address: { type: String, default: null },
+      address: { type: String, default: null, maxlength: 500 },
     },
 
     // Status

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -7,10 +7,39 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useResponsive } from '../../../../utils/responsive';
 import MotionView from '../../../../components/common/MotionView';
 import MotionPressable from '../../../../components/common/MotionPressable';
+import { loadAuth } from '../../../../services/storage/asyncStorage.service';
+import { getPresenceById } from '../../../../services/api/needPresence.api';
+import { isCurrentUserPresenceRequester } from '../../../../utils/presenceRole';
 
 const SafetyGuidanceScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
   const { requestId } = route.params || {};
+  const redirectedRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!requestId || redirectedRef.current) return;
+      try {
+        const auth = await loadAuth();
+        const token = auth?.accessToken;
+        const myId = auth?.user?._id || auth?.user?.id || auth?.userId;
+        if (!token || !myId) return;
+        const res = await getPresenceById(token, requestId);
+        if (cancelled || !res?.success) return;
+        const payload = res.data;
+        const reqDoc = payload?.request || payload;
+        if (isCurrentUserPresenceRequester(reqDoc, myId)) {
+          redirectedRef.current = true;
+          navigation.replace('NearbyMap', { requestId, mode: 'requester' });
+        }
+      } catch {
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [requestId, navigation]);
 
   const handleContinue = () => {
     navigation.navigate('NearbyMap', { requestId, mode: 'helper' });

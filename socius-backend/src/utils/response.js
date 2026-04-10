@@ -17,25 +17,26 @@ const created = (res, data = null, message = 'Created successfully') => {
   return success(res, data, message, 201)
 }
 
-const error = (res, message = 'Something went wrong', statusCode = 500, errors = null) => {
+const error = (res, message = 'Something went wrong', statusCode = 500, errors = null, code = null) => {
   const response = {
     success: false,
     message,
   }
   if (errors) response.errors = errors
+  if (code) response.code = code
   return res.status(statusCode).json(response)
 }
 
-const badRequest = (res, message = 'Bad request', errors = null) => {
-  return error(res, message, 400, errors)
+const badRequest = (res, message = 'Bad request', errors = null, code = null) => {
+  return error(res, message, 400, errors, code)
 }
 
-const unauthorized = (res, message = 'Unauthorized') => {
-  return error(res, message, 401)
+const unauthorized = (res, message = 'Unauthorized', code = null) => {
+  return error(res, message, 401, null, code)
 }
 
-const forbidden = (res, message = 'Forbidden') => {
-  return error(res, message, 403)
+const forbidden = (res, message = 'Forbidden', code = null) => {
+  return error(res, message, 403, null, code)
 }
 
 const notFound = (res, message = 'Not found') => {

@@ -1,253 +1,285 @@
-import React, { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { useAlert } from '../hooks/useAlert';
+import toast from 'react-hot-toast';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
+import { api } from '../services/api/client';
+
+const SITUATION_LABELS = {
+  need_calm_presence: 'Calm presence',
+  being_followed: 'Being followed',
+  feeling_unsafe: 'Feeling unsafe',
+  other: 'Other',
+};
+
+const STATUS_LABELS = {
+  active: 'Active',
+  helpers_notified: 'Helpers notified',
+  helpers_accepted: 'Helpers accepted',
+  closed: 'Closed',
+  cancelled: 'Cancelled',
+  auto_closed: 'Auto-closed',
+};
+
+const CLOSURE_OPTIONS = [
+  { value: 'situation_changed', label: 'Situation changed' },
+  { value: 'no_longer_needed', label: 'No longer needed' },
+  { value: 'calm_mediation', label: 'Calm mediation' },
+  { value: 'chose_to_step_away', label: 'Chose to step away' },
+  { value: 'emergency_services_called', label: 'Emergency services involved' },
+];
+
+const formatTime = (iso) => {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString();
+  } catch {
+    return String(iso);
+  }
+};
 
 const LiveAwarenessDetailsPage = () => {
   const { id } = useParams();
-  const { confirm, toast } = useAlert();
-  const [processingAction, setProcessingAction] = useState(null);
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [detail, setDetail] = useState(null);
+  const [error, setError] = useState(null);
+  const [closing, setClosing] = useState(false);
+  const [closureReason, setClosureReason] = useState('situation_changed');
 
-  const handleFreeze = async () => {
-    const result = await confirm({
-      title: 'Freeze Awareness?',
-      text: "This will stop all updates and interactions for this awareness request.",
-      icon: 'warning',
-      confirmButtonText: 'Yes, freeze it',
-      confirmButtonColor: 'bg-red-600 hover:bg-red-700 text-white',
-    });
-    
-    if (result.isConfirmed) {
-      setProcessingAction('freeze');
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      setProcessingAction(null);
-      toast.success('Awareness frozen successfully');
+  const load = useCallback(async () => {
+    if (!id) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.get(`/admin/presence-requests/${encodeURIComponent(id)}`);
+      const body = res?.data;
+      if (body?.success && body.data) setDetail(body.data);
+      else {
+        setDetail(null);
+        setError(body?.message || 'Could not load presence request');
+      }
+    } catch (e) {
+      setDetail(null);
+      setError(e?.response?.data?.message || e?.message || 'Failed to load');
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const request = detail?.request;
+  const timeline = useMemo(() => {
+    const ev = detail?.activityTimeline;
+    if (!Array.isArray(ev)) return [];
+    return [...ev].sort((a, b) => new Date(a.at) - new Date(b.at));
+  }, [detail]);
+
+  const summary = useMemo(() => {
+    if (!request) return null;
+    const st = request.situationType ? SITUATION_LABELS[request.situationType] || request.situationType : '—';
+    const stat = request.status ? STATUS_LABELS[request.status] || request.status : '—';
+    return { situationLabel: st, statusLabel: stat };
+  }, [request]);
+
+  const handleAdminClose = async () => {
+    if (!id || !request) return;
+    const isTerminal = ['closed', 'cancelled', 'auto_closed'].includes(String(request.status || ''));
+    if (isTerminal) {
+      toast.error('This request is already closed');
+      return;
+    }
+    if (!window.confirm('Close this presence request for the requester? Responders and chats will be wound down.')) {
+      return;
+    }
+    setClosing(true);
+    try {
+      await api.post(`/admin/presence-requests/${encodeURIComponent(id)}/close`, {
+        closureReason,
+      });
+      toast.success('Presence request closed');
+      await load();
+    } catch (e) {
+      toast.error(e?.response?.data?.message || e?.message || 'Close failed');
+    } finally {
+      setClosing(false);
     }
   };
 
-  const handleMerge = async () => {
-    const result = await confirm({
-      title: 'Merge Awareness?',
-      text: "Select another awareness request to merge this into.",
-      icon: 'info',
-      confirmButtonText: 'Proceed to merge',
-    });
-    
-    if (result.isConfirmed) {
-      setProcessingAction('merge');
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      setProcessingAction(null);
-      toast.success('Merge wizard opened');
-    }
-  };
+  if (loading && !detail) {
+    return (
+      <div className="p-6 max-w-6xl mx-auto text-gray-500 dark:text-gray-400">Loading…</div>
+    );
+  }
 
-  const handleClose = async () => {
-    const result = await confirm({
-      title: 'Close Awareness?',
-      text: "This will mark the request as resolved/closed.",
-      icon: 'question',
-      confirmButtonText: 'Yes, close it',
-    });
-    
-    if (result.isConfirmed) {
-      setProcessingAction('close');
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      setProcessingAction(null);
-      toast.success('Awareness closed successfully');
-    }
-  };
+  if (error || !request) {
+    return (
+      <div className="p-6 max-w-6xl mx-auto space-y-4">
+        <p className="text-red-600 dark:text-red-400">{error || 'Not found'}</p>
+        <Link to="/live-awareness" className="text-socius-red underline text-sm">
+          Back to live monitor
+        </Link>
+      </div>
+    );
+  }
 
-  // Mock data to match the screenshot exactly
-  // In a real app, you would fetch this based on the `id`
-  const incidentData = {
-    id: 'AWR-23918',
-    category: 'Calm Presence',
-    status: 'Open',
-    createdAt: '12:42 PM',
-    timeActive: '18 minutes',
-    timeline: [
-      { time: '12:42 PM', event: 'Awareness created', type: 'normal' },
-      { time: '12:45 PM', event: 'First views by nearby users', type: 'normal' },
-      { time: '12:50 PM', event: '5 volunteers viewed', type: 'normal' },
-      { time: '12:58 PM', event: 'Flag raised: Repeated requests', type: 'alert' },
-    ],
-    stats: {
-      usersViewed: 7,
-      volunteersOpened: 3,
-      volunteersNearby: 1
-    },
-    flag: {
-      type: 'Repeated Requests',
-      source: 'System'
-    }
-  };
+  const rs = detail?.responderSummary || {};
+  const reqId = request._id || id;
+  const isClosed = ['closed', 'cancelled', 'auto_closed'].includes(String(request.status || ''));
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-800 dark:text-white">
-          Awareness ID: {incidentData.id}
-        </h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Live awareness request — information view only
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Need Presence · details</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 font-mono break-all">{String(reqId)}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+            Data from{' '}
+            <code className="rounded bg-gray-100 dark:bg-gray-800 px-1">GET /api/admin/presence-requests/:id</code>
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" className="text-sm" onClick={() => navigate('/live-awareness')}>
+            Back to list
+          </Button>
+          <Button
+            variant="secondary"
+            className="text-sm"
+            onClick={() => navigate(`/daily-help/presence/${id}`)}
+          >
+            Open in request queues
+          </Button>
+        </div>
       </div>
 
-      {/* Awareness Summary Card */}
       <Card className="p-6">
-        <h2 className="text-lg font-bold text-socius-red mb-4">Awareness Summary</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-12">
-          <div className="space-y-4">
-            <div className="flex">
-              <span className="text-gray-500 dark:text-gray-400 w-24">Category:</span>
-              <span className="font-bold text-gray-800 dark:text-white">{incidentData.category}</span>
-            </div>
-            <div className="flex">
-              <span className="text-gray-500 dark:text-gray-400 w-24">Created at:</span>
-              <span className="font-bold text-gray-800 dark:text-white">{incidentData.createdAt}</span>
-            </div>
+        <h2 className="text-lg font-bold text-socius-red mb-4">Summary</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-12 text-sm">
+          <div className="flex gap-2">
+            <span className="text-gray-500 dark:text-gray-400 w-28 shrink-0">Situation</span>
+            <span className="font-semibold text-gray-800 dark:text-white">{summary?.situationLabel}</span>
           </div>
-          <div className="space-y-4">
-            <div className="flex">
-              <span className="text-gray-500 dark:text-gray-400 w-24">Status:</span>
-              <span className="font-bold text-gray-800 dark:text-white">{incidentData.status}</span>
-            </div>
-            <div className="flex">
-              <span className="text-gray-500 dark:text-gray-400 w-24">Time active:</span>
-              <span className="font-bold text-gray-800 dark:text-white">{incidentData.timeActive}</span>
-            </div>
+          <div className="flex gap-2">
+            <span className="text-gray-500 dark:text-gray-400 w-28 shrink-0">Status</span>
+            <span className="font-semibold text-gray-800 dark:text-white">{summary?.statusLabel}</span>
           </div>
+          <div className="flex gap-2 md:col-span-2">
+            <span className="text-gray-500 dark:text-gray-400 w-28 shrink-0">Created</span>
+            <span className="text-gray-800 dark:text-white">{formatTime(request.createdAt)}</span>
+          </div>
+          {request.description ? (
+            <div className="flex gap-2 md:col-span-2">
+              <span className="text-gray-500 dark:text-gray-400 w-28 shrink-0">Note</span>
+              <span className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{request.description}</span>
+            </div>
+          ) : null}
         </div>
       </Card>
 
-      {/* Awareness Timeline */}
       <Card className="p-6">
-        <h2 className="text-lg font-bold text-socius-red mb-4">Awareness Timeline</h2>
+        <h2 className="text-lg font-bold text-socius-red mb-4">Activity timeline</h2>
         <div className="space-y-0">
-          {incidentData.timeline.map((item, index) => (
-            <motion.div 
-              key={index}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: index * 0.1 }}
-              className="flex items-start border-b border-gray-100 dark:border-gray-700 last:border-0 py-3 first:pt-0 last:pb-0"
-            >
-              <div className="flex-shrink-0 mr-4 mt-1.5">
-                <div className={`h-3 w-3 rounded-full border-2 ${item.type === 'alert' ? 'bg-orange-500 border-orange-500' : 'bg-white border-gray-300 dark:bg-gray-700 dark:border-gray-500'}`}></div>
-              </div>
-              <div className="flex-1 flex items-center">
-                <span className="text-sm font-bold text-gray-800 dark:text-white w-24">{item.time}</span>
-                <span className="text-gray-300 dark:text-gray-600 mx-3">|</span>
-                <span className="text-sm text-gray-600 dark:text-gray-300">
-                  {item.event.includes('Flag raised:') ? (
-                    <>
-                      Flag raised: <span className="text-red-600 font-bold">{item.event.split('Flag raised: ')[1]}</span>
-                    </>
-                  ) : (
-                    item.event
-                  )}
-                </span>
-              </div>
-            </motion.div>
-          ))}
+          {timeline.length === 0 ? (
+            <p className="text-sm text-gray-500">No timeline events.</p>
+          ) : (
+            timeline.map((item, index) => (
+              <motion.div
+                key={`${item.at}-${index}`}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: Math.min(index * 0.03, 0.4) }}
+                className="flex items-start border-b border-gray-100 dark:border-gray-700 last:border-0 py-3 first:pt-0 last:pb-0"
+              >
+                <div className="flex-shrink-0 mr-4 mt-1.5">
+                  <div
+                    className={`h-3 w-3 rounded-full border-2 ${
+                      item.kind === 'message'
+                        ? 'bg-blue-500 border-blue-500'
+                        : 'bg-white border-gray-300 dark:bg-gray-700 dark:border-gray-500'
+                    }`}
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs text-gray-500 dark:text-gray-400">{formatTime(item.at)}</div>
+                  <div className="text-sm text-gray-800 dark:text-gray-200 mt-0.5">{item.label}</div>
+                </div>
+              </motion.div>
+            ))
+          )}
         </div>
       </Card>
 
-      {/* Two Column Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Participation Overview */}
-        <Card className="flex flex-col p-0 overflow-hidden">
-          <div className="p-6 flex-1">
-            <h2 className="text-lg font-bold text-gray-700 dark:text-gray-200 mb-6 border-b border-gray-200 dark:border-gray-700 pb-2">Participation Overview</h2>
-            <div className="grid grid-cols-3 gap-4 text-center">
-              <div>
-                <div className="text-4xl font-bold text-gray-800 dark:text-white mb-2">{incidentData.stats.usersViewed}</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 leading-tight">Users who viewed awareness</div>
-              </div>
-              <div>
-                <div className="text-4xl font-bold text-gray-800 dark:text-white mb-2">{incidentData.stats.volunteersOpened}</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 leading-tight">Volunteers who opened details</div>
-              </div>
-              <div>
-                <div className="text-4xl font-bold text-gray-800 dark:text-white mb-2">{incidentData.stats.volunteersNearby}</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 leading-tight">Volunteers marked "nearby"</div>
-              </div>
+        <Card className="p-6">
+          <h2 className="text-lg font-bold text-gray-700 dark:text-gray-200 mb-4">Responder overview</h2>
+          <div className="grid grid-cols-2 gap-4 text-center text-sm">
+            <div>
+              <div className="text-3xl font-bold text-gray-800 dark:text-white">{Number(request.totalNotified) || 0}</div>
+              <div className="text-xs text-gray-500 mt-1">Notified</div>
             </div>
-          </div>
-          <div className="bg-gray-50 dark:bg-gray-700/50 px-6 py-3 border-t border-gray-200 dark:border-gray-700 rounded-b-lg">
-            <p className="text-xs text-center text-gray-500 dark:text-gray-400">
-              Participation is voluntary and self-reported.
-            </p>
+            <div>
+              <div className="text-3xl font-bold text-gray-800 dark:text-white">{Number(request.totalAccepted) || 0}</div>
+              <div className="text-xs text-gray-500 mt-1">Accepted</div>
+            </div>
+            <div>
+              <div className="text-3xl font-bold text-gray-800 dark:text-white">{rs.total ?? 0}</div>
+              <div className="text-xs text-gray-500 mt-1">Match rows</div>
+            </div>
+            <div>
+              <div className="text-3xl font-bold text-gray-800 dark:text-white">{rs.accepted ?? 0}</div>
+              <div className="text-xs text-gray-500 mt-1">Active accepts</div>
+            </div>
           </div>
         </Card>
 
-        {/* Safety Flags */}
         <Card className="p-6">
-          <h2 className="text-lg font-bold text-socius-red mb-6 border-b border-gray-200 dark:border-gray-700 pb-2">Safety Flags</h2>
-          <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-md p-4 flex items-start">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-orange-500 mr-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            <div>
-              <h3 className="text-sm font-bold text-gray-800 dark:text-white">{incidentData.flag.type}</h3>
-              <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">Flag Source: {incidentData.flag.source}</p>
+          <h2 className="text-lg font-bold text-socius-red mb-4">Safety signals</h2>
+          {request.emergencyServicesCalled ? (
+            <div className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3 text-sm text-amber-900 dark:text-amber-100">
+              Emergency services flagged on this request.
             </div>
-          </div>
+          ) : (
+            <p className="text-sm text-gray-600 dark:text-gray-400">No emergency-services flag recorded.</p>
+          )}
         </Card>
       </div>
 
-      {/* Admin Actions */}
       <Card className="p-6">
-        <h2 className="text-lg font-bold text-gray-700 dark:text-gray-200 mb-4 border-b border-gray-200 dark:border-gray-700 pb-2">Admin Actions</h2>
-        <div className="flex flex-wrap gap-4 mb-6">
-          <Button 
-            variant="primary" 
-            className="bg-blue-700 hover:bg-blue-800 border-transparent" 
-            onClick={handleFreeze}
-            loading={processingAction === 'freeze'}
-            disabled={processingAction !== null}
-          >
-            Freeze Awareness
-          </Button>
-          <Button 
-            variant="secondary" 
-            className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-white" 
-            onClick={handleMerge}
-            loading={processingAction === 'merge'}
-            disabled={processingAction !== null}
-          >
-            Merge with Another Awareness
-          </Button>
-          <Button 
-            variant="secondary" 
-            className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-white" 
-            onClick={handleClose}
-            loading={processingAction === 'close'}
-            disabled={processingAction !== null}
-          >
-            Close Awareness
-          </Button>
-        </div>
-        
-        <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-           <p className="text-sm italic text-gray-500 dark:text-gray-400">
-             This platform provides awareness visibility only. No actions taken by users or volunteers are directed or coordinated by Socius.
-           </p>
+        <h2 className="text-lg font-bold text-gray-700 dark:text-gray-200 mb-4">Admin actions</h2>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+          Freeze / merge are not implemented. You can close the request (same effect as operational closure) or open the
+          full tabbed view in Request queues.
+        </p>
+        <div className="flex flex-col sm:flex-row sm:items-end gap-4 flex-wrap">
+          {!isClosed ? (
+            <>
+              <div className="min-w-[12rem]">
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Closure reason</label>
+                <select
+                  value={closureReason}
+                  onChange={(e) => setClosureReason(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm p-2 text-gray-900 dark:text-white"
+                >
+                  {CLOSURE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <Button variant="primary" onClick={handleAdminClose} loading={closing} disabled={closing} className="bg-red-700 hover:bg-red-800 border-transparent">
+                Close presence request
+              </Button>
+            </>
+          ) : (
+            <p className="text-sm text-gray-500">This request is already in a terminal state.</p>
+          )}
         </div>
       </Card>
-
-      {/* Footer System Log */}
-      <div className="pt-2">
-        <p className="text-xs text-gray-400 dark:text-gray-500">
-          Internal system view — access logged
-        </p>
-      </div>
     </div>
   );
 };
