@@ -27,10 +27,10 @@ import MotionView from '../../components/common/MotionView';
 import MotionPressable from '../../components/common/MotionPressable';
 import { ScrollView as GHScrollView } from 'react-native-gesture-handler';
 
-import DailyHelpRequestCard from '../../components/DailyHelp/cards/DailyHelpRequestCard';
-import NeedPresenceRequestCard from '../../components/NeedPresence/cards/NeedPresenceRequestCard';
-import DailyHelpHistoryCard from '../../components/DailyHelp/cards/DailyHelpHistoryCard';
-import NeedPresenceHistoryCard from '../../components/NeedPresence/cards/NeedPresenceHistoryCard';
+import DailyHelpRequestCard from '../../features/daily-help/components/cards/DailyHelpRequestCard';
+import NeedPresenceRequestCard from '../../features/need-presence/components/cards/NeedPresenceRequestCard';
+import DailyHelpHistoryCard from '../../features/daily-help/components/cards/DailyHelpHistoryCard';
+import NeedPresenceHistoryCard from '../../features/need-presence/components/cards/NeedPresenceHistoryCard';
 
 const HomeScreen = ({ navigation }) => {
   const { width: SCREEN_WIDTH } = useWindowDimensions();

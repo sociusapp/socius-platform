@@ -6,7 +6,7 @@ const PresenceRequest = require('../models/PresenceRequest')
 const HelpCategory = require('../models/HelpCategory')
 const Badge = require('../models/Badge')
 const User = require('../models/User')
-const { findHelpersForRequest } = require('./location.service')
+const { findHelpersForRequest, getBusyRequesterIdSet } = require('./location.service')
 const {
   sendHelpRequestAlert,
   sendMatchedNotification,
@@ -18,7 +18,7 @@ const {
   sendBorrowItemRequestNotification,
   sendOfferItemRequestNotification,
 } = require('./notification.service')
-const { findNearbyAvailableUsers } = require('../utils/geoQuery')
+const { findNearbyAvailableUsers, calculateDistance } = require('../utils/geoQuery')
 const { parseRequestedDurationMinutes } = require('../utils/helpDuration')
 const {
   updateHelpRequestLocation,
@@ -1440,6 +1440,200 @@ const respondBorrowItemRequest = async (helperId, requestId, borrowId, { action 
   return { item }
 }
 
+// ─── Late / incremental helper notifications (open + matching requests) ─────
+
+const PENDING_RETRY_COOLDOWN_MS = 90 * 1000
+
+/**
+ * One helper + one open help request: create HelpMatch if needed, send FCM if not already notified.
+ * Safe to call repeatedly (cron + availability toggle).
+ */
+const tryNotifyHelperForOpenHelpRequest = async (helperId, requestId) => {
+  const helperIdStr = String(helperId)
+  const requestIdStr = String(requestId)
+
+  const req = await HelpRequest.findById(requestIdStr)
+    .select('status requesterId location category categoryName categoryIcon description')
+    .lean()
+  if (!req) return
+
+  const st = String(req.status || '').toLowerCase()
+  if (![HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING].includes(st)) return
+
+  const requesterIdStr = String(req.requesterId || '')
+  if (!requesterIdStr || helperIdStr === requesterIdStr) return
+
+  const anyAccepted = await HelpMatch.findOne({
+    requestId: requestIdStr,
+    status: HELP_MATCH_STATUS.ACCEPTED,
+  })
+    .select('_id')
+    .lean()
+  if (anyAccepted) return
+
+  const coords = req.location?.coordinates
+  if (!Array.isArray(coords) || coords.length !== 2) return
+
+  const helperUser = await User.findById(helperIdStr).select('location isAvailable accountStatus isDeleted').lean()
+  if (!helperUser || helperUser.isDeleted || !helperUser.isAvailable) return
+  const hCoords = helperUser.location?.coordinates
+  if (!Array.isArray(hCoords) || hCoords.length !== 2) return
+
+  const dist = calculateDistance(coords[0], coords[1], hCoords[0], hCoords[1])
+  if (dist > GEO.DEFAULT_RADIUS_METERS) return
+
+  try {
+    const { getBlacklistedHelpersForRequester } = require('./requestClosure.service')
+    const blocked = await getBlacklistedHelpersForRequester(requesterIdStr)
+    if (blocked.includes(helperIdStr)) return
+  } catch (e) {
+    logger.error('[tryNotifyHelperForOpenHelpRequest] blacklist read failed', e)
+  }
+
+  try {
+    const busy = await getBusyRequesterIdSet([helperIdStr])
+    if (busy.has(helperIdStr)) return
+  } catch (e) {
+    logger.error('[tryNotifyHelperForOpenHelpRequest] busy check failed', e)
+  }
+
+  const existing = await HelpMatch.findOne({ requestId: requestIdStr, helperId: helperIdStr }).lean()
+  if (existing) {
+    const ms = String(existing.status || '').toLowerCase()
+    if (['declined', 'not_available', 'cancelled', 'completed', 'accepted'].includes(ms)) return
+    if (ms === HELP_MATCH_STATUS.NOTIFIED || ms === 'notified') return
+    if (ms === HELP_MATCH_STATUS.PENDING || ms === 'pending') {
+      const last = new Date(existing.markedDeliveredAt || existing.notifiedAt || existing.createdAt).getTime()
+      if (Date.now() - last < PENDING_RETRY_COOLDOWN_MS) return
+    }
+  }
+
+  const requestDoc = await HelpRequest.findById(requestIdStr)
+  if (!requestDoc) return
+
+  const helperObj = { _id: helperIdStr, distanceMeters: dist }
+
+  if (!existing) {
+    try {
+      await HelpMatch.create({
+        requestId: requestIdStr,
+        helperId: helperIdStr,
+        status: HELP_MATCH_STATUS.PENDING,
+        distanceMeters: dist,
+        notifiedAt: new Date(),
+      })
+    } catch (e) {
+      if (e && e.code !== 11000) throw e
+    }
+  }
+
+  const alertResult = await sendHelpRequestAlert([helperObj], requestDoc)
+  const delivered = Array.isArray(alertResult?.deliveredHelperIds)
+    ? alertResult.deliveredHelperIds.map(String)
+    : []
+  if (delivered.includes(helperIdStr)) {
+    await HelpMatch.updateOne(
+      { requestId: requestIdStr, helperId: helperIdStr, status: HELP_MATCH_STATUS.PENDING },
+      {
+        $set: {
+          status: HELP_MATCH_STATUS.NOTIFIED,
+          markedDeliveredAt: new Date(),
+          distanceMeters: dist,
+        },
+      }
+    )
+    await emitHelpRequestStatsUpdate({
+      requestId: requestIdStr,
+      requesterId: requesterIdStr,
+      type: 'notified',
+      extra: { deliveredCount: 1, incremental: true },
+    })
+  }
+
+  try {
+    emitToUser(helperIdStr, 'help:incoming_request', {
+      requestId: requestIdStr,
+      requesterId: requesterIdStr,
+      category: requestDoc.category || '',
+      categoryName: requestDoc.categoryName || '',
+      categoryIcon: requestDoc.categoryIcon || '',
+      description: requestDoc.description || '',
+      distanceMeters: String(Math.round(dist)),
+      area: requestDoc.location?.address || '',
+    })
+  } catch (e) {
+    logger.error('help:incoming_request emit failed (incremental)', e)
+  }
+
+  if (delivered.includes(helperIdStr) && st === HELP_REQUEST_STATUS.MATCHING) {
+    await HelpRequest.updateOne(
+      { _id: requestIdStr, status: HELP_REQUEST_STATUS.MATCHING },
+      { $set: { status: HELP_REQUEST_STATUS.OPEN } }
+    )
+  }
+}
+
+/**
+ * Helper ne availability ON kiya / location update — Redis ke aas-paas ke open requests scan karke notify.
+ */
+const notifyMatchingHelpRequestsForHelper = async (helperId) => {
+  const helperIdStr = String(helperId)
+  const user = await User.findById(helperIdStr).select('location isAvailable isDeleted').lean()
+  if (!user || user.isDeleted || !user.isAvailable) return
+  const coords = user.location?.coordinates
+  if (!Array.isArray(coords) || coords.length !== 2) return
+  const [lng, lat] = coords
+
+  let ids = await getNearbyHelpRequestIds(lng, lat, GEO.DEFAULT_RADIUS_METERS)
+  if (!ids || !ids.length) return
+  ids = [...new Set(ids.map(String))].slice(0, 50)
+
+  for (const rid of ids) {
+    try {
+      await tryNotifyHelperForOpenHelpRequest(helperIdStr, rid)
+    } catch (e) {
+      logger.error(`[notifyMatchingHelpRequestsForHelper] rid=${rid}`, e)
+    }
+  }
+}
+
+/**
+ * Cron: har open/matching request ke liye abhi radius me jo helpers available hain unko notify (incremental).
+ */
+const notifyMissingHelpersForOpenRequestsBatch = async () => {
+  const reqs = await HelpRequest.find({
+    status: { $in: [HELP_REQUEST_STATUS.OPEN, HELP_REQUEST_STATUS.MATCHING] },
+  })
+    .select('_id requesterId location category')
+    .limit(35)
+    .lean()
+
+  for (const req of reqs) {
+    let helpers = []
+    try {
+      const coords = req.location?.coordinates
+      if (!Array.isArray(coords) || coords.length !== 2) continue
+      helpers = await findHelpersForRequest({
+        lng: coords[0],
+        lat: coords[1],
+        category: req.category,
+        excludeIds: [req.requesterId],
+      })
+    } catch (e) {
+      logger.error('[notifyMissingHelpersForOpenRequestsBatch] findHelpers failed', e)
+      continue
+    }
+
+    for (const h of helpers) {
+      try {
+        await tryNotifyHelperForOpenHelpRequest(String(h._id), String(req._id))
+      } catch (e) {
+        logger.error('[notifyMissingHelpersForOpenRequestsBatch] notify failed', e)
+      }
+    }
+  }
+}
+
 module.exports = {
   createRequest,
   updateRequest,
@@ -1456,4 +1650,6 @@ module.exports = {
   getBorrowItems,
   respondBorrowItemRequest,
   respondOfferItemRequest,
+  notifyMatchingHelpRequestsForHelper,
+  notifyMissingHelpersForOpenRequestsBatch,
 }

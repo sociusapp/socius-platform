@@ -1,6 +1,7 @@
 package com.socius.app
 import android.os.Build
 import android.os.Bundle
+import androidx.appcompat.app.AppCompatDelegate
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
@@ -11,6 +12,7 @@ import expo.modules.splashscreen.SplashScreenManager
 
 class MainActivity : ReactActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
+    AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO)
     SplashScreenManager.registerOnActivity(this)
     super.onCreate(null)
   }

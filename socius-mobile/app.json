@@ -3,6 +3,7 @@
     "name": "Socius",
     "slug": "Socius",
     "scheme": "socius",
+    "userInterfaceStyle": "light",
     "version": "1.0.0",
     "newArchEnabled": true,
     "orientation": "portrait",

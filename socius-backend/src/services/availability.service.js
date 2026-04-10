@@ -5,6 +5,7 @@ const { isValidCoordinates } = require('../utils/geoQuery')
 const logger = require('../utils/logger')
 const { updateUserLocation, removeUserLocation, del } = require('../config/redis')
 const { emitToUser } = require('../config/socket')
+const { notifyMatchingHelpRequestsForHelper } = require('./helpRequest.service')
 
 /**
  * Availability toggle karo
@@ -75,6 +76,12 @@ const toggleAvailability = async (userId, { isAvailable, location }) => {
 
   logger.info(`Availability toggled: ${userId} → ${isAvailable}`)
 
+  if (isAvailable) {
+    notifyMatchingHelpRequestsForHelper(userId).catch((e) =>
+      logger.error('[availability] notifyMatchingHelpRequestsForHelper failed', e)
+    )
+  }
+
   try {
     const matches = await PresenceMatch.find({
       helperId: userId,
@@ -132,6 +139,13 @@ const updateLocation = async (userId, { lng, lat }) => {
 
   // REDIS UPDATE
   updateUserLocation(userId, lng, lat).catch(e => logger.error('Redis location update failed', e))
+
+  const u = await User.findById(userId).select('isAvailable').lean()
+  if (u?.isAvailable) {
+    notifyMatchingHelpRequestsForHelper(userId).catch((e) =>
+      logger.error('[availability] notifyMatchingHelpRequestsForHelper (location) failed', e)
+    )
+  }
 
   return { updated: true }
 }

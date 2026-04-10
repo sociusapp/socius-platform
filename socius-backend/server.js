@@ -19,6 +19,7 @@ const { runHelpRequestExpiryWarnings } = require('./src/jobs/helpRequestExpiryWa
 const { runHelpSessionCompletionPrompts } = require('./src/jobs/helpSessionCompletion.job')
 const { cleanupOldChats } = require('./src/jobs/cleanup.job')
 const { runSubscriptionCheck } = require('./src/jobs/subscriptionCheck.job')
+const { notifyMissingHelpersForOpenRequestsBatch } = require('./src/services/helpRequest.service')
 
 const app = express()
 
@@ -210,6 +211,15 @@ const start = async () => {
         await runSubscriptionCheck()
       } catch (err) {
         console.error('Subscription check job failed:', err)
+      }
+    })
+
+    // Daily Help: naye available helpers / radius me aane wale users ko open requests par notify (incremental)
+    cron.schedule('*/2 * * * *', async () => {
+      try {
+        await notifyMissingHelpersForOpenRequestsBatch()
+      } catch (err) {
+        console.error('Help request helper broadcast job failed:', err)
       }
     })
     

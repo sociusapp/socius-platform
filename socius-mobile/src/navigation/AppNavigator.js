@@ -16,8 +16,8 @@ import {
 } from '../services/notifications/SociusNotificationService';
 import { connectSocket, emitStatusUpdate, appEvents } from '../services/socket/socket.service';
 import CustomAlert from '../components/common/CustomAlert';
-import DailyHelpIncomingModal from '../components/DailyHelp/modals/DailyHelpIncomingModal';
-const GlobalBorrowOfferItemModal = lazy(() => import('../components/DailyHelp/GlobalBorrowOfferItemModal'));
+import DailyHelpIncomingModal from '../features/daily-help/components/modals/DailyHelpIncomingModal';
+const GlobalBorrowOfferItemModal = lazy(() => import('../features/daily-help/components/GlobalBorrowOfferItemModal'));
 import IncomingPresenceAlarmModal from '../components/notifications/IncomingPresenceAlarmModal';
 import {
   loadAuth,
@@ -37,6 +37,7 @@ import {
   handleCompletionPromptNotifeeAction,
 } from '../services/notifications/requestCompletionPrompt';
 import { stopActiveHelpSessionNotification } from '../services/notifications/activeHelpSessionNotification';
+import { refreshActiveHelpSessionNotifications } from '../services/notifications/activeHelpSessionSync';
 import { handleChatMessageFcm } from '../services/chat/chatNotificationSync';
 import { buildClosureInitiatedCopy, buildRequestClosedCopy, buildRequestAcceptedCopy, buildRequestCancelledCopy, buildNewRequestCopy, buildRequestTakenCopy } from '../utils/closureMessages';
 import NativeCallService from '../services/notifications/NativeCallService';
@@ -896,6 +897,7 @@ const AppNavigator = () => {
         (!data.recipientRole || String(data.recipientRole).toLowerCase() === 'requester')
       ) {
         await displayRequestCompletionPrompt(data);
+        void refreshActiveHelpSessionNotifications();
         return;
       }
 
@@ -907,6 +909,7 @@ const AppNavigator = () => {
           await initNotifeeChannels();
           await displaySociusUpdateNotification(data);
         }
+        void refreshActiveHelpSessionNotifications();
         return;
       }
 
@@ -1015,6 +1018,14 @@ const AppNavigator = () => {
           timestamp: new Date().toISOString()
         });
       }
+
+      if (
+        dataType === 'request_status' ||
+        lowerType === 'help_session_extended_helper' ||
+        lowerType === 'help_session_time_ended_helper'
+      ) {
+        void refreshActiveHelpSessionNotifications();
+      }
       
       if (dataType === 'request_status') {
         if (data.requestId) {
@@ -1024,7 +1035,11 @@ const AppNavigator = () => {
           }
         }
         if (['cancelled', 'closed', 'closing', 'auto_closed'].includes(status)) {
-          stopActiveHelpSessionNotification().catch(() => {});
+          if (data.requestId) {
+            stopActiveHelpSessionNotification(String(data.requestId)).catch(() => {});
+          } else {
+            stopActiveHelpSessionNotification().catch(() => {});
+          }
         }
         if (status === 'matched' || status === 'accepted') {
           const rid = data.requestId;
@@ -1374,6 +1389,14 @@ const AppNavigator = () => {
     });
 
     const unsubscribeNotifeeForeground = notifee.onForegroundEvent(async ({ type, detail }) => {
+      if (type === EventType.DISMISSED && detail?.notification?.id) {
+        const nid = String(detail.notification.id);
+        if (nid === 'socius_active_help_session' || nid.startsWith('socius_active_help_session_')) {
+          void refreshActiveHelpSessionNotifications();
+        }
+        return;
+      }
+
       if (type !== EventType.ACTION_PRESS && type !== EventType.PRESS) {
         return;
       }
@@ -1749,7 +1772,7 @@ const AppNavigator = () => {
         const requestId = payload?.requestId;
         if (!requestId) return;
         if (isUserOnHelpMeetingScreen(navigationRef, requestId)) return;
-        stopActiveHelpSessionNotification().catch(() => {});
+        stopActiveHelpSessionNotification(String(requestId)).catch(() => {});
         const recipientRole =
           payload?.initiatedBy === 'requester' ? 'helper' : payload?.initiatedBy === 'helper' ? 'requester' : '';
         const copy = buildClosureInitiatedCopy({
@@ -1775,7 +1798,7 @@ const AppNavigator = () => {
         if (!requestId) return;
         void clearPendingHelpAlert(requestId);
         if (isUserOnHelpMeetingScreen(navigationRef, requestId)) return;
-        stopActiveHelpSessionNotification().catch(() => {});
+        stopActiveHelpSessionNotification(String(requestId)).catch(() => {});
         const recipientRole = payload?.userRole || payload?.role;
         const copy = buildRequestClosedCopy({
           requestId,

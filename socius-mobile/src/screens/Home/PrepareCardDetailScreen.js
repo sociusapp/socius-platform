@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
-  useColorScheme,
   Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -39,18 +38,17 @@ const resolveHero = (icon) => {
 
 const PrepareCardDetailScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
-  const isDark = useColorScheme() === 'dark';
   const initial = route?.params?.card || null;
   const paramId = route?.params?.id;
 
   const colors = useMemo(
     () => ({
-      screen: isDark ? '#0F172A' : '#FFFFFF',
-      title: isDark ? '#F1F5F9' : '#2C3E50',
-      body: isDark ? '#CBD5E1' : '#475569',
-      muted: isDark ? '#94A3B8' : '#64748B',
+      screen: '#FFFFFF',
+      title: '#2C3E50',
+      body: '#475569',
+      muted: '#64748B',
     }),
-    [isDark]
+    []
   );
 
   const [card, setCard] = useState(initial);
@@ -96,10 +94,10 @@ const PrepareCardDetailScreen = ({ navigation, route }) => {
       <Icon
         name={hero.name}
         size={scale(48)}
-        color={isDark ? '#F87171' : '#C94D4D'}
+        color="#C94D4D"
       />
     );
-  }, [hero, isDark, scale]);
+  }, [hero, scale]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.screen }]}>

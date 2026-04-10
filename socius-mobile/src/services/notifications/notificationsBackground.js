@@ -23,6 +23,7 @@ import {
 import { declineHelpAsVolunteer, declinePresenceAsVolunteer } from '../api/volunteer.api';
 import { respondBorrowItemRequest, respondOfferItemRequest } from '../api/dailyHelp.api';
 import { appEvents } from '../socket/socket.service';
+import { refreshActiveHelpSessionNotifications } from './activeHelpSessionSync';
 
 const messaging = getMessaging();
 
@@ -39,6 +40,7 @@ setBackgroundMessageHandler(messaging, async remoteMessage => {
   ) {
     await initNotifeeChannels();
     await displayRequestCompletionPrompt(data);
+    await refreshActiveHelpSessionNotifications().catch(() => {});
     return;
   }
 
@@ -128,10 +130,21 @@ setBackgroundMessageHandler(messaging, async remoteMessage => {
       },
     });
   } catch (e) {}
+
+  await refreshActiveHelpSessionNotifications().catch(() => {});
 });
 
 notifee.onBackgroundEvent(async ({ type, detail }) => {
   const { notification, pressAction } = detail;
+
+  if (type === EventType.DISMISSED && notification?.id) {
+    const nid = String(notification.id);
+    if (nid === 'socius_active_help_session' || nid.startsWith('socius_active_help_session_')) {
+      await refreshActiveHelpSessionNotifications().catch(() => {});
+    }
+    return;
+  }
+
   if (!notification || !pressAction) {
     return;
   }

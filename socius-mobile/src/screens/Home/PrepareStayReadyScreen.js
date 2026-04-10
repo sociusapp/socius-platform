@@ -7,7 +7,6 @@ import {
   RefreshControl,
   ActivityIndicator,
   TouchableOpacity,
-  useColorScheme,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -62,30 +61,28 @@ const navigateLearnChip = (navigation, chip) => {
 
 const PrepareStayReadyScreen = ({ navigation }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
-  const isDark = useColorScheme() === 'dark';
-
   const colors = useMemo(
     () => ({
-      screenBg: isDark ? '#0F172A' : '#FFFFFF',
-      pageTitle: isDark ? '#F1F5F9' : '#2C3E50',
-      pageSubtitle: isDark ? '#94A3B8' : '#666666',
-      learnTitle: isDark ? '#E2E8F0' : '#2C3E50',
-      divider: isDark ? '#334155' : '#E8EAED',
-      chipBg: isDark ? '#1E293B' : '#F5F1ED',
-      chipBorder: isDark ? '#334155' : '#E8EAED',
-      chipText: isDark ? '#E2E8F0' : '#2C3E50',
-      footerText: isDark ? '#94A3B8' : '#888888',
-      cardBg: isDark ? '#111827' : '#FFFFFF',
-      cardBorder: isDark ? '#334155' : '#E8EAED',
-      title: isDark ? '#F1F5F9' : '#2C3E50',
-      desc: isDark ? '#94A3B8' : '#666666',
-      chevron: isDark ? '#64748B' : '#999999',
-      shadowOpacity: isDark ? 0.35 : 0.06,
-      iconImageBg: isDark ? '#1E293B' : '#F1F5F9',
-      empty: isDark ? '#94A3B8' : '#666666',
-      err: isDark ? '#FCA5A5' : '#B91C1C',
+      screenBg: '#FFFFFF',
+      pageTitle: '#2C3E50',
+      pageSubtitle: '#666666',
+      learnTitle: '#2C3E50',
+      divider: '#E8EAED',
+      chipBg: '#F5F1ED',
+      chipBorder: '#E8EAED',
+      chipText: '#2C3E50',
+      footerText: '#888888',
+      cardBg: '#FFFFFF',
+      cardBorder: '#E8EAED',
+      title: '#2C3E50',
+      desc: '#666666',
+      chevron: '#999999',
+      shadowOpacity: 0.06,
+      iconImageBg: '#F1F5F9',
+      empty: '#666666',
+      err: '#B91C1C',
     }),
-    [isDark]
+    []
   );
 
   const [cards, setCards] = useState([]);
@@ -190,10 +187,10 @@ const PrepareStayReadyScreen = ({ navigation }) => {
             },
           ]}
         >
-          <SkeletonCircle size={scale(56)} style={{ marginRight: spacing(14) }} backgroundColor={isDark ? '#334155' : '#E5E7EB'} />
+          <SkeletonCircle size={scale(56)} style={{ marginRight: spacing(14) }} backgroundColor="#E5E7EB" />
           <View style={{ flex: 1 }}>
-            <SkeletonBox height={14} radius={8} style={{ marginBottom: 8 }} backgroundColor={isDark ? '#334155' : '#E5E7EB'} />
-            <SkeletonBox height={10} radius={8} width="80%" backgroundColor={isDark ? '#334155' : '#E5E7EB'} />
+            <SkeletonBox height={14} radius={8} style={{ marginBottom: 8 }} backgroundColor="#E5E7EB" />
+            <SkeletonBox height={10} radius={8} width="80%" backgroundColor="#E5E7EB" />
           </View>
         </View>
       ))}

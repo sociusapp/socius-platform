@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, useColorScheme } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../components/common/Header';
 import { useResponsive } from '../../utils/responsive';
@@ -21,16 +21,14 @@ const PrepareLearnArticleScreen = ({ navigation, route }) => {
   const title = String(route?.params?.title || '').trim() || 'Learn more';
   const content = route?.params?.content != null ? String(route.params.content) : '';
   const { contentWidth, ms, spacing, vscale } = useResponsive();
-  const isDark = useColorScheme() === 'dark';
-
   const colors = useMemo(
     () => ({
-      screen: isDark ? '#0F172A' : '#FFFFFF',
-      border: isDark ? '#334155' : '#E8EAED',
-      title: isDark ? '#F1F5F9' : '#1A1C1E',
-      body: isDark ? '#CBD5E1' : '#42474E',
+      screen: '#FFFFFF',
+      border: '#E8EAED',
+      title: '#1A1C1E',
+      body: '#42474E',
     }),
-    [isDark]
+    []
   );
 
   const paragraphs = useMemo(() => splitParagraphs(content), [content]);

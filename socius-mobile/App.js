@@ -1,10 +1,14 @@
 import React, { useEffect } from 'react';
-import { StatusBar, LogBox, Platform, PermissionsAndroid, DeviceEventEmitter } from 'react-native';
+import { StatusBar, LogBox, Platform, PermissionsAndroid, DeviceEventEmitter, Appearance } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as SplashScreen from 'expo-splash-screen';
 import AppNavigator from './src/navigation/AppNavigator';
 import { initNotifeeChannels } from './src/services/notifications/SociusNotificationService';
+import {
+  startActiveHelpSessionNotificationCoordinator,
+  stopActiveHelpSessionNotificationCoordinator,
+} from './src/services/notifications/activeHelpSessionSync';
 import { loadAuth } from './src/services/storage/asyncStorage.service';
 import { declineHelpAsVolunteer } from './src/services/api/volunteer.api';
 import { getMyActiveHelpRequest, getActivePresenceRequest } from './src/services/api/incident.api';
@@ -21,9 +25,13 @@ LogBox.ignoreLogs([
 
 const App = () => {
   useEffect(() => {
+    Appearance.setColorScheme('light');
+
     initNotifeeChannels().catch((e) => {
       console.error('[Notifee] init error at startup', e);
     });
+
+    startActiveHelpSessionNotificationCoordinator();
 
     const subscription = DeviceEventEmitter.addListener('CallDeclined', async (data) => {
       console.log('Received CallDeclined event:', data);
@@ -44,6 +52,7 @@ const App = () => {
 
     return () => {
       subscription.remove();
+      stopActiveHelpSessionNotificationCoordinator();
     };
   }, []);
 

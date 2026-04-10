@@ -18,7 +18,7 @@ export async function runCompleteFromPrompt(requestId) {
     const auth = await loadAuth();
     if (!auth?.accessToken || !requestId) return;
     await patchHelpSession(auth.accessToken, requestId, { action: 'complete' });
-    await stopActiveHelpSessionNotification().catch(() => {});
+    await stopActiveHelpSessionNotification(String(requestId)).catch(() => {});
     await notifee.cancelNotification(completionNotifId(requestId)).catch(() => {});
   } catch (e) {
     console.warn('[completionPrompt] complete failed', e);
@@ -34,6 +34,7 @@ export async function runExtendFromPrompt(requestId, minutes) {
       additionalMinutes: minutes,
     });
     await notifee.cancelNotification(completionNotifId(requestId)).catch(() => {});
+    void import('./activeHelpSessionSync').then((m) => m.refreshActiveHelpSessionNotifications());
   } catch (e) {
     console.warn('[completionPrompt] extend failed', e);
   }

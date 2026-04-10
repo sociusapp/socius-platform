@@ -8,7 +8,7 @@ import { getHome } from '../../services/api/user.api';
 import { getMyActiveHelpRequest, getActivePresenceRequest, getPresenceById } from '../../services/api/incident.api';
 import notifee from '@notifee/react-native';
 import * as ExpoSplashScreen from 'expo-splash-screen';
-import { PENDING_DAILY_HELP_PICK_KEY } from '../../components/DailyHelp/DailyHelpActivePickModalHost';
+import { PENDING_DAILY_HELP_PICK_KEY } from '../../features/daily-help/components/DailyHelpActivePickModalHost';
 
 /**
  * App bootstrap: native splash is hidden ASAP so Android 12+ doesn’t keep the tiny system icon

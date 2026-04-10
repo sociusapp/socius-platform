@@ -20,7 +20,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 // Tab Screens
 import HomeScreen from '../screens/Home/HomeScreen';
 import PrepareStayReadyScreen from '../screens/Home/PrepareStayReadyScreen';
-import CommunityScreen from '../screens/DailyHelp/CommunityScreen';
+import CommunityScreen from '../features/daily-help/screens/community/CommunityScreen';
 import ProfileScreen from '../screens/Home/ProfileScreen';
 import HomeReviewScreen from '../screens/Home/HomeReviewScreen';
 import { getHome, markFirstTimeFlag } from '../services/api/user.api';
@@ -29,7 +29,7 @@ import { requestLocationPermission, getCurrentPosition } from '../services/locat
 import { updateAvailabilityLocation } from '../services/api/incident.api';
 import { api } from '../services/api/client';
 import CustomAlert from '../components/common/CustomAlert';
-import DailyHelpActivePickModalHost from '../components/DailyHelp/DailyHelpActivePickModalHost';
+import DailyHelpActivePickModalHost from '../features/daily-help/components/DailyHelpActivePickModalHost';
 
 const Tab = createBottomTabNavigator();
 
@@ -284,7 +284,9 @@ const BottomTabNavigator = () => {
         </View>
       </Modal>
 
+      {/* Safe area for home indicator is in tabBarStyle.bottom; inner insets.bottom would leave empty space and push icons up */}
       <Tab.Navigator
+        safeAreaInsets={{ bottom: 0 }}
         screenOptions={({ route }) => ({
           headerShown: false,
           tabBarStyle: {
@@ -297,10 +299,12 @@ const BottomTabNavigator = () => {
             borderRadius: 28,
             borderWidth: 1,
             borderColor: '#E8EAED',
-            paddingVertical: 8,
-            paddingBottom: 8,
+            paddingVertical: 10,
             elevation: 0,
             shadowOpacity: 0,
+          },
+          tabBarItemStyle: {
+            justifyContent: 'center',
           },
           tabBarBackground: () => (
             <LinearGradient
@@ -315,7 +319,7 @@ const BottomTabNavigator = () => {
           tabBarLabelStyle: {
             fontSize: 12,
             fontWeight: '600',
-            marginTop: 4,
+            marginTop: 2,
           },
           tabBarIcon: ({ focused }) => {
             let iconSource;
