@@ -400,7 +400,15 @@ const MainLayout = () => {
   );
 
   // Memoize sidebar content to prevent scroll reset on navigation
-  const sidebarContent = useMemo(() => <SidebarContent />, [isDeveloper, user?.isAdmin, pendingIssuesCount, pendingVerificationsCount]);
+  // Added location.pathname and location.search to dependencies so active states update immediately
+  const sidebarContent = useMemo(() => <SidebarContent />, [
+    isDeveloper,
+    user?.isAdmin,
+    pendingIssuesCount,
+    pendingVerificationsCount,
+    location.pathname,
+    location.search
+  ]);
 
   return (
     <div ref={layoutRootRef} className="min-h-screen bg-gray-100 dark:bg-gray-900 transition-colors duration-200">

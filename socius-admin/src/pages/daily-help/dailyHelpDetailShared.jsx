@@ -1,6 +1,104 @@
-import React from 'react';
-import { CircleDot, Users, MessageCircle, MessagesSquare, Scale, Activity } from 'lucide-react';
+import React, { useState } from 'react';
+import { CircleDot, Users, MessageCircle, MessagesSquare, Scale, Activity, MapPin, ExternalLink, Play, Pause, Image as ImageIcon } from 'lucide-react';
 import UserAvatar from '../../components/common/UserAvatar';
+
+const ChatMessageContent = ({ msg, alignRight }) => {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const audioRef = React.useRef(null);
+
+  if (msg.messageType === 'image' && msg.attachment?.url) {
+    return (
+      <div className="mt-2 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 bg-black/5 dark:bg-black/20">
+        <img 
+          src={msg.attachment.url} 
+          alt="Chat attachment" 
+          className="max-w-full h-auto cursor-pointer hover:opacity-95 transition-opacity"
+          onClick={() => window.open(msg.attachment.url, '_blank')}
+        />
+        {msg.text && <p className="p-2 text-sm leading-snug">{msg.text}</p>}
+      </div>
+    );
+  }
+
+  if (msg.messageType === 'audio' && msg.attachment?.url) {
+    const togglePlay = () => {
+      if (audioRef.current) {
+        if (isPlaying) audioRef.current.pause();
+        else audioRef.current.play();
+        setIsPlaying(!isPlaying);
+      }
+    };
+
+    return (
+      <div className={`mt-2 flex items-center gap-3 p-2 rounded-xl border ${
+        alignRight 
+          ? 'bg-socius-red/10 border-socius-red/20' 
+          : 'bg-gray-50 dark:bg-gray-800/80 border-gray-200 dark:border-gray-700'
+      }`}>
+        <button 
+          onClick={togglePlay}
+          className={`h-9 w-9 rounded-full flex items-center justify-center transition-colors ${
+            alignRight ? 'bg-socius-red text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200'
+          }`}
+        >
+          {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-0.5" />}
+        </button>
+        <div className="flex-1 min-w-0">
+          <div className="h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+            <div className={`h-full ${alignRight ? 'bg-socius-red' : 'bg-gray-500'} transition-all duration-300`} style={{ width: isPlaying ? '100%' : '0%' }}></div>
+          </div>
+          <div className="flex justify-between mt-1">
+            <span className="text-[10px] font-medium opacity-70">Audio Message</span>
+            {msg.attachment.durationSec && (
+              <span className="text-[10px] tabular-nums opacity-70">{msg.attachment.durationSec}s</span>
+            )}
+          </div>
+        </div>
+        <audio 
+          ref={audioRef} 
+          src={msg.attachment.url} 
+          onEnded={() => setIsPlaying(false)}
+          onPause={() => setIsPlaying(false)}
+          onPlay={() => setIsPlaying(true)}
+          className="hidden"
+        />
+      </div>
+    );
+  }
+
+  if (msg.messageType === 'location' && msg.attachment?.lat) {
+    const { lat, lng, address } = msg.attachment;
+    const mapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+    return (
+      <div className="mt-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
+        <div className="p-3 space-y-2">
+          <div className="flex items-start gap-2">
+            <MapPin size={16} className="text-socius-red shrink-0 mt-0.5" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-gray-900 dark:text-white leading-snug">Shared Location</p>
+              {address && <p className="text-[11px] text-gray-600 dark:text-gray-400 line-clamp-2 mt-0.5">{address}</p>}
+            </div>
+          </div>
+          <button 
+            onClick={() => window.open(mapsUrl, '_blank')}
+            className="w-full py-1.5 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-[11px] font-bold text-gray-700 dark:text-gray-200 transition-colors flex items-center justify-center gap-1.5"
+          >
+            View on Maps <ExternalLink size={12} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Default text or unknown type
+  const isGeneric = !['text', 'image', 'audio', 'location'].includes(msg.messageType);
+  return (
+    <div className="text-sm whitespace-pre-wrap break-words leading-snug">
+      {isGeneric && <span className="text-[10px] font-bold uppercase opacity-50 block mb-1">[{msg.messageType}]</span>}
+      {msg.text || (isGeneric ? JSON.stringify(msg.attachment) : '')}
+    </div>
+  );
+};
 
 export const formatDateTime = (value) => {
   if (!value) return '-';
@@ -419,12 +517,7 @@ export const AdminChatPanel = ({ chatActivity }) => {
                                 {label}
                               </div>
                             ) : null}
-                            <div className="text-sm whitespace-pre-wrap break-words leading-snug">{text}</div>
-                            {attStr ? (
-                              <div className="mt-1.5 text-[10px] font-mono text-gray-600 dark:text-gray-400 bg-black/[0.04] dark:bg-black/20 rounded-md px-2 py-1 break-all">
-                                {attStr}
-                              </div>
-                            ) : null}
+                            <ChatMessageContent msg={msg} alignRight={alignRight} />
                             <div
                               className={`text-[10px] mt-1 tabular-nums text-gray-500 dark:text-gray-500 ${
                                 alignRight ? 'text-right' : 'text-left'

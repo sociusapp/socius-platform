@@ -906,6 +906,12 @@ const AppNavigator = () => {
             distanceMeters: distanceMetersRaw ? Number(distanceMetersRaw) : 0,
             area: data.area || data.cityArea || data.locationLabel || 'Nearby',
           });
+          if (navigationRef.isReady()) {
+            navigationRef.reset({
+              index: 0,
+              routes: [{ name: 'HomeTab' }],
+            });
+          }
           setIncomingPresenceVisible(true);
           return;
         }
@@ -978,6 +984,12 @@ const AppNavigator = () => {
               };
               void persistPendingHelpAlert(pendingPayload);
               setIncomingHelpData(pendingPayload);
+              if (navigationRef.isReady()) {
+                navigationRef.reset({
+                  index: 0,
+                  routes: [{ name: 'HomeTab' }],
+                });
+              }
               setIncomingHelpVisible(true);
             })
             .catch(() => {});
@@ -1124,6 +1136,12 @@ const AppNavigator = () => {
           distanceMeters: distanceMetersRaw ? Number(distanceMetersRaw) : 0,
           area: data.area || data.cityArea || data.locationLabel || 'Nearby',
         });
+        if (navigationRef.isReady()) {
+          navigationRef.reset({
+            index: 0,
+            routes: [{ name: 'HomeTab' }],
+          });
+        }
         setIncomingPresenceVisible(true);
         void displayAndroidForegroundIncomingHeadsUp('presence', { ...data, requestId });
         return;
@@ -1167,6 +1185,12 @@ const AppNavigator = () => {
           area: data.area,
           token,
         }));
+        if (navigationRef.isReady()) {
+          navigationRef.reset({
+            index: 0,
+            routes: [{ name: 'HomeTab' }],
+          });
+        }
         setIncomingHelpVisible(true);
         void displayAndroidForegroundIncomingHeadsUp('help', data);
         return;

@@ -297,11 +297,24 @@ const DailyHelpPage = () => {
       {
         header: 'Status',
         accessor: 'status',
-        render: (r) => (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200">
-            {safeText(r.status)}
-          </span>
-        ),
+        render: (r) => {
+          const isActive = r.status === 'matched' || r.status === 'active';
+          return (
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${
+              isActive 
+                ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' 
+                : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+            }`}>
+              {isActive && (
+                <span className="relative flex h-2 w-2 mr-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                </span>
+              )}
+              {safeText(r.status)}
+            </span>
+          );
+        },
       },
       { header: 'Category', accessor: 'category', render: (r) => safeText(r.category) },
       {
@@ -347,11 +360,24 @@ const DailyHelpPage = () => {
       {
         header: 'Status',
         accessor: 'status',
-        render: (r) => (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200">
-            {safeText(r.status)}
-          </span>
-        ),
+        render: (r) => {
+          const isActive = r.status === 'matched' || r.status === 'active';
+          return (
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${
+              isActive 
+                ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' 
+                : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+            }`}>
+              {isActive && (
+                <span className="relative flex h-2 w-2 mr-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                </span>
+              )}
+              {safeText(r.status)}
+            </span>
+          );
+        },
       },
       { header: 'Type', accessor: 'situationType', render: (r) => safeText(r.situationType) },
       { header: 'Requester', accessor: 'requester', render: (r) => safeText(r?.requester?.fullName || r?.requester?.phone) },
