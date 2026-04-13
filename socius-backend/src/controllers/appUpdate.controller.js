@@ -1,15 +1,12 @@
 const fs = require('fs');
-const path = require('path');
 const multer = require('multer');
+const { resolveUploadDir, resolveUploadRootFile } = require('../config/uploads');
+const { persistLocalUpload } = require('../services/mediaStorage.service');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, '../uploads');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
+    cb(null, resolveUploadDir(''));
   },
   filename: (req, file, cb) => {
     cb(null, 'app-latest.apk');
@@ -51,6 +48,10 @@ const uploadAPK = async (req, res) => {
       });
     }
 
+    const downloadUrl = await persistLocalUpload(req.file.path, {
+      contentType: 'application/vnd.android.package-archive',
+    });
+
     // Create update config file
     const config = {
       versionCode: parseInt(versionCode),
@@ -58,11 +59,12 @@ const uploadAPK = async (req, res) => {
       isForceUpdate: isForceUpdate === 'true',
       releaseNotes: releaseNotes ? releaseNotes.split(',').map(note => note.trim()) : [],
       uploadDate: new Date().toISOString(),
-      fileSize: `${(req.file.size / (1024 * 1024)).toFixed(1)} MB`
+      fileSize: `${(req.file.size / (1024 * 1024)).toFixed(1)} MB`,
+      downloadUrl,
     };
 
     // Save config (in production, save to database)
-    const configPath = path.join(__dirname, '../uploads/update-config.json');
+    const configPath = resolveUploadRootFile('update-config.json');
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 
     res.json({
@@ -83,8 +85,8 @@ const uploadAPK = async (req, res) => {
 // Get current update info
 const getUpdateInfo = async (req, res) => {
   try {
-    const configPath = path.join(__dirname, '../uploads/update-config.json');
-    
+    const configPath = resolveUploadRootFile('update-config.json');
+
     if (!fs.existsSync(configPath)) {
       return res.json({
         success: true,
@@ -118,8 +120,8 @@ const getUpdateInfo = async (req, res) => {
 // Delete current APK
 const deleteAPK = async (req, res) => {
   try {
-    const apkPath = path.join(__dirname, '../uploads/app-latest.apk');
-    const configPath = path.join(__dirname, '../uploads/update-config.json');
+    const apkPath = resolveUploadRootFile('app-latest.apk');
+    const configPath = resolveUploadRootFile('update-config.json');
 
     // Delete APK file
     if (fs.existsSync(apkPath)) {
@@ -155,7 +157,7 @@ const getDownloadStats = async (req, res) => {
       lastUpdated: null
     };
 
-    const configPath = path.join(__dirname, '../uploads/update-config.json');
+    const configPath = resolveUploadRootFile('update-config.json');
     if (fs.existsSync(configPath)) {
       const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
       stats.lastUpdated = config.uploadDate;

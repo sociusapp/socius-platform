@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { api } from '../services/api/client';
+import { clearAdminPriorityToastSession } from '../utils/adminPriorityToasts';
 
 const AuthContext = createContext(null);
 
@@ -126,6 +127,7 @@ export const AuthProvider = ({ children }) => {
       await api.post('/auth/logout', {});
     } catch (error) {
     }
+    clearAdminPriorityToastSession();
     setUser(null);
     localStorage.removeItem('socius_user');
     delete api.defaults.headers.common.Authorization;

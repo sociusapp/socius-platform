@@ -1,16 +1,21 @@
 const router = require('express').Router()
-const path = require('path')
 const { authenticate } = require('../middlewares/auth')
 const { uploadClosureEvidence } = require('../middlewares/upload')
 const { success } = require('../utils/response')
+const { persistLocalUpload } = require('../services/mediaStorage.service')
 
-router.post('/closure-upload', authenticate, uploadClosureEvidence, (req, res) => {
-  const files = (req.files || []).map((f) => {
-    const name = f.filename || path.basename(f.path || '')
-    if (!name) return ''
-    return `/uploads/closures/${name.replace(/\\/g, '/')}`
-  }).filter(Boolean)
-  return success(res, { files })
+router.post('/closure-upload', authenticate, uploadClosureEvidence, async (req, res, next) => {
+  try {
+    const files = []
+    for (const f of req.files || []) {
+      if (!f?.path) continue
+      // eslint-disable-next-line no-await-in-loop
+      files.push(await persistLocalUpload(f.path, { contentType: f.mimetype }))
+    }
+    return success(res, { files })
+  } catch (err) {
+    next(err)
+  }
 })
 
 module.exports = router

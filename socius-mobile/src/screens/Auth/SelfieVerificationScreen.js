@@ -8,6 +8,7 @@ import Header from '../../components/common/Header';
 import * as ImagePicker from 'expo-image-picker';
 import { submitVerificationDocuments } from '../../services/api/verification.api';
 import { loadAuth } from '../../services/storage/asyncStorage.service';
+import { normalizeFrontCameraSelfieUri } from '../../utils/selfieOrientation';
 
 const SelfieVerificationScreen = ({ navigation, route }) => {
   const [photoTaken, setPhotoTaken] = useState(false);
@@ -32,7 +33,8 @@ const SelfieVerificationScreen = ({ navigation, route }) => {
       });
 
       if (!result.canceled && result.assets && result.assets[0]?.uri) {
-        setPhotoUri(result.assets[0].uri);
+        const oriented = await normalizeFrontCameraSelfieUri(result.assets[0].uri);
+        setPhotoUri(oriented);
         setPhotoTaken(true);
       }
     } catch (error) {

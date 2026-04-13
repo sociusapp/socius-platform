@@ -1,14 +1,7 @@
 const mongoose = require('mongoose')
 const PrepareCard = require('../models/PrepareCard')
 const { success, created } = require('../utils/response')
-
-const normalizeUploadPath = (filePath) => {
-  if (!filePath) return ''
-  const normalized = String(filePath).replace(/\\/g, '/')
-  const idx = normalized.indexOf('uploads/')
-  if (idx !== -1) return `/${normalized.substring(idx)}`
-  return normalized.startsWith('/') ? normalized : `/${normalized}`
-}
+const { persistLocalUpload } = require('../services/mediaStorage.service')
 
 const getRequestBaseUrl = (req) => {
   const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http'
@@ -211,7 +204,7 @@ const createAdmin = async (req, res, next) => {
     }
     const prepareId = await nextPrepareId()
     const position = await nextPosition()
-    const image = normalizeUploadPath(req.file.path)
+    const image = await persistLocalUpload(req.file.path, { contentType: req.file.mimetype })
     const doc = await PrepareCard.create({
       prepareId,
       title,
@@ -265,7 +258,9 @@ const updateAdmin = async (req, res, next) => {
       doc.isActive = String(req.body.is_active) === 'true' || req.body.is_active === true
     }
     if (req.body?.content !== undefined) doc.content = String(req.body.content || '')
-    if (req.file?.path) doc.image = normalizeUploadPath(req.file.path)
+    if (req.file?.path) {
+      doc.image = await persistLocalUpload(req.file.path, { contentType: req.file.mimetype })
+    }
     await doc.save()
     const lean = await PrepareCard.findById(doc._id).lean()
     return success(res, { item: toAdmin(lean, req) }, 'Prepare card updated')

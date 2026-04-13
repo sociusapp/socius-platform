@@ -1,17 +1,14 @@
 const GalleryImage = require('../models/GalleryImage');
 const { success } = require('../utils/response');
+const { persistLocalUpload } = require('../services/mediaStorage.service');
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
+const { resolveUploadDir } = require('../config/uploads');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, '../../uploads/gallery');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
+    cb(null, resolveUploadDir('gallery'));
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -44,9 +41,7 @@ const uploadGalleryImage = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Invalid card index (0-5)' });
     }
     
-    // Build the file URL
-    const baseUrl = process.env.BACKEND_URL || ('http://' + req.headers.host);
-    const fileUrl = baseUrl + '/uploads/gallery/' + req.file.filename;
+    const fileUrl = await persistLocalUpload(req.file.path, { contentType: req.file.mimetype });
     
     // Update the gallery settings
     let settings = await GalleryImage.findOne();

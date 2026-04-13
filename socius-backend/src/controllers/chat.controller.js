@@ -1,5 +1,6 @@
 const chatService = require('../services/chat.service')
 const { success, created } = require('../utils/response')
+const { persistLocalUpload } = require('../services/mediaStorage.service')
 
 const getSession = async (req, res, next) => {
   try {
@@ -54,13 +55,9 @@ const uploadChatMedia = async (req, res, next) => {
       throw err
     }
     await chatService.getSession(req.params.sessionId, req.user._id)
-    const uploadIndex = file.path.indexOf('uploads/')
-    const rel =
-      uploadIndex !== -1
-        ? `/${file.path.substring(uploadIndex).replace(/\\/g, '/')}`
-        : `/uploads/chat-media/${file.filename}`
+    const url = await persistLocalUpload(file.path, { contentType: file.mimetype })
     return success(res, {
-      url: rel,
+      url,
       mimeType: file.mimetype,
       fileName: file.originalname,
       size: file.size,

@@ -317,22 +317,34 @@ const OTPVerificationScreen = ({ navigation, route }) => {
         syncLocationAfterOtp(data.accessToken);
       }
 
-      let shouldShowProfileReview = false;
+      let nextRoute = { name: 'MainApp', params: { screen: 'HomeTab' } };
 
       if (!data?.isNewUser && data?.accessToken) {
         try {
           const homeResponse = await getHome(data.accessToken);
           const { success: homeSuccess, data: homeData } = homeResponse || {};
-          if (homeSuccess && homeData?.verificationStatus) {
-            const status = homeData.verificationStatus;
-            const pendingStatuses = ['pending', 'review_requested', 'not_submitted'];
-            if (pendingStatuses.includes(status)) {
-              shouldShowProfileReview = true;
+          if (homeSuccess && homeData) {
+            const user = homeData.user;
+            const accountStatus = String(user?.accountStatus || 'active').toLowerCase();
+            const verificationStatus = String(homeData.verificationStatus || 'not_submitted').toLowerCase();
+            const accountAllowed = ['active', 'limited'].includes(accountStatus);
+            const verificationApproved = verificationStatus === 'approved';
+            const canUseVerifiedHome = accountAllowed && verificationApproved;
+
+            if (verificationStatus === 'failed') {
+              nextRoute = { name: 'MainApp', params: { screen: 'HomeTab' } };
+            } else if (!canUseVerifiedHome) {
+              if (verificationStatus === 'not_submitted') {
+                nextRoute = { name: 'ParticipationChoice' };
+              } else {
+                nextRoute = { name: 'ProfileReview' };
+              }
+            } else {
+              nextRoute = { name: 'MainApp', params: { screen: 'HomeTab' } };
             }
           }
         } catch (e) {
           console.log('getHome failed during OTP verify:', e);
-          // Proceed to MainApp even if getHome fails
         }
       }
 
@@ -344,17 +356,9 @@ const OTPVerificationScreen = ({ navigation, route }) => {
         return;
       }
 
-      if (shouldShowProfileReview) {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'ProfileReview' }],
-        });
-        return;
-      }
-
       navigation.reset({
         index: 0,
-        routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+        routes: [nextRoute],
       });
     } catch (error) {
       const apiMessage =

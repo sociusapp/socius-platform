@@ -336,24 +336,50 @@ const SplashScreen = () => {
           addLog(`active req error: ${String(e?.message || e)}`);
         }
 
-        let shouldShowProfileReview = false;
-        if (homeRes.status === 'fulfilled' && homeRes.value?.success && homeRes.value?.data?.verificationStatus) {
-          const status = homeRes.value.data.verificationStatus;
-          if (['pending', 'review_requested', 'not_submitted'].includes(status)) {
-            shouldShowProfileReview = true;
-          }
-        } else if (homeRes.status === 'rejected') {
+        if (homeRes.status === 'rejected') {
           addLog(`home error: ${String(homeRes.reason?.message || homeRes.reason)}`);
         }
 
         clearTimeout(emergency);
-        if (shouldShowProfileReview) {
-          addLog('navigate profile review');
-          await hideThenReset([{ name: 'ProfileReview' }]);
-        } else {
-          addLog('navigate main app');
+
+        const homePayload =
+          homeRes.status === 'fulfilled' && homeRes.value?.success && homeRes.value?.data
+            ? homeRes.value.data
+            : null;
+
+        // Must match BottomTabNavigator: only active|limited + approved sees HomeScreen; else HomeReview ("locked" home).
+        const user = homePayload?.user;
+        const accountStatus = String(user?.accountStatus || 'active').toLowerCase();
+        const verificationStatus = String(homePayload?.verificationStatus || 'not_submitted').toLowerCase();
+        const accountAllowed = ['active', 'limited'].includes(accountStatus);
+        const verificationApproved = verificationStatus === 'approved';
+        const canUseVerifiedHome = !!homePayload && accountAllowed && verificationApproved;
+
+        if (!homePayload) {
+          addLog('navigate main app (home fetch incomplete)');
           await hideThenReset([{ name: 'MainApp', params: { screen: 'HomeTab' } }]);
+          return;
         }
+
+        if (verificationStatus === 'failed') {
+          addLog('main app (verification failed — resubmit from Home tab)');
+          await hideThenReset([{ name: 'MainApp', params: { screen: 'HomeTab' } }]);
+          return;
+        }
+
+        if (!canUseVerifiedHome) {
+          if (verificationStatus === 'not_submitted') {
+            addLog('resume onboarding — participation / verification');
+            await hideThenReset([{ name: 'ParticipationChoice' }]);
+            return;
+          }
+          addLog('profile review (account or verification pending)');
+          await hideThenReset([{ name: 'ProfileReview' }]);
+          return;
+        }
+
+        addLog('navigate main app');
+        await hideThenReset([{ name: 'MainApp', params: { screen: 'HomeTab' } }]);
       } catch (e) {
         addLog(`init error: ${String(e?.message || e)}`);
         clearTimeout(emergency);

@@ -7,7 +7,9 @@ const {
   sendVerificationResultNotification,
   sendAccountUpdateNotification,
 } = require('../services/notification.service')
+const { persistLocalUpload } = require('../services/mediaStorage.service')
 const { success } = require('../utils/response')
+const logger = require('../utils/logger')
 
 // ─── Verifications ─────────────────────────────────────────
 
@@ -32,7 +34,7 @@ const approveVerification = async (req, res, next) => {
     try {
       await sendVerificationResultNotification(userId, true)
     } catch (notifyErr) {
-      // ignore notification errors
+      logger.warn('[Admin] verification approve notify failed', notifyErr?.message || notifyErr)
     }
     return success(res, verification, 'Verification approved')
   } catch (err) { next(err) }
@@ -44,7 +46,9 @@ const rejectVerification = async (req, res, next) => {
     const verification = await verificationService.rejectVerification(userId, req.user._id, req.body)
     try {
       await sendVerificationResultNotification(userId, false)
-    } catch (notifyErr) {}
+    } catch (notifyErr) {
+      logger.warn('[Admin] verification reject notify failed', notifyErr?.message || notifyErr)
+    }
     return success(res, verification, 'Verification rejected')
   } catch (err) {
     return next(err)
@@ -57,7 +61,9 @@ const requestResubmission = async (req, res, next) => {
     const verification = await verificationService.requestResubmission(userId, req.user._id, req.body)
     try {
       await sendVerificationResultNotification(userId, false)
-    } catch (notifyErr) {}
+    } catch (notifyErr) {
+      logger.warn('[Admin] verification resubmission notify failed', notifyErr?.message || notifyErr)
+    }
     return success(res, verification, 'Resubmission requested')
   } catch (err) {
     return next(err)
@@ -224,6 +230,7 @@ const uploadAdminNotificationImage = async (req, res, next) => {
     }
     const rel = path.posix.join('notification-campaigns', req.file.filename)
     const expiresAt = new Date(Date.now() + NOTIFICATION_IMAGE_TTL_DAYS * 24 * 60 * 60 * 1000)
+    const stored = await persistLocalUpload(req.file.path, { contentType: req.file.mimetype })
     await NotificationCampaignAsset.create({
       relativePath: rel,
       originalName: req.file.originalname,
@@ -232,7 +239,6 @@ const uploadAdminNotificationImage = async (req, res, next) => {
       uploadedBy: req.user?._id || null,
       expiresAt,
     })
-    const publicPath = `/uploads/${rel}`
     let origin = String(process.env.PUBLIC_ORIGIN || process.env.SOCIUS_PUBLIC_ORIGIN || '')
       .trim()
       .replace(/\/+$/, '')
@@ -241,10 +247,11 @@ const uploadAdminNotificationImage = async (req, res, next) => {
       const host = (req.get('x-forwarded-host') || req.get('host') || '').split(',')[0].trim()
       if (host) origin = `${proto}://${host}`
     }
-    const imageUrl = origin ? `${origin}${publicPath}` : publicPath
+    const isAbs = /^https?:\/\//i.test(stored)
+    const imageUrl = isAbs ? stored : origin ? `${origin}${stored.startsWith('/') ? stored : `/${stored}`}` : stored
     return success(res, {
       imageUrl,
-      publicPath,
+      publicPath: stored,
       expiresAt: expiresAt.toISOString(),
       ttlDays: NOTIFICATION_IMAGE_TTL_DAYS,
     })

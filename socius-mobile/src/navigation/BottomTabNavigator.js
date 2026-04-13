@@ -397,7 +397,14 @@ const BottomTabNavigator = () => {
             return isVerified ? (
               <HomeScreen {...props} />
             ) : (
-              <HomeReviewScreen {...props} route={{ params: homeReviewProps }} />
+              <HomeReviewScreen
+                {...props}
+                onRefreshVerification={() => fetchVerification(true)}
+                route={{
+                  ...props.route,
+                  params: { ...props.route?.params, ...homeReviewProps },
+                }}
+              />
             );
           }}
         </Tab.Screen>

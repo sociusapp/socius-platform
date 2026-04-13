@@ -10,6 +10,7 @@ import Header from '../../components/common/Header';
 import { useResponsive } from '../../utils/responsive';
 import { submitVerificationDocuments, retryVerification, getVerificationStatus } from '../../services/api/verification.api';
 import { loadAuth } from '../../services/storage/asyncStorage.service';
+import { normalizeFrontCameraSelfieUri } from '../../utils/selfieOrientation';
 
 const IdentityVerificationScreen = ({ navigation }) => {
   const { contentWidth, titleFont, subtitleFont, bodyFont, smallFont, isTablet, scale, vscale, spacing } = useResponsive();
@@ -197,10 +198,11 @@ const IdentityVerificationScreen = ({ navigation }) => {
           base64: false,
         });
         if (photo && photo.uri) {
-          setSelfieImage(photo.uri);
+          const oriented = await normalizeFrontCameraSelfieUri(photo.uri);
+          setSelfieImage(oriented);
           setSelfieUploaded(true);
           setShowCamera(false);
-          console.log('Selfie captured:', photo.uri);
+          console.log('Selfie captured:', oriented);
         }
       }
     } catch (error) {

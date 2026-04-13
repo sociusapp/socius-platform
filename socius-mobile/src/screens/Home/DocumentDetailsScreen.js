@@ -23,6 +23,8 @@ import { getVerificationStatus, retryVerification } from '../../services/api/ver
 import { loadAuth } from '../../services/storage/asyncStorage.service';
 import { baseURL as apiBaseURL } from '../../services/api/client';
 import Button from '../../components/common/Button';
+import { normalizeFrontCameraSelfieUri } from '../../utils/selfieOrientation';
+import { parseCityAreaFromProfile } from '../../utils/parseCityArea';
 
 const genderOptions = ['Male', 'Female', 'Other'];
 
@@ -67,16 +69,13 @@ const DocumentDetailsScreen = ({ navigation }) => {
       else if (gender === 'female') setSelectedGender('Female');
       else setSelectedGender('Other');
 
-      // Parse address - assuming format: "line1, city, state pincode"
+      // Parse address: "line1, city, state pincode" — state may include spaces (e.g. "मधेश प्रदेश")
       if (profile.cityArea) {
-        const parts = profile.cityArea.split(',').map(p => p.trim());
-        setAddressLine1(parts[0] || '');
-        setAddressCity(parts[1] || '');
-        if (parts[2]) {
-          const statePin = parts[2].split(' ');
-          setAddressState(statePin[0] || '');
-          setAddressPincodeZip(statePin[1] || '');
-        }
+        const parsed = parseCityAreaFromProfile(profile.cityArea);
+        setAddressLine1(parsed.addressLine1);
+        setAddressCity(parsed.addressCity);
+        setAddressState(parsed.addressState);
+        setAddressPincodeZip(parsed.addressPincodeZip);
       }
     }
   }, [profile]);
@@ -187,7 +186,8 @@ const DocumentDetailsScreen = ({ navigation }) => {
       });
 
       if (!result.canceled && result.assets && result.assets[0]?.uri) {
-        setSelfieImage(result.assets[0].uri);
+        const oriented = await normalizeFrontCameraSelfieUri(result.assets[0].uri);
+        setSelfieImage(oriented);
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to capture selfie.');

@@ -2,6 +2,7 @@ const HelpCategory = require('../models/HelpCategory')
 const HelpRequest = require('../models/HelpRequest')
 const HelpSubcategory = require('../models/HelpSubcategory')
 const { ensureHelpSubcategoryDefaults } = require('./helpSubcategoryDefaults')
+const { persistLocalUpload } = require('./mediaStorage.service')
 
 const DEFAULT_CATEGORIES = [
   { slug: 'print_document', name: 'Print / Document', sortOrder: 1, isActive: true },
@@ -18,10 +19,11 @@ const DEFAULT_CATEGORIES = [
 
 const normalizeUploadPath = (path) => {
   if (!path) return null
-  if (path.startsWith('http') || path.startsWith('https')) return path
-  const idx = path.indexOf('uploads/')
-  if (idx !== -1) return '/' + path.substring(idx).replace(/\\/g, '/')
-  return path.startsWith('/') ? path : `/${path}`
+  const s = String(path)
+  if (/^https?:\/\//i.test(s)) return s
+  const idx = s.indexOf('uploads/')
+  if (idx !== -1) return '/' + s.substring(idx).replace(/\\/g, '/')
+  return s.startsWith('/') ? s : `/${s}`
 }
 
 const ensureSeeded = async () => {
@@ -118,6 +120,11 @@ const create = async ({ name, slug, description, color, sortOrder, isActive, ico
     throw err
   }
 
+  let iconPath = null
+  if (iconFile?.path) {
+    iconPath = await persistLocalUpload(iconFile.path, { contentType: iconFile.mimetype })
+  }
+
   const doc = await HelpCategory.create({
     name: cleanName,
     slug: cleanSlug,
@@ -125,7 +132,7 @@ const create = async ({ name, slug, description, color, sortOrder, isActive, ico
     color: typeof color === 'string' ? color.trim() || null : null,
     sortOrder: Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : 0,
     isActive: typeof isActive === 'boolean' ? isActive : true,
-    iconPath: iconFile?.path || null,
+    iconPath,
   })
 
   const obj = doc.toObject()
@@ -163,7 +170,9 @@ const update = async (id, { name, slug, description, color, sortOrder, isActive,
   if (typeof color === 'string') doc.color = color.trim() || null
   if (sortOrder !== undefined) doc.sortOrder = Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : doc.sortOrder
   if (typeof isActive === 'boolean') doc.isActive = isActive
-  if (iconFile?.path) doc.iconPath = iconFile.path
+  if (iconFile?.path) {
+    doc.iconPath = await persistLocalUpload(iconFile.path, { contentType: iconFile.mimetype })
+  }
 
   await doc.save()
   const obj = doc.toObject()

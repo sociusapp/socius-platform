@@ -1,3 +1,4 @@
+const mongoose = require('mongoose')
 const DeviceToken = require('../models/DeviceToken')
 const { sendToDeviceWithRetry, sendToMultipleDevices } = require('../config/firebase')
 const { NOTIFICATION_TYPE, NOTIFICATION_PRIORITY, BADGE_TYPE } = require('../utils/constants')
@@ -5,11 +6,24 @@ const logger = require('../utils/logger')
 const { shouldSendOnce } = require('./notificationDedupe.service')
 const { rateLimit } = require('../config/redis')
 
+/** Normalize Mongo user id so DeviceToken queries match (string vs ObjectId). */
+const castUserId = (userId) => {
+  if (userId == null || userId === '') return null
+  try {
+    if (userId instanceof mongoose.Types.ObjectId) return userId
+    const s = String(userId)
+    if (mongoose.Types.ObjectId.isValid(s)) return new mongoose.Types.ObjectId(s)
+  } catch (_) {}
+  return userId
+}
+
 /**
  * User ke active device tokens lo
  */
 const getUserTokens = async (userId) => {
-  const tokens = await DeviceToken.find({ userId, isActive: true }).select('token')
+  const uid = castUserId(userId)
+  if (!uid) return []
+  const tokens = await DeviceToken.find({ userId: uid, isActive: true }).select('token')
   return tokens.map((t) => t.token)
 }
 
@@ -17,8 +31,10 @@ const getUserTokens = async (userId) => {
  * Multiple users ke tokens lo
  */
 const getMultipleUserTokens = async (userIds) => {
+  const ids = (userIds || []).map(castUserId).filter(Boolean)
+  if (!ids.length) return []
   const tokens = await DeviceToken.find({
-    userId: { $in: userIds },
+    userId: { $in: ids },
     isActive: true,
   }).select('token userId')
   return tokens
@@ -40,7 +56,19 @@ const notifyUser = async (userId, { title, body, data = {}, priority = 'normal',
     // eslint-disable-next-line no-await-in-loop
     const r = await sendToDeviceWithRetry({ token, title, body, data, priority, imageUrl })
     if (r && r.success) successCount++
-    else failureCount++
+    else {
+      failureCount++
+      const em = String(r?.error || '')
+      if (
+        /not\s+found|unregistered|not\s+registered|invalid.*token|registration-token|Requested entity was not found/i.test(
+          em
+        )
+      ) {
+        try {
+          await invalidateToken(token)
+        } catch (_) {}
+      }
+    }
   }
 
   return { userId: String(userId), tokensFound: tokens.length, successCount, failureCount }
@@ -303,21 +331,40 @@ const sendAccountUpdateNotification = async (userId, message) => {
 }
 
 /**
- * Verification result notification
+ * Verification result — FCM must include `notification` (title/body) + `data` so Android/iOS show a tray alert
+ * when the app is backgrounded; `approved` is strictly 'true' | 'false' for the mobile handler.
  */
 const sendVerificationResultNotification = async (userId, approved) => {
-  const message = approved
+  const approvedBool = approved === true || approved === 'true'
+  const message = approvedBool
     ? 'Your identity has been verified! You can now access all features.'
     : 'Verification needs attention. Please check the app for details.'
 
-  await notifyUser(userId, {
-    title: approved ? '✅ Verification Approved' : '⚠️ Verification Update',
+  const result = await notifyUser(userId, {
+    title: approvedBool ? '✅ Verification Approved' : '⚠️ Verification Update',
     body: message,
     data: {
       type: NOTIFICATION_TYPE.REVIEW_DECISION,
-      approved: String(approved),
+      approved: approvedBool ? 'true' : 'false',
     },
+    priority: NOTIFICATION_PRIORITY.HIGH,
   })
+
+  if (!result?.tokensFound) {
+    logger.warn(
+      `[VerificationNotify] no active device tokens for userId=${userId} — user must open the app once after login so FCM can register`
+    )
+  } else if (!result?.successCount) {
+    logger.warn(
+      `[VerificationNotify] FCM send failed for userId=${userId} tokens=${result.tokensFound} failures=${result.failureCount}`
+    )
+  } else {
+    logger.info(
+      `[VerificationNotify] sent review_decision approved=${approvedBool} userId=${userId} delivered=${result.successCount}/${result.tokensFound}`
+    )
+  }
+
+  return result
 }
 
 /**

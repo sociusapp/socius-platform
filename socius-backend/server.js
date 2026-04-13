@@ -9,7 +9,12 @@ const { connectDB } = require('./src/config/db')
 const { initFirebase } = require('./src/config/firebase')
 const { initSocket } = require('./src/config/socket')
 const { connectRedis } = require('./src/config/redis')
-const { resolveUploadDir } = require('./src/config/uploads')
+const { resolveUploadDir, ensureAllUploadSubdirs, UPLOADS_ROOT } = require('./src/config/uploads')
+
+ensureAllUploadSubdirs()
+if (process.env.NODE_ENV === 'production') {
+  console.log('[uploads] Persisted files directory:', UPLOADS_ROOT)
+}
 const routes = require('./src/routes')
 const { notFoundHandler, errorHandler } = require('./src/middlewares/errorHandler')
 const User = require('./src/models/User')

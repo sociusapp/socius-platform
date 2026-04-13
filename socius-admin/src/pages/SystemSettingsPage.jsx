@@ -13,9 +13,22 @@ import {
   ArrowRight,
   BookOpen,
   Bell,
+  Volume2,
+  Minus,
+  Plus,
 } from 'lucide-react';
 import Card from '../components/common/Card';
 import { api } from '../services/api/client';
+import {
+  ADMIN_UI_CLICK_VOLUME_MAX,
+  ADMIN_UI_CLICK_VOLUME_MIN,
+  ADMIN_UI_CLICK_VOLUME_STEP,
+  getAdminUiClickSoundVolume,
+  isAdminUiClickSoundEnabled,
+  playAdminUiClickSound,
+  setAdminUiClickSoundEnabled,
+  stepAdminUiClickSoundBy,
+} from '../utils/adminUiClickSound';
 
 const fmtMinutes = (m) => {
   const n = Number(m);
@@ -53,6 +66,21 @@ const Shortcut = ({ to, title, desc, icon: Icon }) => (
 const SystemSettingsPage = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [uiClickSound, setUiClickSound] = useState(() => isAdminUiClickSoundEnabled());
+  const [uiClickVolume, setUiClickVolume] = useState(() => getAdminUiClickSoundVolume());
+
+  useEffect(() => {
+    const sync = () => {
+      setUiClickSound(isAdminUiClickSoundEnabled());
+      setUiClickVolume(getAdminUiClickSoundVolume());
+    };
+    window.addEventListener('admin-ui-click-sound-prefs-changed', sync);
+    window.addEventListener('storage', sync);
+    return () => {
+      window.removeEventListener('admin-ui-click-sound-prefs-changed', sync);
+      window.removeEventListener('storage', sync);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -100,6 +128,96 @@ const SystemSettingsPage = () => {
           <span className="font-mono">socius-backend/src/utils/constants.js</span> or env and redeploy.
         </p>
       </motion.div>
+
+      <motion.section
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.02 }}
+        className="mb-8"
+      >
+        <Card className="overflow-hidden p-0">
+          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80 flex items-center gap-2">
+            <Volume2 className="w-5 h-5 text-socius-red" />
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Admin panel</h2>
+          </div>
+          <div className="p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="min-w-0">
+              <p className="font-medium text-gray-900 dark:text-white">UI click sound</p>
+              <p className="mt-1 text-sm text-gray-600 dark:text-gray-400 max-w-xl">
+                Short feedback when you use buttons, sidebar links, and menus. Volume {Math.round(ADMIN_UI_CLICK_VOLUME_MIN * 100)}–
+                {Math.round(ADMIN_UI_CLICK_VOLUME_MAX * 100)}% in steps of {Math.round(ADMIN_UI_CLICK_VOLUME_STEP * 100)}%. Stored only in
+                this browser.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 sm:gap-4 shrink-0">
+              <div className="flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/80 p-1">
+                <button
+                  type="button"
+                  data-no-ui-click-sound
+                  disabled={uiClickVolume <= ADMIN_UI_CLICK_VOLUME_MIN}
+                  onClick={() => {
+                    const prev = getAdminUiClickSoundVolume();
+                    const next = stepAdminUiClickSoundBy(-1);
+                    if (next === prev) return;
+                    setUiClickVolume(next);
+                    if (uiClickSound) playAdminUiClickSound();
+                  }}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-40 disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-socius-red"
+                  aria-label="Decrease click sound volume"
+                >
+                  <Minus className="h-4 w-4" />
+                </button>
+                <span className="min-w-[2.75rem] text-center text-sm font-medium text-gray-900 dark:text-white tabular-nums">
+                  {Math.round(uiClickVolume * 100)}%
+                </span>
+                <button
+                  type="button"
+                  data-no-ui-click-sound
+                  disabled={uiClickVolume >= ADMIN_UI_CLICK_VOLUME_MAX}
+                  onClick={() => {
+                    const prev = getAdminUiClickSoundVolume();
+                    const next = stepAdminUiClickSoundBy(1);
+                    if (next === prev) return;
+                    setUiClickVolume(next);
+                    if (uiClickSound) playAdminUiClickSound();
+                  }}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-40 disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-socius-red"
+                  aria-label="Increase click sound volume"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-500 dark:text-gray-400 tabular-nums">
+                  {uiClickSound ? 'On' : 'Off'}
+                </span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={uiClickSound}
+                  data-no-ui-click-sound
+                  onClick={() => {
+                    const next = !uiClickSound;
+                    setUiClickSound(next);
+                    setAdminUiClickSoundEnabled(next);
+                    if (next) playAdminUiClickSound();
+                  }}
+                  className={`relative inline-flex h-7 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-socius-red focus:ring-offset-2 dark:focus:ring-offset-gray-900 ${
+                    uiClickSound ? 'bg-socius-red' : 'bg-gray-200 dark:bg-gray-600'
+                  }`}
+                >
+                  <span className="sr-only">Toggle UI click sound</span>
+                  <span
+                    className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition ${
+                      uiClickSound ? 'translate-x-5' : 'translate-x-0.5'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+          </div>
+        </Card>
+      </motion.section>
 
       {loading ? (
         <p className="text-gray-500 dark:text-gray-400 py-12 text-center">Loading snapshot…</p>

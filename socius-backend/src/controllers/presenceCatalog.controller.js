@@ -1,6 +1,7 @@
 const PresenceCategory = require('../models/PresenceCategory')
 const PresenceItem = require('../models/PresenceItem')
 const { success } = require('../utils/response')
+const { persistLocalUpload } = require('../services/mediaStorage.service')
 
 const slugify = (value) =>
   String(value || '')
@@ -34,14 +35,6 @@ const allocateItemSlug = async (categoryId, preferredBase, excludeItemId) => {
   const err = new Error('Could not allocate a unique situation key')
   err.statusCode = 500
   throw err
-}
-
-const normalizeUploadPath = (filePath) => {
-  if (!filePath) return null
-  const normalized = String(filePath).replace(/\\/g, '/')
-  const idx = normalized.indexOf('uploads/')
-  if (idx !== -1) return `/${normalized.substring(idx)}`
-  return normalized.startsWith('/') ? normalized : `/${normalized}`
 }
 
 const listPublicCategories = async (req, res, next) => {
@@ -89,11 +82,15 @@ const createCategory = async (req, res, next) => {
       throw err
     }
     const slug = slugify(req.body?.slug || title)
+    let iconPath = null
+    if (req.file?.path) {
+      iconPath = await persistLocalUpload(req.file.path, { contentType: req.file.mimetype })
+    }
     const doc = await PresenceCategory.create({
       title,
       slug,
       iconName: req.body?.iconName || null,
-      iconPath: req.file?.path ? normalizeUploadPath(req.file.path) : null,
+      iconPath,
       isActive: req.body?.isActive !== undefined ? String(req.body.isActive) === 'true' : true,
       sortOrder: Number(req.body?.sortOrder || 0),
     })
@@ -116,7 +113,9 @@ const updateCategory = async (req, res, next) => {
     if (req.body?.iconName !== undefined) doc.iconName = req.body.iconName || null
     if (req.body?.sortOrder !== undefined) doc.sortOrder = Number(req.body.sortOrder || 0)
     if (req.body?.isActive !== undefined) doc.isActive = String(req.body.isActive) === 'true'
-    if (req.file?.path) doc.iconPath = normalizeUploadPath(req.file.path)
+    if (req.file?.path) {
+      doc.iconPath = await persistLocalUpload(req.file.path, { contentType: req.file.mimetype })
+    }
     await doc.save()
     return success(res, doc, 'Presence category updated')
   } catch (err) {
@@ -170,6 +169,10 @@ const createItem = async (req, res, next) => {
       null
     )
 
+    let itemIcon = null
+    if (req.file?.path) {
+      itemIcon = await persistLocalUpload(req.file.path, { contentType: req.file.mimetype })
+    }
     const doc = await PresenceItem.create({
       categoryId,
       title,
@@ -177,7 +180,7 @@ const createItem = async (req, res, next) => {
       description: req.body?.description || '',
       tags: tagsRaw,
       iconName: req.body?.iconName || null,
-      iconPath: req.file?.path ? normalizeUploadPath(req.file.path) : null,
+      iconPath: itemIcon,
       isActive: req.body?.isActive !== undefined ? String(req.body.isActive) === 'true' : true,
       sortOrder: Number(req.body?.sortOrder || 0),
     })
@@ -213,7 +216,9 @@ const updateItem = async (req, res, next) => {
     if (req.body?.iconName !== undefined) doc.iconName = req.body.iconName || null
     if (req.body?.sortOrder !== undefined) doc.sortOrder = Number(req.body.sortOrder || 0)
     if (req.body?.isActive !== undefined) doc.isActive = String(req.body.isActive) === 'true'
-    if (req.file?.path) doc.iconPath = normalizeUploadPath(req.file.path)
+    if (req.file?.path) {
+      doc.iconPath = await persistLocalUpload(req.file.path, { contentType: req.file.mimetype })
+    }
     if (req.body?.tags !== undefined) {
       doc.tags = Array.isArray(req.body.tags)
         ? req.body.tags

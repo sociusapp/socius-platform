@@ -9,6 +9,19 @@ const SOCIUS_NAVIGATION_THEME = {
     card: '#FFFFFF',
   },
 };
+
+/** When FCM sends notification+data, some clients omit `data.type` in edge cases — infer verification alerts. */
+const normalizeFcmDataPayload = (remoteMessage) => {
+  const raw = remoteMessage?.data;
+  const base = raw && typeof raw === 'object' ? { ...raw } : {};
+  let type = String(base.type || '').trim().toLowerCase();
+  if (!type && base.approved != null && String(base.approved) !== '') {
+    const nTitle = String(remoteMessage?.notification?.title || '').toLowerCase();
+    if (nTitle.includes('verification')) type = 'review_decision';
+  }
+  return { ...base, type };
+};
+
 import notifee, { AndroidStyle, EventType } from '@notifee/react-native';
 import { AppState, NativeEventEmitter, NativeModules, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -25,6 +38,9 @@ import {
   displayAdminBroadcastNotification,
 } from '../services/notifications/SociusNotificationService';
 import { connectSocket, emitStatusUpdate, appEvents } from '../services/socket/socket.service';
+import { onSessionExpired } from '../services/api/client';
+import { useDispatch } from 'react-redux';
+import { logout } from '../state/redux/slices/authSlice';
 import CustomAlert from '../components/common/CustomAlert';
 import DailyHelpIncomingModal from '../features/daily-help/components/modals/DailyHelpIncomingModal';
 const GlobalBorrowOfferItemModal = lazy(() => import('../features/daily-help/components/GlobalBorrowOfferItemModal'));
@@ -420,6 +436,21 @@ const navigateAdminBroadcastDeepLink = async (navRef, data = {}) => {
 };
 
 const AppNavigator = () => {
+  const dispatch = useDispatch();
+
+  useEffect(() => {
+    onSessionExpired(() => {
+      console.log('[AppNavigator] Session expired, redirecting to login');
+      dispatch(logout());
+      if (navigationRef.isReady()) {
+        navigationRef.reset({
+          index: 0,
+          routes: [{ name: 'PhoneVerification' }],
+        });
+      }
+    });
+  }, [dispatch]);
+
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({
     title: '',
@@ -428,6 +459,7 @@ const AppNavigator = () => {
     icon: 'bell-ring',
     iconColor: '#DC5C69',
     dismissDurationMs: 200,
+    dialogType: 'info',
   });
 
   const showAlert = (title, message, buttons = [], icon = 'bell-ring', iconColor = '#DC5C69', options = {}) => {
@@ -438,6 +470,7 @@ const AppNavigator = () => {
       icon,
       iconColor,
       dismissDurationMs: typeof options?.dismissDurationMs === 'number' ? options.dismissDurationMs : 200,
+      dialogType: options?.dialogType || 'info',
     });
     setAlertVisible(true);
   };
@@ -456,6 +489,7 @@ const AppNavigator = () => {
       title,
       message,
       [
+        { text: 'Dismiss', onPress: closeAlert, style: 'cancel' },
         {
           text: approved ? 'Continue' : 'Review now',
           onPress: () => {
@@ -464,10 +498,10 @@ const AppNavigator = () => {
           },
           style: 'primary',
         },
-        { text: 'OK', onPress: closeAlert },
       ],
       approved ? 'check-circle' : 'alert-circle-outline',
-      approved ? '#28C76F' : '#DC5C69'
+      approved ? '#28C76F' : '#DC5C69',
+      { dialogType: 'confirmation' }
     );
   };
 
@@ -841,7 +875,7 @@ const AppNavigator = () => {
     };
 
     const unsubscribeOpened = onNotificationOpened((remoteMessage) => {
-      const data = remoteMessage?.data || {};
+      const data = normalizeFcmDataPayload(remoteMessage);
       const run = async () => {
         if (!navigationRef.isReady()) {
           setTimeout(() => {
@@ -980,15 +1014,23 @@ const AppNavigator = () => {
     });
 
     const unsubscribeForeground = onMessageForeground(async remoteMessage => {
-      console.log('[AppNavigator] foreground message received:', JSON.stringify(remoteMessage?.data || {}));
+      const data = normalizeFcmDataPayload(remoteMessage);
+      console.log('[AppNavigator] foreground message received:', JSON.stringify(data));
 
-      const data = remoteMessage?.data || {};
       const lowerType = String(data.type || '').toLowerCase();
       if (lowerType === 'cancel_alarm' && data.requestId) {
         await clearPendingHelpAlert(data.requestId);
         return;
       }
       if (lowerType === 'review_decision') {
+        if (Platform.OS === 'android') {
+          try {
+            await initNotifeeChannels();
+            await displaySociusUpdateNotification(data);
+          } catch (e) {
+            if (__DEV__) console.warn('[AppNavigator] review_decision tray notify failed', e?.message);
+          }
+        }
         showReviewDecisionAlert(data);
         return;
       }
@@ -1408,7 +1450,7 @@ const AppNavigator = () => {
     });
 
     getInitialNotification().then((remoteMessage) => {
-      const data = remoteMessage?.data || {};
+      const data = remoteMessage ? normalizeFcmDataPayload(remoteMessage) : {};
       const run = () => {
         if (!navigationRef.isReady()) {
           setTimeout(run, 600);
@@ -2219,6 +2261,7 @@ const AppNavigator = () => {
       />
       <CustomAlert
         visible={alertVisible}
+        type={alertConfig.dialogType}
         title={alertConfig.title}
         message={alertConfig.message}
         buttons={alertConfig.buttons}

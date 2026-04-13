@@ -2,6 +2,7 @@ const Issue = require('../models/Issue')
 const { success, forbidden } = require('../utils/response')
 const { syncIssuesToFile } = require('../utils/issueSync')
 const logger = require('../utils/logger')
+const { persistLocalUpload } = require('../services/mediaStorage.service')
 
 const getActorLabel = (req) => {
   if (req.user?.isAdmin) return 'Admin'
@@ -42,10 +43,12 @@ const createIssue = async (req, res, next) => {
 
     if (req.files) {
       if (req.files.screenshot?.[0]) {
-        screenshotPath = `/uploads/issue-screenshots/${req.files.screenshot[0].filename}`;
+        const f = req.files.screenshot[0]
+        screenshotPath = await persistLocalUpload(f.path, { contentType: f.mimetype })
       }
       if (req.files.voiceNote?.[0]) {
-        voiceNotePath = `/uploads/issue-screenshots/${req.files.voiceNote[0].filename}`;
+        const f = req.files.voiceNote[0]
+        voiceNotePath = await persistLocalUpload(f.path, { contentType: f.mimetype })
       }
     }
 

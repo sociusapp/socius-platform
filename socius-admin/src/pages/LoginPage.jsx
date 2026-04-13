@@ -177,15 +177,6 @@ const LoginPage = () => {
           </div>
         </div>
 
-        {!isDeveloperLogin && (
-          <div className="flex items-center justify-center">
-            <div className="text-sm">
-              <Link to="/developer-login" size="sm" className="font-medium text-gray-500 hover:text-socius-red dark:text-gray-400 underline decoration-1 underline-offset-2">
-                Developer Login
-              </Link>
-            </div>
-          </div>
-        )}
       </form>
       
       <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-700">

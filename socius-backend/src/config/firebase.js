@@ -192,6 +192,21 @@ const sendToDevice = async ({ token, title, body, data = {}, priority = 'high', 
         notification_priority: isHigh ? 'PRIORITY_MAX' : 'PRIORITY_DEFAULT',
         ...(img ? { image: img } : {}),
       }
+      // iOS (APNs): explicit aps alert — without this, some iOS builds only get data or miss banners when backgrounded.
+      bodyPayload.message.apns = {
+        headers: {
+          'apns-priority': isHigh ? '10' : '5',
+        },
+        payload: {
+          aps: {
+            alert: {
+              title: String(title || ''),
+              body: String(body || ''),
+            },
+            sound: 'default',
+          },
+        },
+      }
     }
 
     const res = await fetch(

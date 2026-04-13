@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Table from '../components/common/Table';
+import UserAvatar from '../components/common/UserAvatar';
 import { api } from '../services/api/client';
 
 const VerificationQueuePage = () => {
@@ -54,6 +55,12 @@ const VerificationQueuePage = () => {
 
     const id = String(userId);
     const name = user.fullName || '-';
+    const selfieUrl = item?.selfie?.fileUrl || null;
+    const profileImage = user.profileImage || selfieUrl || null;
+    const locationName =
+      typeof user.cityArea === 'string' && user.cityArea.trim()
+        ? user.cityArea.trim()
+        : '—';
     const roleLabel = user.isAvailable ? 'Volunteer' : 'User';
     let statusLabel = 'Pending';
     if (item.status === 'approved') statusLabel = 'Approved';
@@ -76,6 +83,8 @@ const VerificationQueuePage = () => {
     return {
       id,
       name,
+      profileImage,
+      locationName,
       role: roleLabel,
       submittedOn,
       status: statusLabel,
@@ -150,7 +159,7 @@ const VerificationQueuePage = () => {
     return () => {
       isCancelled = true;
     };
-  }, [currentPage, statusFilter]);
+  }, [currentPage, statusFilter, dateFilter]);
 
   // Simple filter component to match the text-based design
   const FilterGroup = ({ label, options, selected, onSelect }) => (
@@ -179,8 +188,25 @@ const VerificationQueuePage = () => {
   );
 
   const columns = [
-    { header: 'User ID', accessor: 'id', className: 'font-medium text-gray-900 dark:text-white' },
+    {
+      header: 'Photo',
+      accessor: 'profileImage',
+      className: 'w-14',
+      render: (row) => (
+        <UserAvatar src={row.profileImage} name={row.name} size="sm" />
+      ),
+    },
     { header: 'Name', accessor: 'name', className: 'text-gray-700 dark:text-gray-300' },
+    {
+      header: 'Location',
+      accessor: 'locationName',
+      className: 'max-w-[220px] text-gray-700 dark:text-gray-300',
+      render: (row) => (
+        <span className="line-clamp-2 break-words" title={row.locationName !== '—' ? row.locationName : ''}>
+          {row.locationName}
+        </span>
+      ),
+    },
     { header: 'Role Requested', accessor: 'role', className: 'text-gray-700 dark:text-gray-300' },
     { header: 'Submitted On', accessor: 'submittedOn', className: 'text-gray-700 dark:text-gray-300' },
     {
@@ -215,8 +241,11 @@ const VerificationQueuePage = () => {
   const filteredData = useMemo(() => {
     return requests.filter(item => {
       const search = searchTerm.toLowerCase();
-      const matchesSearch = 
-        item.id.toLowerCase().includes(search) ||
+      const matchesSearch =
+        (item.name && item.name.toLowerCase().includes(search)) ||
+        (item.locationName &&
+          item.locationName !== '—' &&
+          item.locationName.toLowerCase().includes(search)) ||
         item.role.toLowerCase().includes(search) ||
         item.status.toLowerCase().includes(search);
       

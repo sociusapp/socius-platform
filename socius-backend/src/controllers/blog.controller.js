@@ -4,6 +4,7 @@ const fs = require('fs')
 const path = require('path')
 const sharp = require('sharp')
 const { success, created } = require('../utils/response')
+const { persistLocalUpload } = require('../services/mediaStorage.service')
 
 const optimizeImageInPlace = async (filePath) => {
   const ext = path.extname(filePath).toLowerCase()
@@ -17,10 +18,11 @@ const optimizeImageInPlace = async (filePath) => {
 
 const normalizeUploadPath = (filePath) => {
   if (!filePath) return null
-  if (filePath.startsWith('http') || filePath.startsWith('https')) return filePath
-  const idx = filePath.indexOf('uploads/')
-  if (idx !== -1) return '/' + filePath.substring(idx).replace(/\\/g, '/')
-  return filePath.startsWith('/') ? filePath : `/${filePath}`
+  const s = String(filePath)
+  if (/^https?:\/\//i.test(s)) return s
+  const idx = s.indexOf('uploads/')
+  if (idx !== -1) return '/' + s.substring(idx).replace(/\\/g, '/')
+  return s.startsWith('/') ? s : `/${s}`
 }
 
 const generateSlug = (title) => {
@@ -170,10 +172,12 @@ const createBlog = async (req, res, next) => {
       err.statusCode = 400
       throw err
     }
+    let featuredImageStored = null
     if (req.file?.path) {
       await optimizeImageInPlace(req.file.path).catch(() => {})
+      featuredImageStored = await persistLocalUpload(req.file.path, { contentType: req.file.mimetype })
     }
-    
+
     const {
       title,
       slug: customSlug,
@@ -222,7 +226,7 @@ const createBlog = async (req, res, next) => {
       typeId,
       content: content || '',
       excerpt: typeof excerpt === 'string' ? excerpt.trim() || null : null,
-      featuredImage: req.file?.path || null,
+      featuredImage: featuredImageStored,
       author: typeof author === 'string' ? author.trim() || 'Socius Team' : 'Socius Team',
       isPublished: willBePublished,
       publishedAt: willBePublished ? new Date() : null,
@@ -253,10 +257,12 @@ const updateBlog = async (req, res, next) => {
       err.statusCode = 400
       throw err
     }
+    let newFeatured = null
     if (req.file?.path) {
       await optimizeImageInPlace(req.file.path).catch(() => {})
+      newFeatured = await persistLocalUpload(req.file.path, { contentType: req.file.mimetype })
     }
-    
+
     const {
       title,
       slug: customSlug,
@@ -315,7 +321,7 @@ const updateBlog = async (req, res, next) => {
     if (typeId) blog.typeId = typeId
     if (typeof content === 'string') blog.content = content
     if (typeof excerpt === 'string') blog.excerpt = excerpt.trim() || null
-    if (req.file?.path) blog.featuredImage = req.file.path
+    if (newFeatured) blog.featuredImage = newFeatured
     if (typeof author === 'string') blog.author = author.trim() || blog.author
     if (isPublished !== undefined) blog.isPublished = willBePublished
     if (typeof metaTitle === 'string') blog.metaTitle = metaTitle.trim() || null

@@ -39,10 +39,11 @@ const normalizeProfileImage = (path) => {
 
 const normalizeUploadPath = (path) => {
   if (!path) return null
-  if (path.startsWith('http') || path.startsWith('https')) return path
-  const idx = path.indexOf('uploads/')
-  if (idx !== -1) return '/' + path.substring(idx).replace(/\\/g, '/')
-  return path.startsWith('/') ? path : `/${path}`
+  const s = String(path)
+  if (/^https?:\/\//i.test(s)) return s
+  const idx = s.indexOf('uploads/')
+  if (idx !== -1) return '/' + s.substring(idx).replace(/\\/g, '/')
+  return s.startsWith('/') ? s : `/${s}`
 }
 
 const attachCategoryMeta = async (categorySlug) => {

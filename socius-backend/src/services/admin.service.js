@@ -708,7 +708,7 @@ const getPendingVerifications = async ({ page = 1, limit = 20, status, rangeDays
   try {
     verifications = await Verification.find(vQuery)
       .sort({ createdAt: sortDir })
-      .populate('userId', 'fullName phone accountStatus isIdentityVerified role isAvailable createdAt')
+      .populate('userId', 'fullName phone profileImage cityArea accountStatus isIdentityVerified role isAvailable createdAt')
       .lean()
   } catch (error) {
     console.error('Error fetching verifications:', error)
@@ -737,7 +737,7 @@ const getPendingVerifications = async ({ page = 1, limit = 20, status, rangeDays
       accountStatus: 'pending_review',
       _id: { $nin: Array.from(verificationUserIds) },
     })
-      .select('fullName phone accountStatus isIdentityVerified role isAvailable createdAt')
+      .select('fullName phone profileImage cityArea accountStatus isIdentityVerified role isAvailable createdAt')
       .lean()
 
     const mappedPending = pendingUsers.map((user) => ({
@@ -764,8 +764,9 @@ const getPendingVerifications = async ({ page = 1, limit = 20, status, rangeDays
       const u = row.userId && typeof row.userId === 'object' ? row.userId : {}
       const name = u.fullName || ''
       const phone = u.phone || ''
+      const city = u.cityArea || ''
       const id = String(u._id || row.userId || '')
-      return re.test(name) || re.test(phone) || re.test(id)
+      return re.test(name) || re.test(phone) || re.test(city) || re.test(id)
     })
   }
 
@@ -1392,7 +1393,7 @@ const getDashboardStats = async () => {
     totalVolunteers,
     limitedAccounts,
     suspendedAccounts,
-    pendingVerifications,
+    usersAccountPendingReviewOnly,
     reviewRequestedVerifications,
     safetyFlags,
     reportsToday,
@@ -1572,6 +1573,26 @@ const getDashboardStats = async () => {
     return Math.round((Number(part) / Number(total)) * 100)
   }
 
+  /** Same backlog as GET /admin/verifications?status=pending (queue + users pending_review without a Verification row). */
+  const verificationQueueUserIds = await Verification.distinct('userId', {
+    status: { $in: ['pending', 'review_requested'] },
+    userId: { $exists: true, $ne: null },
+  })
+  const verificationDocsInPendingQueue = await Verification.countDocuments({
+    status: { $in: ['pending', 'review_requested'] },
+    userId: { $exists: true, $ne: null },
+  })
+  const orphanPendingReviewQuery = {
+    isDeleted: false,
+    isAdmin: { $ne: true },
+    accountStatus: 'pending_review',
+  }
+  if (verificationQueueUserIds.length > 0) {
+    orphanPendingReviewQuery._id = { $nin: verificationQueueUserIds }
+  }
+  const orphanPendingReviewCount = await User.countDocuments(orphanPendingReviewQuery)
+  const pendingVerifications = verificationDocsInPendingQueue + orphanPendingReviewCount
+
   return {
     activeAwarenessRequests,
     activeHelpRequests,
@@ -1588,6 +1609,8 @@ const getDashboardStats = async () => {
     totalVolunteers,
     limitedAccounts,
     suspendedAccounts,
+    /** Users with accountStatus pending_review only (subset may also appear in queue as synthetic rows). */
+    accountPendingReviewUsers: usersAccountPendingReviewOnly,
     flows: {
       dailyHelp: {
         active: activeHelpRequests,

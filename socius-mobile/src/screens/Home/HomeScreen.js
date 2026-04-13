@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { useWindowDimensions, View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Image, Animated, Easing, Modal, Platform, RefreshControl, ActivityIndicator, Alert, Dimensions, FlatList, TextInput, LayoutAnimation } from 'react-native';
+import { useWindowDimensions, View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Image, Animated, Easing, Platform, RefreshControl, ActivityIndicator, Alert, Dimensions, FlatList, TextInput, LayoutAnimation } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -41,8 +41,6 @@ const HomeScreen = ({ navigation }) => {
   const [isAvailable, setIsAvailable] = useState(true);
   const [availabilityWidth, setAvailabilityWidth] = useState(0);
   const [toggleAnim] = useState(new Animated.Value(0));
-  const [callModalVisible, setCallModalVisible] = useState(false);
-  const [activeEmergencyContact, setActiveEmergencyContact] = useState(null);
   const [locationLabel, setLocationLabel] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const lastLocationSyncAtRef = useRef(0);
@@ -980,9 +978,11 @@ const HomeScreen = ({ navigation }) => {
     navigation.navigate('WhatsHappening');
   };
 
-  const handleEmergencyContact = (contact) => {
-    setActiveEmergencyContact(contact);
-    setCallModalVisible(true);
+  const handleEmergencyShortcut = (contact) => {
+    const id = Number(contact?.id);
+    navigation.navigate('EmergencyHelp', {
+      focusIndex: Number.isFinite(id) ? Math.max(0, Math.min(3, id - 1)) : 0,
+    });
   };
 
   const handlePresence = () => {
@@ -991,22 +991,6 @@ const HomeScreen = ({ navigation }) => {
     } else {
       navigation.navigate('WhatsHappening');
     }
-  };
-
-  const handleCloseCallModal = () => {
-    setCallModalVisible(false);
-    setActiveEmergencyContact(null);
-  };
-
-  const handleConfirmCall = () => {
-    if (!activeEmergencyContact) {
-      return;
-    }
-    const url = `tel:${activeEmergencyContact.phone}`;
-    Linking.openURL(url).finally(() => {
-      setCallModalVisible(false);
-      setActiveEmergencyContact(null);
-    });
   };
 
   const translateX = scrollX.interpolate({
@@ -1396,7 +1380,7 @@ const HomeScreen = ({ navigation }) => {
                             shadowRadius: scale(6),
                           },
                         ]}
-                        onPress={() => handleEmergencyContact(contact)}
+                        onPress={() => handleEmergencyShortcut(contact)}
                       >
                         <View
                           style={[
@@ -1685,55 +1669,6 @@ const HomeScreen = ({ navigation }) => {
         )}
       />
 
-      <Modal
-        transparent
-        visible={callModalVisible}
-        animationType="fade"
-        onRequestClose={handleCloseCallModal}
-      >
-        <View style={styles.callModalBackdrop}>
-          <View style={styles.callModalCard}>
-            {activeEmergencyContact && (
-              <View style={styles.callModalIconWrapper}>
-                <Image
-                  source={activeEmergencyContact.icon}
-                  style={{ width: scale(32), height: scale(32), tintColor: '#FFFFFF' }}
-                  resizeMode="contain"
-                />
-              </View>
-            )}
-            <Text style={styles.callModalTitle}>
-              {activeEmergencyContact ? activeEmergencyContact.label : 'Emergency contact'}
-            </Text>
-            <Text style={styles.callModalNumber}>
-              {activeEmergencyContact ? activeEmergencyContact.phone : ''}
-            </Text>
-            <View style={styles.callModalButtonsRow}>
-              <TouchableOpacity
-                activeOpacity={0.9}
-                style={styles.callModalSecondaryButton}
-                onPress={handleCloseCallModal}
-              >
-                <Text style={styles.callModalSecondaryText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                activeOpacity={0.9}
-                style={styles.callModalPrimaryWrapper}
-                onPress={handleConfirmCall}
-              >
-                <LinearGradient
-                  colors={['#EC6E63', '#D84D42']}
-                  start={{ x: 0.1, y: 0.0 }}
-                  end={{ x: 0.9, y: 1.0 }}
-                  style={styles.callModalPrimaryButton}
-                >
-                  <Text style={styles.callModalPrimaryText}>Call</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   </View>
 );
@@ -1905,85 +1840,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#2C3E50',
     flex: 1,
-  },
-
-  callModalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  callModalCard: {
-    width: '82%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    paddingVertical: 22,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.16,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  callModalIconWrapper: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#DC5C69',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-  },
-  callModalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 4,
-    textAlign: 'center',
-  },
-  callModalNumber: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#4B5563',
-    marginBottom: 18,
-    textAlign: 'center',
-  },
-  callModalButtonsRow: {
-    flexDirection: 'row',
-    alignSelf: 'stretch',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  callModalSecondaryButton: {
-    flex: 1,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-  },
-  callModalSecondaryText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
-  },
-  callModalPrimaryWrapper: {
-    flex: 1,
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
-  callModalPrimaryButton: {
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  callModalPrimaryText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FFFFFF',
   },
 
   locationModalBackdrop: {

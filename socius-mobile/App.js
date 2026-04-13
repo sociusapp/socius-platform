@@ -3,6 +3,8 @@ import { StatusBar, LogBox, Platform, PermissionsAndroid, DeviceEventEmitter, Ap
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as SplashScreen from 'expo-splash-screen';
+import { Provider } from 'react-redux';
+import { store } from './src/state/redux/store';
 import AppNavigator from './src/navigation/AppNavigator';
 import { initNotifeeChannels } from './src/services/notifications/SociusNotificationService';
 import {
@@ -57,16 +59,18 @@ const App = () => {
   }, []);
 
   return (
-    <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
-      <SafeAreaProvider style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
-        <StatusBar
-          barStyle="dark-content"
-          backgroundColor="transparent"
-          translucent={true}
-        />
-        <AppNavigator />
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <Provider store={store}>
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
+        <SafeAreaProvider style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
+          <StatusBar
+            barStyle="dark-content"
+            backgroundColor="transparent"
+            translucent={true}
+          />
+          <AppNavigator />
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </Provider>
   );
 };
 

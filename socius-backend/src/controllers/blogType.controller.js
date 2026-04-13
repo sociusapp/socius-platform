@@ -3,6 +3,7 @@ const fs = require('fs')
 const path = require('path')
 const sharp = require('sharp')
 const { success, created } = require('../utils/response')
+const { persistLocalUpload } = require('../services/mediaStorage.service')
 
 const optimizeIconInPlace = async (filePath) => {
   const ext = path.extname(filePath).toLowerCase()
@@ -16,10 +17,11 @@ const optimizeIconInPlace = async (filePath) => {
 
 const normalizeUploadPath = (filePath) => {
   if (!filePath) return null
-  if (filePath.startsWith('http') || filePath.startsWith('https')) return filePath
-  const idx = filePath.indexOf('uploads/')
-  if (idx !== -1) return '/' + filePath.substring(idx).replace(/\\/g, '/')
-  return filePath.startsWith('/') ? filePath : `/${filePath}`
+  const s = String(filePath)
+  if (/^https?:\/\//i.test(s)) return s
+  const idx = s.indexOf('uploads/')
+  if (idx !== -1) return '/' + s.substring(idx).replace(/\\/g, '/')
+  return s.startsWith('/') ? s : `/${s}`
 }
 
 // Get all active blog types (for mobile)
@@ -86,10 +88,12 @@ const createBlogType = async (req, res, next) => {
       err.statusCode = 400
       throw err
     }
+    let iconStored = null
     if (req.file?.path) {
       await optimizeIconInPlace(req.file.path).catch(() => {})
+      iconStored = await persistLocalUpload(req.file.path, { contentType: req.file.mimetype })
     }
-    
+
     const { name, slug, description, color, sortOrder, isActive, iconType, iconName } = req.body
     
     const cleanName = String(name || '').trim()
@@ -122,7 +126,7 @@ const createBlogType = async (req, res, next) => {
       name: cleanName,
       slug: cleanSlug,
       description: typeof description === 'string' ? description.trim() || null : null,
-      iconPath: req.file?.path || null,
+      iconPath: iconStored,
       iconName: cleanIconName,
       iconType: iconType || 'image',
       color: typeof color === 'string' ? color.trim() || '#C84D59' : '#C84D59',
@@ -147,10 +151,12 @@ const updateBlogType = async (req, res, next) => {
       err.statusCode = 400
       throw err
     }
+    let iconStored = null
     if (req.file?.path) {
       await optimizeIconInPlace(req.file.path).catch(() => {})
+      iconStored = await persistLocalUpload(req.file.path, { contentType: req.file.mimetype })
     }
-    
+
     const { name, slug, description, color, sortOrder, isActive, iconType, iconName } = req.body
     
     const blogType = await BlogType.findById(req.params.id)
@@ -184,7 +190,7 @@ const updateBlogType = async (req, res, next) => {
       const t = iconName.trim()
       blogType.iconName = t ? t.slice(0, 64) : null
     }
-    if (req.file?.path) blogType.iconPath = req.file.path
+    if (iconStored) blogType.iconPath = iconStored
     
     await blogType.save()
     

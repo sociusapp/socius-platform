@@ -1,7 +1,7 @@
-const fs = require('fs').promises
 const path = require('path')
 const NotificationCampaignAsset = require('../models/NotificationCampaignAsset')
 const { UPLOADS_ROOT } = require('../config/uploads')
+const { deleteStoredMedia } = require('../services/mediaStorage.service')
 const logger = require('../utils/logger')
 
 /**
@@ -33,11 +33,11 @@ const cleanupExpiredNotificationCampaignAssets = async () => {
       continue
     }
     try {
-      await fs.unlink(abs)
-      removedFiles += 1
+      const ok = await deleteStoredMedia(rel)
+      if (ok) removedFiles += 1
+      else missingFiles += 1
     } catch (e) {
-      if (e && e.code === 'ENOENT') missingFiles += 1
-      else logger.warn(`[NotificationCampaignAssets] unlink failed: ${abs}`, e)
+      logger.warn(`[NotificationCampaignAssets] delete failed: ${rel}`, e)
     }
     await NotificationCampaignAsset.deleteOne({ _id: doc._id })
   }

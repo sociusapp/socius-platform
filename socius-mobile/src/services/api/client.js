@@ -1,4 +1,14 @@
 import axios from 'axios';
+import { clearAuth } from '../storage/asyncStorage.service';
+
+let logoutHandler = null;
+/**
+ * Set a callback to be executed when session expires (401/403)
+ * This helps avoid circular dependencies between API client and Store/Navigation
+ */
+export const onSessionExpired = (handler) => {
+  logoutHandler = handler;
+};
 
 const LIVE_API = 'https://socius-platform-rxjo.onrender.com/api';
 
@@ -176,10 +186,22 @@ api.interceptors.response.use(
     const retries = Number(cfg?.retry?.retries || 0) || 0;
 
     if (cfg.__retryCount >= retries) {
+      if (error?.response?.status === 401 || error?.response?.status === 403) {
+        if (typeof logoutHandler === 'function') {
+          void clearAuth().catch(() => {});
+          logoutHandler();
+        }
+      }
       return Promise.reject(error);
     }
 
     if (!shouldRetry(error, cfg)) {
+      if (error?.response?.status === 401 || error?.response?.status === 403) {
+        if (typeof logoutHandler === 'function') {
+          void clearAuth().catch(() => {});
+          logoutHandler();
+        }
+      }
       return Promise.reject(error);
     }
 

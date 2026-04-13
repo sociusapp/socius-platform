@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -9,6 +9,20 @@ import { useResponsive } from '../../../../utils/responsive';
 const EmergencyHelpScreen = ({ navigation, route }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
   const returnWithBack = route?.params?.returnWithBack === true;
+  const scrollRef = useRef(null);
+
+  useEffect(() => {
+    const raw = route?.params?.focusIndex;
+    const idx = raw == null ? NaN : Number(raw);
+    if (!Number.isFinite(idx) || idx < 0 || idx > 3) return;
+    const warningApprox = vscale(120) + spacing(20);
+    const rowApprox = vscale(12) + spacing(16) * 2 + scale(48) + vscale(12);
+    const y = warningApprox + idx * rowApprox;
+    const t = setTimeout(() => {
+      scrollRef.current?.scrollTo({ y, animated: true });
+    }, 350);
+    return () => clearTimeout(t);
+  }, [route?.params?.focusIndex, scale, spacing, vscale]);
   
   const handleCall = (number) => {
     let phoneNumber = '';
@@ -38,7 +52,11 @@ const EmergencyHelpScreen = ({ navigation, route }) => {
         titleStyle={[styles.headerTitle, { fontSize: ms(20) }]}
       />
 
-      <ScrollView contentContainerStyle={[styles.scrollContent, { padding: spacing(16), paddingBottom: vscale(40) }]} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={[styles.scrollContent, { padding: spacing(16), paddingBottom: vscale(40) }]}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={{ width: contentWidth, alignSelf: 'center' }}>
           {/* Warning Card */}
           <View style={[styles.warningCard, { borderRadius: scale(12), padding: spacing(16), marginBottom: vscale(20), borderWidth: scale(1), shadowRadius: scale(2), elevation: scale(2) }]}>

@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const fs = require('fs');
-const path = require('path');
+const { resolveUploadRootFile } = require('../config/uploads');
 const { upload, uploadAPK, getUpdateInfo, deleteAPK, getDownloadStats } = require('../controllers/appUpdate.controller');
 
 // Public routes
@@ -9,7 +9,7 @@ router.get('/check-update', async (req, res) => {
     const { version: currentVersion, platform } = req.query;
     
     // Get current update info
-    const configPath = path.join(__dirname, '../uploads/update-config.json');
+    const configPath = resolveUploadRootFile('update-config.json');
     let updateInfo;
     
     if (fs.existsSync(configPath)) {
@@ -52,7 +52,7 @@ router.get('/check-update', async (req, res) => {
 // Download latest APK
 router.get('/download', (req, res) => {
   try {
-    const apkPath = path.join(__dirname, '../uploads/app-latest.apk');
+    const apkPath = resolveUploadRootFile('app-latest.apk');
     
     if (!fs.existsSync(apkPath)) {
       return res.status(404).json({

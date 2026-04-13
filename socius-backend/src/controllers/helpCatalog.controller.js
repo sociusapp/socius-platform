@@ -2,14 +2,7 @@ const mongoose = require('mongoose')
 const HelpCategory = require('../models/HelpCategory')
 const HelpCatalogItem = require('../models/HelpCatalogItem')
 const { success } = require('../utils/response')
-
-const normalizeUploadPath = (filePath) => {
-  if (!filePath) return null
-  const normalized = String(filePath).replace(/\\/g, '/')
-  const idx = normalized.indexOf('uploads/')
-  if (idx !== -1) return `/${normalized.substring(idx)}`
-  return normalized.startsWith('/') ? normalized : `/${normalized}`
-}
+const { persistLocalUpload } = require('../services/mediaStorage.service')
 
 const resolveHelpCategoryId = async (categoryId, categorySlug) => {
   const raw = String(categoryId || '').trim()
@@ -67,13 +60,17 @@ const createHelpItem = async (req, res, next) => {
           .split(',')
           .map((t) => t.trim())
           .filter(Boolean)
+    let iconPath = null
+    if (req.file?.path) {
+      iconPath = await persistLocalUpload(req.file.path, { contentType: req.file.mimetype })
+    }
     const doc = await HelpCatalogItem.create({
       categoryId,
       title,
       description: req.body?.description || '',
       tags: tagsRaw,
       iconName: req.body?.iconName || null,
-      iconPath: req.file?.path ? normalizeUploadPath(req.file.path) : null,
+      iconPath,
       isActive: req.body?.isActive !== undefined ? String(req.body.isActive) === 'true' : true,
       sortOrder: Number(req.body?.sortOrder || 0),
     })
@@ -105,7 +102,9 @@ const updateHelpItem = async (req, res, next) => {
             .map((t) => t.trim())
             .filter(Boolean)
     }
-    if (req.file?.path) doc.iconPath = normalizeUploadPath(req.file.path)
+    if (req.file?.path) {
+      doc.iconPath = await persistLocalUpload(req.file.path, { contentType: req.file.mimetype })
+    }
     await doc.save()
     return success(res, doc, 'Help catalog item updated')
   } catch (err) {

@@ -3,18 +3,26 @@
 
 services:
   # 1. Backend Service (socius-platform)
+  # Uploads live on a Persistent Disk so files are not wiped on each git deploy (default app disk is ephemeral).
+  # Needs a non-free instance on Render to attach a disk; omit `disk` if you use external object storage instead.
   - type: web
     name: socius-platform
     env: node
-    plan: free
+    plan: starter
     region: ohio
     buildCommand: npm install && cd socius-backend && npm install
     startCommand: cd socius-backend && npm start
+    disk:
+      name: socius-uploads
+      mountPath: /var/socius/uploads
+      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 10000
+      - key: UPLOADS_ROOT
+        value: /var/socius/uploads
 
   # 2. Admin Portal (socius-admin)
   - type: web

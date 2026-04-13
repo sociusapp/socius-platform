@@ -3,28 +3,7 @@ const User = require('../models/User')
 const logger = require('../utils/logger')
 const { compressImage } = require('../utils/imageCompressor')
 const redis = require('../config/redis')
-const path = require('path')
-
-/**
- * Convert full file path to relative URL path
- */
-const toRelativePath = (fullPath) => {
-  if (!fullPath) return null
-  const normalized = String(fullPath).replace(/\\/g, '/')
-  // Extract just the /uploads/... part from full path
-  const uploadsIndex = normalized.indexOf('/uploads/')
-  if (uploadsIndex !== -1) {
-    return normalized.substring(uploadsIndex)
-  }
-  // If no explicit /uploads/ found, keep folder hint (documents/selfies) when possible
-  const filename = path.basename(normalized)
-  const folder = path.basename(path.dirname(normalized))
-  const known = new Set(['documents', 'selfies', 'help-categories', 'issue-screenshots', 'gallery', 'blogs', 'blog-types', 'chat-media', 'closures'])
-  if (known.has(folder)) {
-    return `/uploads/${folder}/${filename}`
-  }
-  return `/uploads/${filename}`
-}
+const { persistLocalUpload } = require('./mediaStorage.service')
 
 /**
  * Verification record get karo (ya banao agar nahi hai)
@@ -51,16 +30,17 @@ const updateSelfieOnly = async (userId, file) => {
   }
 
   await compressImage(file.path, 60)
-  
+
+  const selfieUrl = await persistLocalUpload(file.path, { contentType: file.mimetype })
+
   verification.selfie = {
-    fileUrl: toRelativePath(file.path),
+    fileUrl: selfieUrl,
     fileName: file.filename,
     uploadedAt: new Date(),
   }
-  
-  // Update user profile image bhi
+
   await User.findByIdAndUpdate(userId, {
-    profileImage: toRelativePath(file.path),
+    profileImage: selfieUrl,
   })
 
   await verification.save()
@@ -93,7 +73,7 @@ const submitDocuments = async (userId, files) => {
     const f = files.government_id[0]
     await compressImage(f.path, 70)
     updates.governmentId = {
-      fileUrl: toRelativePath(f.path),
+      fileUrl: await persistLocalUpload(f.path, { contentType: f.mimetype }),
       fileName: f.filename,
       fileType: f.mimetype,
       uploadedAt: new Date(),
@@ -104,7 +84,7 @@ const submitDocuments = async (userId, files) => {
     const f = files.selfie[0]
     await compressImage(f.path, 60)
     updates.selfie = {
-      fileUrl: toRelativePath(f.path),
+      fileUrl: await persistLocalUpload(f.path, { contentType: f.mimetype }),
       fileName: f.filename,
       uploadedAt: new Date(),
     }
@@ -167,7 +147,7 @@ const retryVerification = async (userId, files) => {
     const f = files.government_id[0]
     await compressImage(f.path, 70)
     updates.governmentId = {
-      fileUrl: toRelativePath(f.path),
+      fileUrl: await persistLocalUpload(f.path, { contentType: f.mimetype }),
       fileName: f.filename,
       fileType: f.mimetype,
       uploadedAt: new Date(),
@@ -178,7 +158,7 @@ const retryVerification = async (userId, files) => {
     const f = files.selfie[0]
     await compressImage(f.path, 60)
     updates.selfie = {
-      fileUrl: toRelativePath(f.path),
+      fileUrl: await persistLocalUpload(f.path, { contentType: f.mimetype }),
       fileName: f.filename,
       uploadedAt: new Date(),
     }
@@ -222,12 +202,19 @@ const submitReviewRequest = async (userId, { userExplanation, files }) => {
     await compressImage(files.updated_selfie[0].path, 60)
   }
 
+  const updatedDocUrl = files?.updated_doc?.[0]
+    ? await persistLocalUpload(files.updated_doc[0].path, { contentType: files.updated_doc[0].mimetype })
+    : null
+  const updatedSelfieUrl = files?.updated_selfie?.[0]
+    ? await persistLocalUpload(files.updated_selfie[0].path, { contentType: files.updated_selfie[0].mimetype })
+    : null
+
   verification.reviewRequest = {
     isRequested: true,
     requestedAt: new Date(),
     userExplanation: userExplanation || null,
-    updatedDocUrl: files?.updated_doc?.[0] ? toRelativePath(files.updated_doc[0].path) : null,
-    updatedSelfieUrl: files?.updated_selfie?.[0] ? toRelativePath(files.updated_selfie[0].path) : null,
+    updatedDocUrl,
+    updatedSelfieUrl,
     status: 'pending',
   }
   verification.status = 'review_requested'

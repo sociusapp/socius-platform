@@ -87,6 +87,44 @@ const attachFormDataContentTypeFix = (instance) => {
 attachAuth(api);
 attachFormDataContentTypeFix(api);
 
+/**
+ * Handle session expiration by clearing storage and redirecting to login
+ * @param {number} status - HTTP status code
+ */
+const handleSessionExpired = (status) => {
+  if (status === 401 || status === 403) {
+    try {
+      localStorage.removeItem('socius_user');
+      delete api.defaults.headers.common.Authorization;
+    } catch { }
+
+    const isLoginPage = typeof window !== 'undefined' &&
+      (window.location.pathname === '/login' ||
+       window.location.pathname === '/developer-login');
+
+    if (!isLoginPage) {
+      window.location.href = '/login';
+    }
+  }
+};
+
+/**
+ * Response interceptor to handle session expiration (401/403)
+ * Automatically logs out and redirects to login page
+ */
+const attachSessionExpiredHandler = (instance) => {
+  instance.interceptors.response.use(
+    (response) => response,
+    (error) => {
+      const status = error?.response?.status;
+      handleSessionExpired(status);
+      return Promise.reject(error);
+    }
+  );
+};
+
+attachSessionExpiredHandler(api);
+
 const getBearer = () => {
   try {
     const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('socius_user') : null;
@@ -113,6 +151,10 @@ const fetchFormData = async (method, path, formData) => {
 
   const res = await fetch(url, { method, headers, body: formData });
   const data = await res.json().catch(() => ({}));
+
+  // Handle session expiration for fetch calls
+  handleSessionExpired(res.status);
+
   if (!res.ok) {
     const err = new Error(data.message || `Request failed (${res.status})`);
     err.response = { status: res.status, data };

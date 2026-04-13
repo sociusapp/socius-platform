@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthContext';
 import { useAuth } from './context/AuthContext';
 import { useTheme } from './context/ThemeContext';
+import { LogoProvider } from './context/LogoContext';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import AuthLayout from './layouts/AuthLayout';
 import MainLayout from './layouts/MainLayout';
@@ -71,7 +72,8 @@ function App() {
         v7_relativeSplatPath: true,
       }}
     >
-      <AuthProvider>
+      <LogoProvider>
+        <AuthProvider>
         <Toaster
           position="top-right"
           reverseOrder={false}
@@ -173,6 +175,7 @@ function App() {
 
         </Routes>
       </AuthProvider>
+      </LogoProvider>
     </BrowserRouter>
   );
 }
