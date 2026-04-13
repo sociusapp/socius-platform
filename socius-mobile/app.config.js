@@ -33,6 +33,13 @@ export default {
         imageWidth: 240,
       },
     ],
+    [
+      'expo-image-picker',
+      {
+        photosPermission: 'Allow Socius to access your photos to upload verification documents.',
+        cameraPermission: 'Allow Socius to access your camera to take a selfie for verification.',
+      },
+    ],
   ],
   android: {
     package: 'com.socius.app',

@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, Mod
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImageManipulator from 'expo-image-manipulator';
 import Button from '../../components/common/Button';
@@ -148,22 +149,40 @@ const IdentityVerificationScreen = ({ navigation }) => {
         return;
       }
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: false,
-        quality: 1,
+      // Try image picker first
+      try {
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          allowsEditing: false,
+          quality: 0.8,
+        });
+
+        if (!result.canceled && result.assets && result.assets[0]) {
+          setGovernmentIDImage(result.assets[0].uri);
+          setGovernmentIDUploaded(true);
+          console.log('Government ID uploaded via ImagePicker:', result.assets[0].uri);
+          return;
+        }
+      } catch (e) {
+        console.log('ImagePicker failed, trying DocumentPicker:', e);
+      }
+
+      // Fallback to DocumentPicker if ImagePicker fails or is cancelled
+      const docResult = await DocumentPicker.getDocumentAsync({
+        type: 'image/*',
+        multiple: false,
       });
 
-      if (!result.canceled && result.assets && result.assets[0]) {
-        setGovernmentIDImage(result.assets[0].uri);
+      if (!docResult.canceled && docResult.assets && docResult.assets[0]) {
+        setGovernmentIDImage(docResult.assets[0].uri);
         setGovernmentIDUploaded(true);
-        console.log('Government ID uploaded:', result.assets[0].uri);
+        console.log('Government ID uploaded via DocumentPicker:', docResult.assets[0].uri);
       }
     } catch (error) {
       console.log('Document pick error:', error);
       // Only show alert if still mounted and attached to activity
       setTimeout(() => {
-        Alert.alert('Error', 'Failed to pick document');
+        Alert.alert('Error', error?.message || 'Failed to pick document');
       }, 100);
     }
   };

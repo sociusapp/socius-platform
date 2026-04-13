@@ -279,6 +279,7 @@ export const displayAndroidForegroundIncomingHeadsUp = async (kind, rawData = {}
         style: { type: AndroidStyle.BIGTEXT, text: body || title },
         pressAction: { id: 'default', launchActivity: 'default' },
         fullScreenAction: { id: 'default', launchActivity: 'default' },
+        asForegroundService: true,
         ...(largeIcon ? { largeIcon } : {}),
         actions: [
           {

@@ -947,7 +947,7 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
       return;
     }
     const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       quality: 0.85,
       allowsMultipleSelection: false,
     });
@@ -1027,7 +1027,7 @@ const ChatModal = ({ visible, onClose, requestId, otherUserName, otherUser, pref
       return;
     }
     const res = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       quality: 0.85,
     });
     if (res.canceled || !res.assets?.[0]) return;

@@ -1175,7 +1175,7 @@ const MatchingMapScreen = ({ navigation, route }) => {
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      quality: 0.9,
+      quality: 0.8,
       allowsEditing: true,
       mediaTypes: ['images'],
     });

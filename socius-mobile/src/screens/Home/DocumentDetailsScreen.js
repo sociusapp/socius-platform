@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import { useResponsive } from '../../utils/responsive';
 import Header from '../../components/common/Header';
 import { getProfile, updateProfile } from '../../services/api/user.api';
@@ -157,17 +158,33 @@ const DocumentDetailsScreen = ({ navigation }) => {
         return;
       }
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: false,
-        quality: 0.8,
+      // Try image picker first
+      try {
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          allowsEditing: false,
+          quality: 0.8,
+        });
+
+        if (!result.canceled && result.assets && result.assets[0]) {
+          setGovernmentIdImage(result.assets[0].uri);
+          return;
+        }
+      } catch (e) {
+        console.log('ImagePicker failed, trying DocumentPicker:', e);
+      }
+
+      // Fallback to DocumentPicker
+      const docResult = await DocumentPicker.getDocumentAsync({
+        type: 'image/*',
+        multiple: false,
       });
 
-      if (!result.canceled && result.assets && result.assets[0]) {
-        setGovernmentIdImage(result.assets[0].uri);
+      if (!docResult.canceled && docResult.assets && docResult.assets[0]) {
+        setGovernmentIdImage(docResult.assets[0].uri);
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to pick document.');
+      Alert.alert('Error', error?.message || 'Failed to pick document.');
     }
   };
 
@@ -190,7 +207,7 @@ const DocumentDetailsScreen = ({ navigation }) => {
         setSelfieImage(oriented);
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to capture selfie.');
+      Alert.alert('Error', error?.message || 'Failed to capture selfie.');
     }
   };
 
