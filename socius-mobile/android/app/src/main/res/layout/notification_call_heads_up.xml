@@ -3,7 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:padding="10dp"
-    android:background="@drawable/bg_notification_card"
+    android:background="@drawable/bg_lock_card_premium"
     android:orientation="vertical">
 
     <LinearLayout
@@ -49,7 +49,7 @@
                 android:id="@+id/tv_title"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textColor="#FFFFFF"
+                android:textColor="#111827"
                 android:textStyle="bold"
                 android:textSize="14sp"
                 android:singleLine="true"
@@ -59,7 +59,7 @@
                 android:id="@+id/tv_body"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textColor="#C7C7C7"
+                android:textColor="#4B5563"
                 android:textSize="13.5sp"
                 android:maxLines="2"
                 android:ellipsize="end" />

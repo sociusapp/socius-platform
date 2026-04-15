@@ -13,6 +13,8 @@ const ACTIVE_PRESENCE_ASSIGNMENT_ID_KEY = 'request.active.presence.assignment.id
 const DEFAULT_COUNTRY_CODE_KEY = 'user.default.countryCode.v1';
 const PENDING_BORROW_ITEM_OPEN_KEY = 'pending.borrow.item.open.v1';
 const PENDING_OFFER_ITEM_OPEN_KEY = 'pending.offer.item.open.v1';
+const PERSISTED_BORROW_REQUEST_KEY = 'persisted.borrow.request.v1';
+const PERSISTED_OFFER_REQUEST_KEY = 'persisted.offer.request.v1';
 
 const dailyHelpSafetyGuideKey = (userId) =>
   `dailyHelp.helperSafetyGuideSeen.v1:${String(userId || '')}`;
@@ -215,6 +217,52 @@ const clearPendingOfferItemOpen = async () => {
   } catch (_) {}
 };
 
+const savePersistedBorrowRequest = async (payload) => {
+  if (!payload?.requestId || !payload?.borrowId) return;
+  try {
+    await AsyncStorage.setItem(PERSISTED_BORROW_REQUEST_KEY, JSON.stringify(payload));
+  } catch (_) {}
+};
+
+const loadPersistedBorrowRequest = async () => {
+  try {
+    const raw = await AsyncStorage.getItem(PERSISTED_BORROW_REQUEST_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};
+
+const clearPersistedBorrowRequest = async () => {
+  try {
+    await AsyncStorage.removeItem(PERSISTED_BORROW_REQUEST_KEY);
+  } catch (_) {}
+};
+
+const savePersistedOfferRequest = async (payload) => {
+  if (!payload?.requestId || !(payload?.offerId || payload?.borrowId)) return;
+  try {
+    await AsyncStorage.setItem(PERSISTED_OFFER_REQUEST_KEY, JSON.stringify(payload));
+  } catch (_) {}
+};
+
+const loadPersistedOfferRequest = async () => {
+  try {
+    const raw = await AsyncStorage.getItem(PERSISTED_OFFER_REQUEST_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};
+
+const clearPersistedOfferRequest = async () => {
+  try {
+    await AsyncStorage.removeItem(PERSISTED_OFFER_REQUEST_KEY);
+  } catch (_) {}
+};
+
 export {
   saveAuth,
   loadAuth,
@@ -241,6 +289,12 @@ export {
   savePendingOfferItemOpen,
   loadPendingOfferItemOpen,
   clearPendingOfferItemOpen,
+  savePersistedBorrowRequest,
+  loadPersistedBorrowRequest,
+  clearPersistedBorrowRequest,
+  savePersistedOfferRequest,
+  loadPersistedOfferRequest,
+  clearPersistedOfferRequest,
   saveDailyHelpSafetyGuideSeen,
   loadDailyHelpSafetyGuideSeen,
 };

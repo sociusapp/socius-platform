@@ -12,6 +12,7 @@ import {
   createBorrowItemRequest,
   getBorrowItems,
   getHelpRequestById,
+  respondOfferItemRequest,
 } from '../../../../services/api/dailyHelp.api';
 import { loadAuth } from '../../../../services/storage/asyncStorage.service';
 import { baseURL } from '../../../../services/api/client';
@@ -1188,6 +1189,25 @@ const MatchingMapScreen = ({ navigation, route }) => {
     setPhotoPickerVisible(true);
   }, []);
 
+  const handleRespondToOffer = useCallback(async (offerId, action) => {
+    try {
+      if (!requestId || !offerId) return;
+      const auth = await loadAuth();
+      if (!auth?.accessToken) throw new Error('No auth');
+      await respondOfferItemRequest(auth.accessToken, requestId, offerId, action);
+      await loadBorrowHistory();
+      showAlert(
+        action === 'accept' ? 'Offer accepted' : 'Offer declined',
+        action === 'accept' ? 'The item will be added to the session.' : 'You have declined the offer.',
+        [{ text: 'OK', onPress: closeAlert, style: 'primary' }],
+        'check-circle',
+        '#28C76F'
+      );
+    } catch (e) {
+      showAlert('Error', 'Unable to respond to offer.', [{ text: 'OK', onPress: closeAlert }]);
+    }
+  }, [requestId, loadBorrowHistory]);
+
   const renderBottomTabContent = () => {
     if (activeBottomTab === 'overview') {
       return (
@@ -1426,6 +1446,24 @@ const MatchingMapScreen = ({ navigation, route }) => {
                       <Text style={styles.borrowHistoryMetaSmall}>
                         {row?.status === 'accepted' ? 'Accepted' : 'Declined'} {actedAt}
                       </Text>
+                    ) : null}
+                    {by === 'helper' && (isPending || row?.status === 'declined') ? (
+                      <View style={styles.historyActionRow}>
+                        <TouchableOpacity
+                          style={styles.historyActionBtn}
+                          onPress={() => handleRespondToOffer(hid, 'accept')}
+                        >
+                          <Text style={styles.historyActionBtnText}>Accept</Text>
+                        </TouchableOpacity>
+                        {isPending && (
+                          <TouchableOpacity
+                            style={[styles.historyActionBtn, styles.historyActionBtnDecline]}
+                            onPress={() => handleRespondToOffer(hid, 'decline')}
+                          >
+                            <Text style={styles.historyActionBtnText}>Decline</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     ) : null}
                   </View>
                 </View>
@@ -2788,6 +2826,27 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontSize: 11,
     color: '#9CA3AF',
+  },
+  historyActionRow: {
+    flexDirection: 'row',
+    marginTop: 8,
+    gap: 8,
+  },
+  historyActionBtn: {
+    backgroundColor: '#DC5C69',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    minWidth: 70,
+    alignItems: 'center',
+  },
+  historyActionBtnDecline: {
+    backgroundColor: '#94A3B8',
+  },
+  historyActionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
   },
   borrowHistoryNoteLine: {
     marginTop: 6,

@@ -44,6 +44,7 @@ import { logout } from '../state/redux/slices/authSlice';
 import CustomAlert from '../components/common/CustomAlert';
 import DailyHelpIncomingModal from '../features/daily-help/components/modals/DailyHelpIncomingModal';
 const GlobalBorrowOfferItemModal = lazy(() => import('../features/daily-help/components/GlobalBorrowOfferItemModal'));
+import SessionCompletionModal from '../features/daily-help/components/modals/SessionCompletionModal';
 import IncomingPresenceAlarmModal from '../components/notifications/IncomingPresenceAlarmModal';
 import {
   loadAuth,
@@ -511,6 +512,10 @@ const AppNavigator = () => {
   const [incomingPresenceVisible, setIncomingPresenceVisible] = useState(false);
   const [incomingPresenceData, setIncomingPresenceData] = useState(null);
   const [incomingPresenceStatus, setIncomingPresenceStatus] = useState('notified');
+  const [closurePromptVisible, setClosurePromptVisible] = useState(false);
+  const [closurePromptData, setClosurePromptData] = useState(null);
+  const [partCompletePromptVisible, setPartCompletePromptVisible] = useState(false);
+  const [partCompletePromptData, setPartCompletePromptData] = useState(null);
   const incomingHelpDedupeRef = useRef({ id: null, t: 0 });
   const appStateRef = useRef(AppState.currentState);
   const suppressedHelpAlertIdsRef = useRef(new Set());
@@ -795,6 +800,130 @@ const AppNavigator = () => {
         subscription.remove();
       };
     }
+  }, []);
+
+  useEffect(() => {
+    const handleClosureInitiated = async (data) => {
+      const requestId = data?.requestId;
+      if (!requestId) return;
+
+      const auth = await loadAuth();
+      const myUserId = resolveCurrentUserId(auth);
+      if (!myUserId) return;
+
+      // Check if I am on the meeting screen for this request
+      if (isUserOnHelpMeetingScreen(navigationRef, requestId)) {
+        return; // The screen will handle its own modal
+      }
+
+      // Check role
+      const role = await inferRecipientRoleForRequest(requestId);
+      if (!role) return;
+
+      setClosurePromptData({ ...data, role });
+      setClosurePromptVisible(true);
+    };
+
+    const handlePartCompleted = async (data) => {
+      const requestId = data?.requestId;
+      if (!requestId) return;
+
+      const auth = await loadAuth();
+      const myUserId = resolveCurrentUserId(auth);
+      if (!myUserId) return;
+
+      // Check if I am on the meeting screen for this request
+      if (isUserOnHelpMeetingScreen(navigationRef, requestId)) {
+        return; // The screen will handle its own modal
+      }
+
+      // Check role
+      const role = await inferRecipientRoleForRequest(requestId);
+      if (!role) return;
+
+      setPartCompletePromptData({ ...data, role });
+      setPartCompletePromptVisible(true);
+    };
+
+    const handleRequestClosed = (data) => {
+      setClosurePromptVisible(false);
+      setClosurePromptData(null);
+      setPartCompletePromptVisible(false);
+      setPartCompletePromptData(null);
+    };
+
+    const setupSocket = async () => {
+      const s = await connectSocket();
+      if (s) {
+        s.on('help:part_completed', handlePartCompleted);
+        s.on('help:closure_initiated', handleClosureInitiated);
+        s.on('help:request_closed', handleRequestClosed);
+      }
+    };
+    setupSocket();
+
+    return () => {
+      connectSocket().then((s) => {
+        if (s) {
+          s.off('help:part_completed', handlePartCompleted);
+          s.off('help:closure_initiated', handleClosureInitiated);
+          s.off('help:request_closed', handleRequestClosed);
+        }
+      });
+    };
+  }, []);
+
+  useEffect(() => {
+    const checkActiveClosure = async () => {
+      try {
+        const auth = await loadAuth();
+        const token = auth?.accessToken;
+        const myUserId = resolveCurrentUserId(auth);
+        if (!token || !myUserId) return;
+
+        const res = await getHome(token);
+        if (res?.success && Array.isArray(res.data?.activeSessions)) {
+          // Find ALL sessions that need my attention (closing or part_completed)
+          const needsAttention = res.data.activeSessions.filter(
+            (s) => (s.status === 'closing' || s.otherCompletedPart) && !s.iClosed && s.requestId
+          );
+
+          if (needsAttention.length > 0) {
+            // Pick the first one to show
+            const session = needsAttention[0];
+            const rid = session.requestId;
+
+            if (!isUserOnHelpMeetingScreen(navigationRef, rid)) {
+              if (session.status === 'closing') {
+                setClosurePromptData({
+                  requestId: rid,
+                  requestType: session.category,
+                  initiatedBy: session.initiatedBy,
+                  role: session.role,
+                });
+                setClosurePromptVisible(true);
+              } else if (session.otherCompletedPart && !session.iCompletedPart) {
+                setPartCompletePromptData({
+                  requestId: rid,
+                  requestType: session.category,
+                  completedBy: session.role === 'requester' ? 'helper' : 'requester',
+                  role: session.role,
+                });
+                setPartCompletePromptVisible(true);
+              }
+            }
+          }
+        }
+      } catch (e) {}
+    };
+
+    const unsub = navigationRef.addListener('state', () => {
+      if (navigationRef.isReady()) {
+        checkActiveClosure();
+      }
+    });
+    checkActiveClosure();
+    return unsub;
   }, []);
 
   useEffect(() => {
@@ -2181,6 +2310,66 @@ const AppNavigator = () => {
       <NavigationContainer ref={navigationRef} theme={SOCIUS_NAVIGATION_THEME}>
         <StackNavigator />
       </NavigationContainer>
+
+      {/* Global Closure Prompt Modal */}
+      <CustomAlert
+        visible={closurePromptVisible}
+        title="Closure in progress"
+        message={
+          closurePromptData?.role === 'helper'
+            ? `The requester has started closing the ${closurePromptData?.requestType || 'request'}. Please complete your part.`
+            : `The helper has completed their part for the ${closurePromptData?.requestType || 'request'}. Please close it from your side.`
+        }
+        icon="alert-circle-outline"
+        iconColor="#DC5C69"
+        buttons={[
+          {
+            text: 'Complete closure',
+            onPress: () => {
+              setClosurePromptVisible(false);
+              navigateToHelpMeeting(navigationRef, {
+                requestId: closurePromptData.requestId,
+                data: { recipientRole: closurePromptData.role },
+              });
+            },
+            style: 'primary',
+          },
+          {
+            text: 'Not now',
+            onPress: () => setClosurePromptVisible(false),
+            style: 'cancel',
+          },
+        ]}
+      />
+
+      {/* Part Completed - Persistent Modal */}
+      <CustomAlert
+        visible={partCompletePromptVisible}
+        title="Item returned"
+        message={`The ${partCompletePromptData?.role === 'helper' ? 'requester' : 'helper'} has marked the item as ${partCompletePromptData?.completedBy === 'helper' ? 'returned' : 'received'}. Please close the request when ready.`}
+        icon="check-circle-outline"
+        iconColor="#28C76F"
+        dismissDurationMs={0}
+        buttons={[
+          {
+            text: 'Close request',
+            onPress: () => {
+              setPartCompletePromptVisible(false);
+              navigateToHelpMeeting(navigationRef, {
+                requestId: partCompletePromptData.requestId,
+                data: { recipientRole: partCompletePromptData.role },
+              });
+            },
+            style: 'primary',
+          },
+          {
+            text: 'Later',
+            onPress: () => setPartCompletePromptVisible(false),
+            style: 'cancel',
+          },
+        ]}
+      />
+
       {/* Community/Daily Help Notification Modal — remount per requestId so RN Modal animates reliably */}
       <DailyHelpIncomingModal
         key={incomingHelpData?.requestId ? `help-incoming-${incomingHelpData.requestId}` : 'help-incoming-idle'}
@@ -2283,6 +2472,9 @@ const AppNavigator = () => {
           void run();
         }}
       />
+
+      <SessionCompletionModal />
+
       <CustomAlert
         visible={alertVisible}
         type={alertConfig.dialogType}

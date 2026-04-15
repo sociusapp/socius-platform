@@ -4,6 +4,7 @@ import { CHANNELS, initNotifeeChannels } from './SociusNotificationService';
 import { loadAuth } from '../storage/asyncStorage.service';
 import { patchHelpSession } from '../api/incident.api';
 import { stopActiveHelpSessionNotification } from './activeHelpSessionNotification';
+import { appEvents } from '../socket/socket.service';
 
 const completionNotifId = (requestId) => `help_completion_${requestId}`;
 
@@ -12,6 +13,15 @@ const extendChoices = [
   { label: '30 minutes', minutes: 30 },
   { label: '60 minutes', minutes: 60 },
 ];
+
+// Register listeners for modal actions
+appEvents.on('help:run_complete_from_prompt', ({ requestId }) => {
+  runCompleteFromPrompt(requestId);
+});
+
+appEvents.on('help:run_extend_from_prompt', ({ requestId }) => {
+  showExtendPicker(requestId);
+});
 
 export async function runCompleteFromPrompt(requestId) {
   try {
@@ -63,6 +73,12 @@ export async function displayRequestCompletionPrompt(data) {
   const role = String(data?.recipientRole || data?.userRole || '').toLowerCase();
   if (role && role !== 'requester') return;
 
+  // Foreground modal check
+  if (AppState.currentState === 'active') {
+    appEvents.emit('help:session_ended_requester', { requestId });
+    return;
+  }
+
   await initNotifeeChannels();
 
   if (Platform.OS === 'android') {
@@ -75,6 +91,8 @@ export async function displayRequestCompletionPrompt(data) {
           channelId: CHANNELS.HELP_ALARM,
           importance: AndroidImportance.HIGH,
           pressAction: { id: 'default', launchActivity: 'default' },
+          groupId: completionNotifId(requestId),
+          groupSummary: false,
           actions: [
             { title: 'Completed', pressAction: { id: 'complete' } },
             { title: 'Need more time', pressAction: { id: 'extend' } },

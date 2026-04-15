@@ -267,8 +267,9 @@ const deleteAccount = async (userId) => {
  */
 const getHomeData = async (userId) => {
   const cacheKey = `user:home:${userId}`
-  const cached = await redis.get(cacheKey)
-  if (cached) return cached
+  // Check cache only for non-dynamic data if needed, but for now we need fresh status
+  // const cached = await redis.get(cacheKey)
+  // if (cached) return cached
 
   const user = await User.findById(userId).select(
     'fullName accountStatus isAvailable isIdentityVerified hasSeenAvailabilityGuide hasSeenUserGuide hasGivenLocationPermission role'
@@ -278,14 +279,63 @@ const getHomeData = async (userId) => {
     'status failureReasons adminNote'
   )
 
+  // Fetch active sessions for the user to show closure prompts
+  const activeSessions = []
+  
+  // 1. Help Requests I requested that are in 'matched' or 'closing' status
+  const myRequests = await HelpRequest.find({
+    requesterId: userId,
+    status: { $in: ['matched', 'closing'] }
+  }).select('category status requesterClosedAt helperClosedAt closureInitiatedBy requesterPartCompletedAt helperPartCompletedAt').lean()
+
+  for (const req of myRequests) {
+    activeSessions.push({
+      requestId: req._id,
+      type: 'help_request',
+      category: req.category,
+      status: req.status,
+      role: 'requester',
+      iClosed: !!req.requesterClosedAt,
+      otherClosed: !!req.helperClosedAt,
+      iCompletedPart: !!req.requesterPartCompletedAt,
+      otherCompletedPart: !!req.helperPartCompletedAt,
+      initiatedBy: req.closureInitiatedBy
+    })
+  }
+
+  // 2. Help I am providing
+  const myMatches = await HelpMatch.find({
+    helperId: userId,
+    status: { $in: ['accepted', 'matched', 'active'] }
+  }).populate('requestId', 'category status requesterClosedAt helperClosedAt closureInitiatedBy requesterPartCompletedAt helperPartCompletedAt').lean()
+
+  for (const match of myMatches) {
+    if (match.requestId && ['matched', 'closing'].includes(match.requestId.status)) {
+      activeSessions.push({
+        requestId: match.requestId._id,
+        type: 'help_request',
+        category: match.requestId.category,
+        status: match.requestId.status,
+        role: 'helper',
+        iClosed: !!match.requestId.helperClosedAt,
+        otherClosed: !!match.requestId.requesterClosedAt,
+        iCompletedPart: !!match.requestId.helperPartCompletedAt,
+        otherCompletedPart: !!match.requestId.requesterPartCompletedAt,
+        initiatedBy: match.requestId.closureInitiatedBy
+      })
+    }
+  }
+
   const data = {
     user,
     verificationStatus: verification?.status || 'not_submitted',
     verificationFailureReasons: verification?.failureReasons || [],
     verificationAdminNote: verification?.adminNote || null,
+    activeSessions, // This will be used by AppNavigator to show modals
   }
 
-  await redis.setEx(cacheKey, 3600, data)
+  // Set short cache or skip for dynamic status
+  await redis.setEx(cacheKey, 60, data)
   return data
 }
 

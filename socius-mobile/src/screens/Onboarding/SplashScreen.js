@@ -336,11 +336,20 @@ const SplashScreen = () => {
           addLog(`active req error: ${String(e?.message || e)}`);
         }
 
-        if (homeRes.status === 'rejected') {
-          addLog(`home error: ${String(homeRes.reason?.message || homeRes.reason)}`);
-        }
+        const isSessionExpired = (res) => {
+          if (res.status !== 'rejected') return false;
+          const status = res.reason?.response?.status;
+          return status === 401 || status === 403;
+        };
 
-        clearTimeout(emergency);
+        if (isSessionExpired(homeRes)) {
+           addLog('session expired during splash init');
+           clearTimeout(emergency);
+           await hideThenReset([{ name: 'PhoneVerification' }]);
+           return;
+         }
+
+         clearTimeout(emergency);
 
         const homePayload =
           homeRes.status === 'fulfilled' && homeRes.value?.success && homeRes.value?.data
@@ -356,8 +365,8 @@ const SplashScreen = () => {
         const canUseVerifiedHome = !!homePayload && accountAllowed && verificationApproved;
 
         if (!homePayload) {
-          addLog('navigate main app (home fetch incomplete)');
-          await hideThenReset([{ name: 'MainApp', params: { screen: 'HomeTab' } }]);
+          addLog('navigate phone verification (home fetch incomplete or failed)');
+          await hideThenReset([{ name: 'PhoneVerification' }]);
           return;
         }
 

@@ -1,104 +1,17 @@
-import React, { useEffect, useMemo, useRef } from 'react';
-import { Modal, View, Text, StyleSheet, TouchableOpacity, Image, Animated, Easing } from 'react-native';
+import React from 'react';
+import { Modal, View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useResponsive } from '../../../../utils/responsive';
 import { baseURL } from '../../../../services/api/client';
-import { LinearGradient } from 'expo-linear-gradient';
 
-const STATUS_COLORS = {
-  notified: '#38BDF8', // Skyblue for notified/pending
-  accepted: '#22C55E', // Green for accepted
-  declined: '#EF4444', // Red for declined/rejected
-};
-
-const IncomingHelpRequestModal = ({ visible, data, onDecline, onView, onClose, status = 'notified' }) => {
+const IncomingHelpRequestModal = ({ visible, data, onDecline, onView }) => {
   const { ms, scale, spacing, vscale } = useResponsive();
-  const baseRoot = useMemo(() => String(baseURL || '').replace(/\/api\/?$/, ''), []);
-  const pulse1 = useRef(new Animated.Value(0)).current;
-  const pulse2 = useRef(new Animated.Value(0)).current;
-  const pulse3 = useRef(new Animated.Value(0)).current;
-
-  const pulseColor = '#DC5C69'; // Reverted to Red for modal pulse only
-
-  const category = String(data?.categoryName || data?.category || 'Help Request').replace(/_/g, ' ').toUpperCase();
-  const description = String(data?.description || 'Needs assistance').trim();
+  const baseRoot = String(baseURL || '').replace(/\/api\/?$/, '');
+  
+  const category = String(data?.categoryName || data?.category || 'General').replace(/_/g, ' ');
   const area = String(data?.area || 'Nearby location').trim();
-  const distanceMeters = Number(data?.distanceMeters || 0) || 0;
-  const distanceText = distanceMeters < 1000 ? `${distanceMeters}m away` : `${(distanceMeters / 1000).toFixed(1)} km away`;
   const iconPath = data?.categoryIcon ? String(data.categoryIcon) : '';
   const iconUri = iconPath ? `${baseRoot}${iconPath}` : null;
-  const requesterName = data?.requesterName || 'Someone';
-
-  useEffect(() => {
-    if (!visible) {
-      pulse1.stopAnimation();
-      pulse2.stopAnimation();
-      pulse3.stopAnimation();
-      pulse1.setValue(0);
-      pulse2.setValue(0);
-      pulse3.setValue(0);
-      return;
-    }
-
-    const createPulse = (anim, delay) => {
-      return Animated.loop(
-        Animated.sequence([
-          Animated.delay(delay),
-          Animated.timing(anim, {
-            toValue: 1,
-            duration: 2000,
-            easing: Easing.out(Easing.quad),
-            useNativeDriver: true,
-          }),
-          Animated.timing(anim, {
-            toValue: 0,
-            duration: 0,
-            useNativeDriver: true,
-          }),
-        ])
-      );
-    };
-
-    const l1 = createPulse(pulse1, 0);
-    const l2 = createPulse(pulse2, 600);
-    const l3 = createPulse(pulse3, 1200);
-
-    l1.start();
-    l2.start();
-    l3.start();
-
-    return () => {
-      l1.stop();
-      l2.stop();
-      l3.stop();
-    };
-  }, [visible]);
-
-  const renderPulseRing = (anim) => (
-    <Animated.View
-      style={[
-        styles.pulseRing,
-        {
-          width: scale(64),
-          height: scale(64),
-          borderRadius: scale(32),
-          backgroundColor: pulseColor, // Dynamic color
-          opacity: anim.interpolate({
-            inputRange: [0, 0.5, 1],
-            outputRange: [0, 0.3, 0],
-          }),
-          transform: [
-            {
-              scale: anim.interpolate({
-                inputRange: [0, 1],
-                outputRange: [1, 2.2],
-              }),
-            },
-          ],
-        },
-      ]}
-    />
-  );
 
   return (
     <Modal
@@ -106,104 +19,53 @@ const IncomingHelpRequestModal = ({ visible, data, onDecline, onView, onClose, s
       transparent
       animationType="fade"
       statusBarTranslucent
-      onRequestClose={() => {
-        // Prevent closing on back button
-        return false;
-      }}
+      onRequestClose={() => false}
     >
       <View style={styles.overlay}>
-        <View style={[styles.card, { borderRadius: scale(28), width: '90%', maxWidth: scale(400) }]}>
-          <LinearGradient
-            colors={['#F0F9FF', '#FFFFFF']}
-            style={{ borderRadius: scale(28), padding: spacing(20) }}
-          >
-            <View style={{ alignItems: 'center', marginBottom: vscale(15) }}>
-              <View style={[styles.iconContainer, { width: scale(64), height: scale(64) }]}>
-                {renderPulseRing(pulse1)}
-                {renderPulseRing(pulse2)}
-                {renderPulseRing(pulse3)}
-                <View style={[styles.iconCircle, { width: scale(64), height: scale(64), borderRadius: scale(32) }]}>
-                  {iconUri ? (
-                    <Image
-                      source={{ uri: iconUri }}
-                      style={{ width: scale(64), height: scale(64), borderRadius: scale(32) }}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    <Icon name="hand-heart" size={ms(30)} color="#0EA5E9" />
-                  )}
-                </View>
-              </View>
-              
-              <Text style={{ fontSize: ms(20), fontWeight: '800', color: '#1E293B', marginTop: vscale(12) }}>
-                {category}
-              </Text>
-              <View style={[styles.distanceBadge, { paddingHorizontal: spacing(10), paddingVertical: vscale(4), borderRadius: scale(12) }]}>
-                <Text style={{ fontSize: ms(12), fontWeight: '700', color: '#0EA5E9' }}>
-                  {distanceText}
-                </Text>
-              </View>
+        <View style={[styles.card, { borderRadius: scale(20), width: '90%', maxWidth: scale(400), padding: spacing(20) }]}>
+          <View style={styles.headerRow}>
+            <View style={[styles.imageContainer, { width: scale(60), height: scale(60), borderRadius: scale(12) }]}>
+              {iconUri ? (
+                <Image
+                  source={{ uri: iconUri }}
+                  style={{ width: '100%', height: '100%', borderRadius: scale(12) }}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Icon name="hand-heart" size={ms(30)} color="#DC5C69" />
+              )}
             </View>
-
-            <View style={styles.contentBox}>
+            
+            <View style={styles.titleColumn}>
+              <Text style={[styles.title, { fontSize: ms(18) }]}>Help Request</Text>
               <View style={styles.detailRow}>
-                <View style={[styles.detailIconWrap, { backgroundColor: '#F1F5F9' }]}>
-                  <Icon name="account" size={ms(18)} color="#64748B" />
-                </View>
-                <View style={{ flex: 1, marginLeft: spacing(12) }}>
-                  <Text style={styles.detailLabel}>REQUESTER</Text>
-                  <Text style={styles.detailValue}>{requesterName}</Text>
-                </View>
+                <Text style={styles.detailLabel}>category: </Text>
+                <Text style={styles.detailValue}>{category}</Text>
               </View>
-
-              <View style={[styles.detailRow, { marginTop: vscale(12) }]}>
-                <View style={[styles.detailIconWrap, { backgroundColor: '#F1F5F9' }]}>
-                  <Icon name="comment-text" size={ms(18)} color="#64748B" />
-                </View>
-                <View style={{ flex: 1, marginLeft: spacing(12) }}>
-                  <Text style={styles.detailLabel}>DESCRIPTION</Text>
-                  <Text style={styles.detailValue} numberOfLines={2}>{description}</Text>
-                </View>
-              </View>
-
-              <View style={[styles.detailRow, { marginTop: vscale(12) }]}>
-                <View style={[styles.detailIconWrap, { backgroundColor: '#F1F5F9' }]}>
-                  <Icon name="map-marker" size={ms(18)} color="#64748B" />
-                </View>
-                <View style={{ flex: 1, marginLeft: spacing(12) }}>
-                  <Text style={styles.detailLabel}>LOCATION</Text>
-                  <Text style={styles.detailValue} numberOfLines={2}>{area}</Text>
-                </View>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>location: </Text>
+                <Text style={styles.detailValue} numberOfLines={1}>{area}</Text>
               </View>
             </View>
+          </View>
 
-            <View style={{ flexDirection: 'row', marginTop: vscale(24), gap: spacing(12) }}>
-              <TouchableOpacity
-                onPress={onDecline}
-                style={{ flex: 1 }}
-                activeOpacity={0.8}
-              >
-                <View style={[styles.actionBtn, { backgroundColor: '#F1F5F9', borderRadius: scale(16), paddingVertical: vscale(14) }]}>
-                  <Text style={[styles.actionBtnText, { color: '#64748B' }]}>Not available</Text>
-                </View>
-              </TouchableOpacity>
+          <View style={styles.actionsRow}>
+            <TouchableOpacity
+              onPress={onDecline}
+              style={[styles.actionBtn, styles.declineBtn, { borderRadius: scale(25) }]}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.declineBtnText}>Not available</Text>
+            </TouchableOpacity>
 
-              <TouchableOpacity
-                onPress={onView}
-                style={{ flex: 1 }}
-                activeOpacity={0.8}
-              >
-                <LinearGradient
-                  colors={['#0EA5E9', '#0284C7']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[styles.actionBtn, { borderRadius: scale(16), paddingVertical: vscale(14) }]}
-                >
-                  <Text style={[styles.actionBtnText, { color: '#FFFFFF' }]}>View Details</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-          </LinearGradient>
+            <TouchableOpacity
+              onPress={onView}
+              style={[styles.actionBtn, styles.viewBtn, { borderRadius: scale(25) }]}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.viewBtnText}>View</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </Modal>
@@ -213,74 +75,85 @@ const IncomingHelpRequestModal = ({ visible, data, onDecline, onView, onClose, s
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   card: {
     backgroundColor: '#FFFFFF',
+    elevation: 5,
     shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 25,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 10,
-    overflow: 'hidden',
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
   },
-  iconContainer: {
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  imageContainer: {
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  pulseRing: {
-    position: 'absolute',
-  },
-  iconCircle: {
-    backgroundColor: '#F0F9FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1,
-  },
-  distanceBadge: {
-    backgroundColor: '#F0F9FF',
-    marginTop: 8,
-  },
-  contentBox: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 20,
-    padding: 16,
-    marginTop: 5,
+    marginRight: 16,
     borderWidth: 1,
-    borderColor: '#F1F5F9',
+    borderColor: '#E5E7EB',
+  },
+  titleColumn: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  title: {
+    fontWeight: '800',
+    color: '#111827',
+    marginBottom: 4,
   },
   detailRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  detailIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  detailLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#94A3B8',
-    letterSpacing: 0.5,
-  },
-  detailValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#334155',
     marginTop: 2,
   },
+  detailLabel: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  detailValue: {
+    fontSize: 13,
+    color: '#374151',
+    fontWeight: '600',
+    flex: 1,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
+  },
   actionBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    minWidth: 120,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  actionBtnText: {
-    fontSize: 15,
-    fontWeight: '800',
+  declineBtn: {
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  viewBtn: {
+    backgroundColor: '#DC5C69',
+  },
+  declineBtnText: {
+    color: '#4B5563',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  viewBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });
 

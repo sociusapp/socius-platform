@@ -55,10 +55,18 @@ const loadServiceAccount = () => {
   }
 
   cachedProjectId = projectId
+  
+  // Robust private key parsing
+  let privateKey = rawPrivateKey
+  if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
+    privateKey = privateKey.substring(1, privateKey.length - 1)
+  }
+  privateKey = privateKey.replace(/\\n/g, '\n')
+
   return {
     project_id: projectId,
     client_email: clientEmail,
-    private_key: rawPrivateKey.replace(/\\n/g, '\n'),
+    private_key: privateKey,
   }
 }
 
@@ -144,6 +152,10 @@ const sendToDevice = async ({ token, title, body, data = {}, priority = 'high', 
   try {
     const accessToken = await getAccessToken()
     const projectId = getProjectId()
+    
+    if (!accessToken) {
+      throw new Error('FCM Access Token is missing or invalid')
+    }
 
     const isHigh = String(priority).toLowerCase() === 'high'
     const hasNotification = title || body
@@ -190,6 +202,7 @@ const sendToDevice = async ({ token, title, body, data = {}, priority = 'high', 
         channel_id: androidCfg.channelId,
         ...(androidCfg.sound ? { sound: androidCfg.sound } : {}),
         notification_priority: isHigh ? 'PRIORITY_MAX' : 'PRIORITY_DEFAULT',
+        visibility: 'PUBLIC',
         ...(img ? { image: img } : {}),
       }
       // iOS (APNs): explicit aps alert — without this, some iOS builds only get data or miss banners when backgrounded.

@@ -153,6 +153,11 @@ const sessionAction = async (req, res, next) => {
       return success(res, result, 'Session extended')
     }
 
+    if (action === 'mark_part_complete') {
+      const result = await closureService.markPartComplete(id, req.user._id)
+      return success(res, result, 'Part marked as complete')
+    }
+
     if (action === 'complete') {
       const request = await closureService.closeHelpRequest(id, req.user._id, {
         wasResolved: true,
@@ -224,6 +229,15 @@ const respondOfferItem = async (req, res, next) => {
   }
 }
 
+const getBorrowHistory = async (req, res, next) => {
+  try {
+    const result = await helpRequestService.getUserBorrowHistory(req.user._id)
+    return success(res, result)
+  } catch (err) {
+    next(err)
+  }
+}
+
 module.exports = {
   createRequest,
   updateRequest,
@@ -238,6 +252,7 @@ module.exports = {
   sessionAction,
   createBorrowItem,
   getBorrowItems,
+  getBorrowHistory,
   respondBorrowItem,
   createOfferItem,
   respondOfferItem,

@@ -16,6 +16,7 @@ const {
   respondBorrowItem,
   createOfferItem,
   respondOfferItem,
+  getBorrowHistory,
 } = require('../controllers/helpRequest.controller')
 const { authenticate, requireActive } = require('../middlewares/auth')
 const { validate, schemas } = require('../middlewares/validate')
@@ -74,6 +75,7 @@ router.patch('/:id/cancel', authenticate, cancelRequest)
 router.patch('/:id/close', authenticate, validate(schemas.closeRequest), closeRequest)
 
 // Borrow item flow (requester <-> matched helper)
+router.get('/borrow/history', authenticate, getBorrowHistory)
 router.get('/:id/borrow-items', authenticate, getBorrowItems)
 router.post('/:id/borrow', authenticate, requireActive, validate(schemas.borrowItemCreate), createBorrowItem)
 router.patch('/:id/borrow/:borrowId', authenticate, requireActive, validate(schemas.borrowItemRespond), respondBorrowItem)

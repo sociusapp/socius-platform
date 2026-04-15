@@ -76,6 +76,14 @@ const helpRequestSchema = new mongoose.Schema(
       default: 'open',
     },
 
+    requesterClosedAt: { type: Date, default: null },
+    helperClosedAt: { type: Date, default: null },
+    closureInitiatedBy: { type: String, enum: ['requester', 'helper', null], default: null },
+
+    // Track when each party marks their part as COMPLETED (item returned/borrowed)
+    requesterPartCompletedAt: { type: Date, default: null },
+    helperPartCompletedAt: { type: Date, default: null },
+
     // Item return required?
     itemReturnRequired: {
       type: Boolean,

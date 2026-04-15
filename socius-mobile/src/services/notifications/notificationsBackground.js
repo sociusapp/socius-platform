@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import { getMessaging, setBackgroundMessageHandler } from '@react-native-firebase/messaging';
+import messaging from '@react-native-firebase/messaging';
 import notifee, { AndroidStyle, EventType } from '@notifee/react-native';
 import {
   CHANNELS,
@@ -29,14 +29,12 @@ import { respondBorrowItemRequest, respondOfferItemRequest } from '../api/dailyH
 import { appEvents } from '../socket/socket.service';
 import { refreshActiveHelpSessionNotifications } from './activeHelpSessionSync';
 
-const messaging = getMessaging();
-
-setBackgroundMessageHandler(messaging, async remoteMessage => {
-  console.log('[FCM] background message', remoteMessage?.data || remoteMessage);
+messaging().setBackgroundMessageHandler(async remoteMessage => {
+  console.log('[FCM] background message received', remoteMessage?.data || remoteMessage);
   const data = remoteMessage?.data || {};
   const type = String(data.type || '').toLowerCase();
 
-  // Handle requester completion prompt first so it never gets short-circuited.
+  // Handle requester completion prompt first
   if (
     type === 'request_completion_prompt' &&
     data.requestId &&
@@ -60,6 +58,10 @@ setBackgroundMessageHandler(messaging, async remoteMessage => {
     return;
   }
 
+  // Ensure we always acknowledge critical alarms to the backend
+  const handledByCallKeep = await handleIncomingCallMessage(remoteMessage);
+  if (handledByCallKeep) return;
+
   // Presence: native incoming-call UI often does not show when the app is killed; always post Notifee
   // (high-importance tray + action buttons) from the headless JS task.
   const upperType = String(data.type || '').toUpperCase();
@@ -82,9 +84,6 @@ setBackgroundMessageHandler(messaging, async remoteMessage => {
     await displayAndroidForegroundIncomingHeadsUp('help', data);
     return;
   }
-
-  const handledByCallKeep = await handleIncomingCallMessage(remoteMessage);
-  if (handledByCallKeep) return;
 
   if (await handleChatMessageFcm(remoteMessage)) {
     return;

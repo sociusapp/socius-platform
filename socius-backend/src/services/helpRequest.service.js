@@ -1258,6 +1258,16 @@ const getBorrowItems = async (userId, requestId) => {
   return { items }
 }
 
+const getUserBorrowHistory = async (userId) => {
+  const items = await HelpBorrowItem.find({
+    $or: [{ requesterId: userId }, { helperId: userId }],
+  })
+    .populate('requestId', 'category description status location')
+    .sort({ createdAt: -1 })
+    .lean()
+  return { items }
+}
+
 const createOfferItemRequest = async (helperId, requestId, { itemName, note, requestedMinutes, imageUrl }) => {
   const request = await HelpRequest.findById(requestId).select('_id requesterId status')
   if (!request) {
@@ -1357,7 +1367,7 @@ const respondOfferItemRequest = async (requesterId, requestId, offerId, { action
 
   const status = action === 'accept' ? 'accepted' : 'declined'
   const item = await HelpBorrowItem.findOneAndUpdate(
-    { _id: offerId, requestId, requesterId, status: 'pending', initiatedBy: 'helper' },
+    { _id: offerId, requestId, requesterId, status: { $in: ['pending', 'declined'] }, initiatedBy: 'helper' },
     { $set: { status, actedAt: new Date(), actedBy: requesterId } },
     { new: true }
   )
@@ -1410,7 +1420,7 @@ const respondBorrowItemRequest = async (helperId, requestId, borrowId, { action 
       _id: borrowId,
       requestId,
       helperId,
-      status: 'pending',
+      status: { $in: ['pending', 'declined'] },
       initiatedBy: { $ne: 'helper' },
     },
     { $set: { status, actedAt: new Date(), actedBy: helperId } },
@@ -1649,6 +1659,7 @@ module.exports = {
   createBorrowItemRequest,
   createOfferItemRequest,
   getBorrowItems,
+  getUserBorrowHistory,
   respondBorrowItemRequest,
   respondOfferItemRequest,
   notifyMatchingHelpRequestsForHelper,

@@ -9,7 +9,7 @@ const { HELP_REQUEST_STATUS, HELP_MATCH_STATUS, PRESENCE_STATUS, PRESENCE_MATCH_
 const logger = require('../utils/logger')
 const { removeHelpRequestLocation } = require('../config/redis')
 const { emitToUser } = require('../config/socket')
-const { sendHelpRequestClosedNotification } = require('./notification.service')
+const { sendHelpRequestClosedNotification, sendHelpClosureInitiatedNotification } = require('./notification.service')
 
 const safeEmitToUser = (userId, event, data) => {
   try {
@@ -40,76 +40,119 @@ const closeHelpRequest = async (requestId, closedBy, { wasResolved, accountabili
     throw err
   }
 
-  // REDIS REMOVE
-  removeHelpRequestLocation(requestId).catch(e => logger.error('Redis remove on close failed', e))
+  const match = await HelpMatch.findOne({
+    requestId,
+    status: { $in: [HELP_MATCH_STATUS.ACCEPTED, HELP_MATCH_STATUS.NOTIFIED, HELP_MATCH_STATUS.COMPLETED] },
+  })
 
-  request.status = HELP_REQUEST_STATUS.CLOSED
-  request.closedAt = new Date()
+  const isRequester = String(request.requesterId) === String(closedBy)
+  const isHelper = match && String(match.helperId) === String(closedBy)
+
+  if (isRequester) {
+    request.requesterClosedAt = new Date()
+    if (!request.closureInitiatedBy) request.closureInitiatedBy = 'requester'
+  } else if (isHelper) {
+    request.helperClosedAt = new Date()
+    if (!request.closureInitiatedBy) request.closureInitiatedBy = 'helper'
+  }
+
+  const bothClosed = !!(request.requesterClosedAt && request.helperClosedAt)
+
+  if (bothClosed) {
+    // Pura close karo
+    removeHelpRequestLocation(requestId).catch(e => logger.error('Redis remove on close failed', e))
+    request.status = HELP_REQUEST_STATUS.CLOSED
+    request.closedAt = new Date()
+  } else {
+    // Status update to 'closing' if not already
+    if (request.status !== 'closing') {
+      request.status = 'closing'
+    }
+  }
+
   await request.save()
 
   // Match update karo
-  const match = await HelpMatch.findOneAndUpdate(
-    {
-      requestId,
-      status: { $in: [HELP_MATCH_STATUS.ACCEPTED, HELP_MATCH_STATUS.NOTIFIED] },
-    },
-    {
-      status: HELP_MATCH_STATUS.COMPLETED,
-      completedAt: new Date(),
-      'helperClosure.wasResolved': wasResolved,
-      'helperClosure.accountability': accountability || null,
-      'helperClosure.rating': rating || null,
-      'helperClosure.closedAt': new Date(),
-    },
-    { new: true }
-  )
-
-  // Chat session close karo
-  const ChatSession = require('../models/ChatSession')
-  const session = await ChatSession.findOne({ requestId })
-  if (session) await closeSession(session._id)
-
-  // Community balance update
   if (match) {
-    await updateCommunityBalance(match.helperId, 'help_given')
-    // Badge check
-    await awardBadgeIfEarned(match.helperId, { wasResolved, accountability })
+    const update = {
+      status: bothClosed ? HELP_MATCH_STATUS.COMPLETED : match.status,
+    }
+    if (bothClosed) {
+      update.completedAt = new Date()
+    }
+
+    if (isHelper) {
+      update['helperClosure.wasResolved'] = wasResolved
+      update['helperClosure.accountability'] = accountability || null
+      update['helperClosure.rating'] = rating || null
+      update['helperClosure.closedAt'] = new Date()
+    }
+
+    await HelpMatch.findByIdAndUpdate(match._id, { $set: update })
   }
 
-  logger.info(`Help request closed: ${requestId} by ${closedBy}`)
-  const occurredAt = new Date().toISOString()
-  safeEmitToUser(request.requesterId, 'help:request_closed', {
-    requestId: String(requestId),
-    requestType: request?.category || 'help_request',
-    closedBy: closedBy ? String(closedBy) : null,
-    reason: 'closed',
-    occurredAt,
-    userRole: 'requester',
-  })
-  sendHelpRequestClosedNotification(String(request.requesterId), {
-    requestId,
-    requestType: request?.category || 'help_request',
-    reason: 'closed',
-    occurredAt,
-    recipientRole: 'requester',
-  }).catch(() => {})
-  if (match?.helperId) {
-    safeEmitToUser(match.helperId, 'help:request_closed', {
-      requestId: String(requestId),
-      requestType: request?.category || 'help_request',
-      closedBy: closedBy ? String(closedBy) : null,
-      reason: 'closed',
-      occurredAt,
-      userRole: 'helper',
-    })
-    sendHelpRequestClosedNotification(String(match.helperId), {
-      requestId,
-      requestType: request?.category || 'help_request',
-      reason: 'closed',
-      occurredAt,
-      recipientRole: 'helper',
-    }).catch(() => {})
+  if (bothClosed) {
+    // Chat session close karo
+    const ChatSession = require('../models/ChatSession')
+    const session = await ChatSession.findOne({ requestId })
+    if (session) await closeSession(session._id)
+
+    // Community balance update
+    if (match) {
+      await updateCommunityBalance(match.helperId, 'help_given')
+      // Badge check
+      await awardBadgeIfEarned(match.helperId, { wasResolved, accountability })
+    }
+
+    logger.info(`Help request FULLY closed: ${requestId}`)
+    const occurredAt = new Date().toISOString()
+    
+    // Notify both parties about final closure
+    const notifyParties = async (role) => {
+      const userId = role === 'requester' ? request.requesterId : match?.helperId
+      if (!userId) return
+      safeEmitToUser(userId, 'help:request_closed', {
+        requestId: String(requestId),
+        requestType: request?.category || 'help_request',
+        closedBy: closedBy ? String(closedBy) : null,
+        reason: 'closed',
+        occurredAt,
+        userRole: role,
+      })
+      sendHelpRequestClosedNotification(String(userId), {
+        requestId,
+        requestType: request?.category || 'help_request',
+        reason: 'closed',
+        occurredAt,
+        recipientRole: role,
+      }).catch(() => {})
+    }
+    await notifyParties('requester')
+    await notifyParties('helper')
+  } else {
+    // Notify the OTHER party that closure has been initiated
+    const otherPartyId = isRequester ? match?.helperId : request.requesterId
+    const otherRole = isRequester ? 'helper' : 'requester'
+    const initiatorRole = isRequester ? 'requester' : 'helper'
+    
+    if (otherPartyId) {
+      const occurredAt = new Date().toISOString()
+      safeEmitToUser(otherPartyId, 'help:closure_initiated', {
+        requestId: String(requestId),
+        requestType: request?.category || 'help_request',
+        initiatedBy: initiatorRole,
+        occurredAt,
+      })
+      sendHelpClosureInitiatedNotification(otherPartyId, {
+        requestId,
+        requestType: request?.category || 'help_request',
+        initiatedBy: initiatorRole,
+        occurredAt,
+      }).catch(() => {})
+    }
+    logger.info(`Help request PARTIALLY closed: ${requestId} by ${initiatorRole}`)
   }
+
   return request
 }
 
@@ -268,9 +311,88 @@ const autoCloseInactivePresenceRequests = async () => {
   return count
 }
 
+// ─── Mark Part Complete ───────────────────────────────────
+
+/**
+ * Mark only YOUR part as complete (item returned/received).
+ * Does NOT close the request - just signals one side is done.
+ * Other party still needs to close.
+ */
+const markPartComplete = async (requestId, userId) => {
+  const request = await HelpRequest.findById(requestId)
+
+  if (!request) {
+    const err = new Error('Request not found')
+    err.statusCode = 404
+    throw err
+  }
+
+  if (['closed', 'cancelled', 'auto_closed'].includes(request.status)) {
+    const err = new Error('Request is already closed')
+    err.statusCode = 409
+    throw err
+  }
+
+  const match = await HelpMatch.findOne({
+    requestId,
+    status: { $in: [HELP_MATCH_STATUS.ACCEPTED, HELP_MATCH_STATUS.NOTIFIED] },
+  })
+
+  const isRequester = String(request.requesterId) === String(userId)
+  const isHelper = match && String(match.helperId) === String(userId)
+
+  if (!isRequester && !isHelper) {
+    const err = new Error('Not authorized')
+    err.statusCode = 403
+    throw err
+  }
+
+  if (isRequester) {
+    request.requesterPartCompletedAt = new Date()
+  } else if (isHelper) {
+    request.helperPartCompletedAt = new Date()
+  }
+
+  // If both completed their parts, trigger closure flow
+  const bothCompleted = !!(request.requesterPartCompletedAt && request.helperPartCompletedAt)
+  
+  if (bothCompleted) {
+    // Auto-transition to closing status if not already
+    if (!['closing', 'closed'].includes(request.status)) {
+      request.status = 'closing'
+    }
+  }
+
+  await request.save()
+
+  // Notify the OTHER party
+  const otherPartyId = isRequester ? match?.helperId : request.requesterId
+  const otherRole = isRequester ? 'helper' : 'requester'
+  const myRole = isRequester ? 'requester' : 'helper'
+
+  if (otherPartyId) {
+    const occurredAt = new Date().toISOString()
+    safeEmitToUser(otherPartyId, 'help:part_completed', {
+      requestId: String(requestId),
+      requestType: request?.category || 'help_request',
+      completedBy: myRole,
+      completedAt: occurredAt,
+    })
+  }
+
+  logger.info(`Help request part completed: ${requestId} by ${myRole}`)
+
+  return {
+    request,
+    bothCompleted,
+    yourPartCompleted: true,
+  }
+}
+
 module.exports = {
   closeHelpRequest,
   closePresenceRequest,
   autoCloseInactiveHelpRequests,
   autoCloseInactivePresenceRequests,
+  markPartComplete,
 }

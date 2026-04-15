@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { Platform, AppState } from 'react-native';
 import notifee, {
   AndroidCategory,
   AndroidColor,
@@ -13,6 +13,7 @@ import { loadAuth } from '../storage/asyncStorage.service';
 import { markRequestDelivered } from '../api/incident.api';
 import { baseURL } from '../api/client';
 import { shouldIgnoreIncomingPresenceAlarm } from '../../utils/presenceIncomingGuard';
+import { appEvents } from '../socket/socket.service';
 
 export const CHANNELS = {
   PRESENCE_ALARM: 'socius_presence_alarm',
@@ -69,6 +70,11 @@ export const displaySociusUpdateNotification = async (rawData) => {
           : 'Location updated';
       break;
     case 'HELP_SESSION_TIME_ENDED_HELPER':
+      // Foreground modal check
+      if (AppState.currentState === 'active' && data.requestId) {
+        appEvents.emit('help:session_ended_helper', { requestId: data.requestId });
+        return;
+      }
       title = 'Return time ended';
       body =
         'The agreed item return time has ended. Open Socius to follow up with the requester.';
@@ -262,29 +268,44 @@ export const displayAndroidForegroundIncomingHeadsUp = async (kind, rawData = {}
       requestId,
     }).map(([k, v]) => [k, v != null ? String(v) : ''])
   );
-  try {
+  if (isHelp) {
+    try {
+      NativeCallService.displayIncomingCall(
+        requestId,
+        title,
+        body,
+        largeIcon,
+        JSON.stringify({ ...notifData, type: 'HELP_REQUEST' })
+      );
+    } catch (e) {
+      console.error('[NotificationService] Native display failed', e);
+    }
+
+    // --- FALLBACK NOTIFICATION (Always show Notifee for reliability in background) ---
+    // Android 10+ background activity restrictions can block NativeCallService.
+    // Displaying a Notifee notification ensures the user sees something.
     await notifee.displayNotification({
-      id: `${isHelp ? 'fg_help' : 'fg_presence'}_${requestId}`.slice(0, 120),
+      id: `fg_help_fallback_${requestId}`.slice(0, 120),
       title,
       body: body || title,
       android: {
-        channelId,
-        category: AndroidCategory.CALL,
+        channelId: 'socius_help_alarm',
         importance: AndroidImportance.HIGH,
         visibility: AndroidVisibility.PUBLIC,
         ongoing: true,
         autoCancel: false,
         color: '#DC5C69',
-        showTimestamp: true,
         style: { type: AndroidStyle.BIGTEXT, text: body || title },
         pressAction: { id: 'default', launchActivity: 'default' },
         fullScreenAction: { id: 'default', launchActivity: 'default' },
         asForegroundService: true,
+        groupId: `help_req_${requestId}`,
+        groupSummary: false,
         ...(largeIcon ? { largeIcon } : {}),
         actions: [
           {
             title: 'Not available',
-            pressAction: { id: isHelp ? 'decline_help' : 'decline_presence', launchActivity: 'default' },
+            pressAction: { id: 'decline_help', launchActivity: 'default' },
           },
           {
             title: 'view',
@@ -292,6 +313,54 @@ export const displayAndroidForegroundIncomingHeadsUp = async (kind, rawData = {}
           },
         ],
       },
+      data: notifData,
+    });
+    return;
+  }
+
+  try {
+    NativeCallService.displayIncomingCall(
+      requestId,
+      title,
+      body,
+      largeIcon,
+      JSON.stringify({ ...notifData, type: 'PRESENCE_ALARM' })
+    );
+  } catch (e) {
+    console.error('[NotificationService] Native display failed', e);
+  }
+
+  // --- FALLBACK NOTIFICATION (Reliability in background) ---
+  try {
+    await notifee.displayNotification({
+      id: `fg_presence_fallback_${requestId}`.slice(0, 120),
+      title,
+      body: body || title,
+      android: {
+        channelId: 'socius_presence_alarm',
+        importance: AndroidImportance.HIGH,
+        visibility: AndroidVisibility.PUBLIC,
+        ongoing: true,
+        autoCancel: false,
+        color: '#DC5C69',
+        style: { type: AndroidStyle.BIGTEXT, text: body || title },
+        pressAction: { id: 'default', launchActivity: 'default' },
+        fullScreenAction: { id: 'default', launchActivity: 'default' },
+        asForegroundService: true,
+      groupId: `presence_req_${requestId}`,
+      groupSummary: false,
+      ...(largeIcon ? { largeIcon } : {}),
+      actions: [
+        {
+          title: 'Not available',
+          pressAction: { id: 'decline_presence', launchActivity: 'default' },
+        },
+        {
+          title: 'view',
+          pressAction: { id: 'default', launchActivity: 'default' },
+        },
+      ],
+    },
       data: notifData,
     });
   } catch (e) {
@@ -321,6 +390,12 @@ export const displayBorrowItemActionNotification = async (rawData = {}) => {
       borrowId,
     }).map(([k, v]) => [k, v != null ? String(v) : ''])
   );
+
+  // Play sound explicitly to ensure it's heard even if channel sound is inconsistent
+  try {
+    NativeCallService.playHelpRequestSound();
+  } catch (e) {}
+
   await notifee.displayNotification({
     id: `borrow_req_${borrowId}`.slice(0, 120),
     title: 'Borrow item request',
@@ -332,8 +407,11 @@ export const displayBorrowItemActionNotification = async (rawData = {}) => {
       visibility: AndroidVisibility.PUBLIC,
       ongoing: true,
       autoCancel: false,
+      groupId: `borrow_req_${borrowId}`,
+      groupSummary: false,
       style: { type: AndroidStyle.BIGTEXT, text: body },
       pressAction: { id: 'default', launchActivity: 'default' },
+      fullScreenAction: { id: 'default', launchActivity: 'default' },
       actions: [
         { title: 'View', pressAction: { id: 'borrow_view', launchActivity: 'default' } },
         { title: 'Accept', pressAction: { id: 'borrow_accept', launchActivity: 'default' } },
@@ -367,6 +445,12 @@ export const displayOfferItemActionNotification = async (rawData = {}) => {
       borrowId: offerId,
     }).map(([k, v]) => [k, v != null ? String(v) : ''])
   );
+
+  // Play sound explicitly to ensure it's heard
+  try {
+    NativeCallService.playHelpRequestSound();
+  } catch (e) {}
+
   await notifee.displayNotification({
     id: `offer_req_${offerId}`.slice(0, 120),
     title: 'Offer item request',
@@ -378,8 +462,11 @@ export const displayOfferItemActionNotification = async (rawData = {}) => {
       visibility: AndroidVisibility.PUBLIC,
       ongoing: true,
       autoCancel: false,
+      groupId: `offer_req_${offerId}`,
+      groupSummary: false,
       style: { type: AndroidStyle.BIGTEXT, text: body },
       pressAction: { id: 'default', launchActivity: 'default' },
+      fullScreenAction: { id: 'default', launchActivity: 'default' },
       actions: [
         { title: 'View', pressAction: { id: 'offer_view', launchActivity: 'default' } },
         { title: 'Accept', pressAction: { id: 'offer_accept', launchActivity: 'default' } },
@@ -435,6 +522,7 @@ export const initNotifeeChannels = async () => {
         lights: true,
         lightColor: '#3b82f6',
         badge: true,
+        bypassDnd: true,
         visibility: AndroidVisibility.PUBLIC,
       }),
 

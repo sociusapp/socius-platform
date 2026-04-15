@@ -12,6 +12,7 @@ import {
   createOfferItemRequest,
   getBorrowItems,
   getHelpRequestById,
+  respondBorrowItemRequest,
 } from '../../../../services/api/dailyHelp.api';
 import { loadAuth } from '../../../../services/storage/asyncStorage.service';
 import { baseURL } from '../../../../services/api/client';
@@ -386,6 +387,25 @@ const MatchingMapScreen = ({ navigation, route }) => {
       }
     }
   }, [request, loading, navigation]);
+
+  const handleRespondToBorrow = useCallback(async (borrowId, action) => {
+    try {
+      if (!requestId || !borrowId) return;
+      const auth = await loadAuth();
+      if (!auth?.accessToken) throw new Error('No auth');
+      await respondBorrowItemRequest(auth.accessToken, requestId, borrowId, action);
+      await loadOfferHistory();
+      showAlert(
+        action === 'accept' ? 'Borrow request accepted' : 'Borrow request declined',
+        action === 'accept' ? 'You have accepted the request.' : 'You have declined the request.',
+        [{ text: 'OK', onPress: closeAlert, style: 'primary' }],
+        'check-circle',
+        '#28C76F'
+      );
+    } catch (e) {
+      showAlert('Error', 'Unable to respond to request.', [{ text: 'OK', onPress: closeAlert }]);
+    }
+  }, [requestId, loadOfferHistory]);
 
   useEffect(() => {
     const initChat = async () => {
@@ -1004,10 +1024,9 @@ const MatchingMapScreen = ({ navigation, route }) => {
             <Text style={styles.requestActionButtonText}>{isOfferSubmitting ? 'Sending...' : 'Offer'}</Text>
           </TouchableOpacity>
           <View style={styles.borrowHistoryWrap}>
-            <Text style={styles.borrowHistoryTitle}>Recent offers you sent</Text>
+            <Text style={styles.borrowHistoryTitle}>Item requests & offers</Text>
             {(offerHistory || [])
-              .filter((row) => String(row?.initiatedBy || '').toLowerCase() === 'helper')
-              .slice(0, 10)
+              .slice(0, 15)
               .map((row, index) => {
                 const hid = String(row?._id || `offer_hist_${index}`);
                 const thumbUri = resolveBorrowImageUri(row?.imageUrl);
@@ -1016,6 +1035,11 @@ const MatchingMapScreen = ({ navigation, route }) => {
                 const actedAt = formatBorrowDateTime(row?.actedAt);
                 const isPending = String(row?.status || '').toLowerCase() === 'pending';
                 const st = String(row?.status || 'pending');
+                const by = String(row?.initiatedBy || '').toLowerCase();
+                const metaLead =
+                  by === 'requester'
+                    ? `Requester asked · ${Number(row?.requestedMinutes || 0)} min`
+                    : `You offered · ${Number(row?.requestedMinutes || 0)} min`;
                 return (
                   <View key={hid} style={styles.borrowHistoryDetailRow}>
                     {showThumb ? (
@@ -1046,18 +1070,36 @@ const MatchingMapScreen = ({ navigation, route }) => {
                         </Text>
                       </View>
                       <Text style={styles.borrowHistoryMetaLine}>
-                        You are helping · {Number(row?.requestedMinutes || 0)} min
+                        {metaLead}
                         {sentAt ? ` · Sent ${sentAt}` : ''}
                       </Text>
                       {row?.note ? (
                         <Text style={styles.borrowHistoryNoteLine}>Note: {String(row.note)}</Text>
                       ) : null}
                       {actedAt && !isPending ? (
-                        <Text style={styles.borrowHistoryMetaSmall}>
-                          {row?.status === 'accepted' ? 'Accepted' : 'Declined'} {actedAt}
-                        </Text>
-                      ) : null}
-                    </View>
+                      <Text style={styles.borrowHistoryMetaSmall}>
+                        {row?.status === 'accepted' ? 'Accepted' : 'Declined'} {actedAt}
+                      </Text>
+                    ) : null}
+                    {by === 'requester' && (isPending || row?.status === 'declined') ? (
+                      <View style={styles.historyActionRow}>
+                        <TouchableOpacity
+                          style={styles.historyActionBtn}
+                          onPress={() => handleRespondToBorrow(hid, 'accept')}
+                        >
+                          <Text style={styles.historyActionBtnText}>Accept</Text>
+                        </TouchableOpacity>
+                        {isPending && (
+                          <TouchableOpacity
+                            style={[styles.historyActionBtn, styles.historyActionBtnDecline]}
+                            onPress={() => handleRespondToBorrow(hid, 'decline')}
+                          >
+                            <Text style={styles.historyActionBtnText}>Decline</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    ) : null}
+                  </View>
                   </View>
                 );
               })}
@@ -2636,6 +2678,27 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontSize: 11,
     color: '#9CA3AF',
+  },
+  historyActionRow: {
+    flexDirection: 'row',
+    marginTop: 8,
+    gap: 8,
+  },
+  historyActionBtn: {
+    backgroundColor: '#DC5C69',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    minWidth: 70,
+    alignItems: 'center',
+  },
+  historyActionBtnDecline: {
+    backgroundColor: '#94A3B8',
+  },
+  historyActionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
   },
   borrowHistoryNoteLine: {
     marginTop: 6,

@@ -24,6 +24,7 @@ import android.media.AudioManager
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
+import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
 import androidx.core.graphics.drawable.IconCompat
@@ -453,8 +454,7 @@ class SociusCallModule(private val reactContext: ReactApplicationContext) :
                 )
 
                 val body  = cfg.bodyTemplate.replace("{info}", info)
-                val isHelpRequest = cfg.channelId == "socius_help_alarm"
-                val displayTitle = if (isHelpRequest) "Socius" else cfg.titleTemplate.replace("{name}", name)
+                val displayTitle = if (name.isNotEmpty()) name else "Socius"
 
                 val smallIconRes = listOf(
                     "ic_notification",
@@ -471,10 +471,31 @@ class SociusCallModule(private val reactContext: ReactApplicationContext) :
                 } ?: android.R.drawable.ic_dialog_info
 
                 val channelId = cfg.channelId
+                
+                // --- Custom Layout Setup ---
+                val remoteViews = RemoteViews(reactContext.packageName, R.layout.notification_call_custom)
+                val headsUpViews = RemoteViews(reactContext.packageName, R.layout.notification_call_heads_up)
+
+                remoteViews.setTextViewText(R.id.tv_title, displayTitle)
+                remoteViews.setTextViewText(R.id.tv_body, body)
+                headsUpViews.setTextViewText(R.id.tv_title, displayTitle)
+                headsUpViews.setTextViewText(R.id.tv_body, body)
+
+                if (finalAvatar != null) {
+                    remoteViews.setImageViewBitmap(R.id.iv_avatar, finalAvatar)
+                    headsUpViews.setImageViewBitmap(R.id.iv_avatar, finalAvatar)
+                }
+
+                remoteViews.setOnClickPendingIntent(R.id.btn_decline, declinePendingIntent)
+                remoteViews.setOnClickPendingIntent(R.id.btn_answer, acceptPendingIntent)
+                // heads_up might not have buttons or might have them, checking...
+                // notification_call_heads_up.xml doesn't have buttons in the snippet I saw.
+
                 val notificationBuilder = NotificationCompat.Builder(reactContext, channelId)
                     .setSmallIcon(smallIconRes)
-                    .setContentTitle(displayTitle)
-                    .setContentText(body)
+                    .setCustomContentView(remoteViews)
+                    .setCustomHeadsUpContentView(headsUpViews)
+                    .setStyle(NotificationCompat.DecoratedCustomViewStyle())
                     .setPriority(NotificationCompat.PRIORITY_MAX)
                     .setCategory(NotificationCompat.CATEGORY_CALL)
                     .setAutoCancel(false)
@@ -485,7 +506,6 @@ class SociusCallModule(private val reactContext: ReactApplicationContext) :
                     .setColorized(false)
                     .setContentIntent(openPendingIntent)
                     .setFullScreenIntent(fullScreenPendingIntent, true)
-                    .setStyle(NotificationCompat.BigTextStyle().bigText(body))
 
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
                     notificationBuilder.setSound(soundUri)

@@ -2,6 +2,7 @@
  * Expo app config (replaces app.json). Splash: same asset for top-level splash + expo-splash-screen plugin.
  */
 const SPLASH_IMAGE = './src/assets/icons/icon-03.png';
+const INVISIBLE_SPLASH = './src/assets/splash/splash-invisible.png';
 
 export default {
   name: 'Socius',
@@ -13,7 +14,7 @@ export default {
   orientation: 'portrait',
   icon: SPLASH_IMAGE,
   splash: {
-    image: SPLASH_IMAGE,
+    image: INVISIBLE_SPLASH,
     resizeMode: 'contain',
     backgroundColor: '#FFFFFF',
   },
@@ -27,7 +28,7 @@ export default {
     [
       'expo-splash-screen',
       {
-        image: SPLASH_IMAGE,
+        image: INVISIBLE_SPLASH,
         resizeMode: 'contain',
         backgroundColor: '#FFFFFF',
         imageWidth: 240,
