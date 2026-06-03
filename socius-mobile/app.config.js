@@ -55,7 +55,7 @@ export default {
     },
     config: {
       googleMaps: {
-        apiKey: 'AIzaSyAER5BC1gdUioBIU6RG0cnMDX3X0Acmk5M',
+        apiKey: 'AIzaSyBkxg3G-lBNkM0rkPYd6ux0aZYnGowYQ3Y',
       },
     },
   },

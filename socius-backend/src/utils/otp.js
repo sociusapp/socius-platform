@@ -56,10 +56,18 @@ const verifyOtp = async (phone, inputOtp) => {
   try {
     const code = normalizeOtpInput(inputOtp)
     if (!code) {
+      logger.warn(`[OTP] Invalid format for phone ${phone}: "${inputOtp}"`)
       return { valid: false, reason: `OTP must be ${OTP.LENGTH} digits` }
     }
 
     const now = new Date()
+    logger.info(`[OTP] Verifying for phone ${phone}, code ${code}, now ${now.toISOString()}`)
+
+    // Debug: Find all matching OTPs
+    const allOtps = await OtpLog.find({ phone }).sort({ createdAt: -1 }).limit(3)
+    allOtps.forEach((o, i) => {
+      logger.info(`[OTP] DB Entry ${i}: otp=${o.otp}, isUsed=${o.isUsed}, expiresAt=${o.expiresAt?.toISOString()}, attempts=${o.attempts}`)
+    })
 
     // Single atomic success path — stops double-redemption / replay if two devices verify at once
     const consumed = await OtpLog.findOneAndUpdate(
@@ -75,9 +83,11 @@ const verifyOtp = async (phone, inputOtp) => {
     )
 
     if (consumed) {
-      logger.info(`OTP verified for ${phone}`)
+      logger.info(`[OTP] Verified successfully for ${phone}`)
       return { valid: true }
     }
+
+    logger.warn(`[OTP] Not consumed for phone ${phone}. Checking why...`)
 
     const latest = await OtpLog.findOne({
       phone,

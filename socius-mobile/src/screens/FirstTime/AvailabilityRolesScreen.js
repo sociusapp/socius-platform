@@ -5,7 +5,6 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useResponsive } from '../../utils/responsive';
 import Header from '../../components/common/Header';
 import Button from '../../components/common/Button';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const AvailabilityRolesScreen = ({ navigation }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
@@ -32,18 +31,10 @@ const AvailabilityRolesScreen = ({ navigation }) => {
 
   const [isLoading, setIsLoading] = useState(false);
   const handleUnderstand = async () => {
-    try {
-      setIsLoading(true);
-      await AsyncStorage.setItem('HAS_COMPLETED_ONBOARDING', 'true');
-    } catch (e) {
-      // ignore storage errors and proceed
-    } finally {
-      setIsLoading(false);
-    }
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
-    });
+    setIsLoading(true);
+    // Navigate to BeingAvailable screen (next in First Time flow)
+    navigation.navigate('BeingAvailable');
+    setIsLoading(false);
   };
 
   return (

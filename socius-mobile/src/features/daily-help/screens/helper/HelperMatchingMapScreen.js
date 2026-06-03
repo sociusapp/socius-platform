@@ -1420,6 +1420,14 @@ const MatchingMapScreen = ({ navigation, route }) => {
             <View style={styles.distanceBadge}>
               <Text style={styles.distanceText}>{distanceLabel}</Text>
             </View>
+            {/* Fullscreen Button */}
+            <TouchableOpacity
+              style={styles.fullscreenButton}
+              onPress={() => navigation.navigate('LocationMap')}
+              activeOpacity={0.8}
+            >
+              <Icon name="fullscreen" size={22} color="#FFFFFF" />
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -2194,6 +2202,23 @@ const styles = StyleSheet.create({
   mapPreview: {
     width: '100%',
     height: '100%',
+  },
+  fullscreenButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(220, 92, 105, 0.9)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+    zIndex: 10,
   },
   locationOverlay: {
     position: 'absolute',

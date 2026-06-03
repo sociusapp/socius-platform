@@ -275,7 +275,7 @@ const PrepareStayReadyScreen = ({ navigation }) => {
               {renderShimmer()}
             </View>
           }
-          contentContainerStyle={{ paddingBottom: vscale(30) }}
+          contentContainerStyle={{ paddingBottom: vscale(100) }}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#DC5C69" colors={['#DC5C69']} />
           }
@@ -295,7 +295,7 @@ const PrepareStayReadyScreen = ({ navigation }) => {
           styles.listContent,
           {
             paddingHorizontal: spacing(20),
-            paddingBottom: vscale(30),
+            paddingBottom: vscale(100),
             flexGrow: 1,
           },
         ]}

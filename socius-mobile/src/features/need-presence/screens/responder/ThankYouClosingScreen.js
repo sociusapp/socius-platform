@@ -149,50 +149,60 @@ const ThankYouClosingScreen = ({ navigation, route }) => {
 
           {/* Outcome Selection */}
           <View style={[styles.card, { borderRadius: scale(12), padding: spacing(16), marginBottom: vscale(24), shadowRadius: scale(4), elevation: scale(2), borderWidth: scale(1) }]}>
-            <Text style={[styles.cardTitle, { fontSize: ms(16), marginBottom: vscale(12) }]}>Rate this experience</Text>
-            <View style={{ flexDirection: 'row', marginBottom: vscale(16) }}>
+            <Text style={[styles.cardTitle, { fontSize: ms(16), marginBottom: vscale(16) }]}>Rate this experience</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: vscale(20) }}>
               {[1,2,3,4,5].map(n => (
                 <TouchableOpacity
                   key={n}
                   onPress={() => setStars(n)}
-                  style={{ padding: spacing(6) }}
+                  style={{ padding: spacing(4) }}
                   accessibilityRole="button"
                   accessibilityLabel={`Rate ${n} star${n === 1 ? '' : 's'}`}
                 >
                   <Icon
                     name={n <= stars ? 'star' : 'star-outline'}
-                    size={scale(26)}
+                    size={scale(28)}
                     color={n <= stars ? '#F59E0B' : '#9CA3AF'}
                   />
                 </TouchableOpacity>
               ))}
             </View>
             <Text style={[styles.cardTitle, { fontSize: ms(16), marginBottom: vscale(16) }]}>How did this situation end?</Text>
-            <View style={[styles.chipContainer, { gap: spacing(10) }]}>
+            <View style={[styles.chipContainer, { gap: spacing(12) }]}>
               {outcomes.map((outcome) => (
                 <TouchableOpacity
                   key={outcome.label}
                   style={[
                     styles.chip,
-                    { paddingVertical: vscale(10), paddingHorizontal: spacing(16), borderRadius: scale(20), borderWidth: scale(1), width: '48%' },
+                    { 
+                      paddingVertical: vscale(12), 
+                      paddingHorizontal: spacing(12), 
+                      borderRadius: scale(24), 
+                      borderWidth: scale(1), 
+                      width: '47%',
+                      minHeight: vscale(48)
+                    },
                     selectedOutcome === outcome.label && styles.chipSelected
                   ]}
                   onPress={() => setSelectedOutcome(outcome.label)}
                   accessibilityRole="button"
                   accessibilityLabel={`Outcome: ${outcome.label}`}
                 >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', width: '100%' }}>
                     <Icon
                       name={outcome.icon}
-                      size={scale(16)}
-                      color={selectedOutcome === outcome.label ? '#FFFFFF' : '#5D6D7E'}
+                      size={scale(18)}
+                      color={selectedOutcome === outcome.label ? '#2B6CB0' : '#5D6D7E'}
                       style={{ marginRight: spacing(8) }}
                     />
-                    <Text style={[
-                      styles.chipText,
-                      { fontSize: ms(13) },
-                      selectedOutcome === outcome.label && styles.chipTextSelected
-                    ]}>
+                    <Text 
+                      numberOfLines={2}
+                      style={[
+                        styles.chipText,
+                        { fontSize: ms(13), flex: 1, textAlign: 'left' },
+                        selectedOutcome === outcome.label && styles.chipTextSelected
+                      ]}
+                    >
                       {outcome.label}
                     </Text>
                   </View>
@@ -329,18 +339,20 @@ const styles = StyleSheet.create({
   chipContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 10,
+    justifyContent: 'space-between',
+    gap: 12,
   },
   chip: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 24,
     backgroundColor: '#F7F9FC',
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    width: '48%', // Approx half width
+    width: '47%',
+    minHeight: 48,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   chipSelected: {
     backgroundColor: '#EBF5FF',
@@ -349,7 +361,8 @@ const styles = StyleSheet.create({
   chipText: {
     fontSize: 13,
     color: '#4A5568',
-    textAlign: 'center',
+    textAlign: 'left',
+    flex: 1,
   },
   chipTextSelected: {
     color: '#2B6CB0',

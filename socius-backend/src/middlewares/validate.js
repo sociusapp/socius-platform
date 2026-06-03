@@ -19,6 +19,7 @@ const validate = (schema, source = 'body') => {
         message: d.message.replace(/['"]/g, ''),
       }))
       console.error('Validation failed for', req.originalUrl, ':', errors);
+      console.error('Request body:', req.body);
       return badRequest(res, 'Validation failed', errors)
     }
 
@@ -33,21 +34,24 @@ const schemas = {
   // Auth
   sendOtp: Joi.object({
     phone: Joi.string()
-      .pattern(/^\d{7,11}$/)
+      .pattern(/^\+?[0-9]{7,15}$/)
       .required()
       .messages({
-        'string.pattern.base': 'Enter a valid mobile number (7-11 digits)',
+        'string.pattern.base': 'Enter a valid mobile number (7-15 digits, optional + prefix)',
       }),
     countryCode: Joi.string().default('+91'),
   }),
 
   verifyOtp: Joi.object({
-    phone: Joi.string().pattern(/^\d{7,11}$/).required(),
+    phone: Joi.string().pattern(/^\+?[0-9]{7,15}$/).required().messages({
+      'string.pattern.base': 'Enter a valid mobile number (7-15 digits, optional + prefix)',
+    }),
     otp: Joi.string().length(6).pattern(/^\d+$/).required().messages({
       'string.length': 'OTP must be 6 digits',
       'string.pattern.base': 'OTP must be numeric',
     }),
-    deviceToken: Joi.string().optional(),
+    countryCode: Joi.string().optional().allow(null, ''),
+    deviceToken: Joi.string().optional().allow(null, ''),
     platform: Joi.string().valid('android', 'ios').optional(),
     deviceId: Joi.string().optional().allow(null, ''),
     deviceModel: Joi.string().optional().allow(null, ''),

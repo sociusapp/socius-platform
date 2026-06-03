@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { clearAuth } from '../storage/asyncStorage.service';
+import { clearAuth, loadAuth } from '../storage/asyncStorage.service';
 
 let logoutHandler = null;
 /**
@@ -110,6 +110,17 @@ api.interceptors.request.use(async (config) => {
     startAt: Date.now(),
   };
 
+  // Automatically attach auth token if available
+  try {
+    const auth = await loadAuth();
+    if (auth?.accessToken && !cfg.headers?.Authorization) {
+      cfg.headers = cfg.headers || {};
+      cfg.headers.Authorization = `Bearer ${auth.accessToken}`;
+    }
+  } catch (e) {
+    // ignore auth loading errors
+  }
+
   const debugDelayMs = Number(process.env.EXPO_PUBLIC_API_DEBUG_DELAY_MS || 0) || 0;
   if (__DEV__ && debugDelayMs > 0) {
     await sleep(debugDelayMs);
@@ -178,6 +189,17 @@ api.interceptors.response.use(
   },
   async (error) => {
     const cfg = error?.config;
+    
+    console.error('[API Client] Request failed:', {
+      url: cfg?.url,
+      method: cfg?.method,
+      status: error?.response?.status,
+      statusText: error?.response?.statusText,
+      data: error?.response?.data,
+      message: error?.message,
+      code: error?.code,
+    });
+    
     if (!cfg) {
       return Promise.reject(error);
     }
@@ -187,9 +209,13 @@ api.interceptors.response.use(
 
     if (cfg.__retryCount >= retries) {
       if (error?.response?.status === 401 || error?.response?.status === 403) {
-        if (typeof logoutHandler === 'function') {
-          void clearAuth().catch(() => {});
-          logoutHandler();
+        // Don't clear session for VERIFICATION_REQUIRED - it's a legitimate business logic error
+        const errorCode = error?.response?.data?.code;
+        if (errorCode !== 'VERIFICATION_REQUIRED') {
+          if (typeof logoutHandler === 'function') {
+            void clearAuth().catch(() => {});
+            logoutHandler();
+          }
         }
       }
       return Promise.reject(error);
@@ -197,9 +223,13 @@ api.interceptors.response.use(
 
     if (!shouldRetry(error, cfg)) {
       if (error?.response?.status === 401 || error?.response?.status === 403) {
-        if (typeof logoutHandler === 'function') {
-          void clearAuth().catch(() => {});
-          logoutHandler();
+        // Don't clear session for VERIFICATION_REQUIRED - it's a legitimate business logic error
+        const errorCode = error?.response?.data?.code;
+        if (errorCode !== 'VERIFICATION_REQUIRED') {
+          if (typeof logoutHandler === 'function') {
+            void clearAuth().catch(() => {});
+            logoutHandler();
+          }
         }
       }
       return Promise.reject(error);

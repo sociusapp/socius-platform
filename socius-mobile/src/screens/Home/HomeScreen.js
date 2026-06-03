@@ -8,7 +8,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useResponsive } from '../../utils/responsive';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getFcmToken } from '../../services/firebase/config';
-import { getMessaging, onTokenRefresh } from '@react-native-firebase/messaging';
 import { loadAuth, loadAvailabilityPreference, loadAvailabilityUpdatedAt, saveAvailabilityPreference, loadLastKnownLocation, saveLastKnownLocation } from '../../services/storage/asyncStorage.service';
 import { updateDeviceToken } from '../../services/api/auth.api';
 import * as Device from 'expo-device';
@@ -576,9 +575,12 @@ const HomeScreen = ({ navigation }) => {
 
   const checkOnboardingStatus = async () => {
     try {
-      const hasCompleted = await AsyncStorage.getItem('HAS_COMPLETED_ONBOARDING');
-      if (!hasCompleted) {
+      // Check if user has seen the First Time Availability flow (First image flow)
+      const hasCompletedFirstTime = await AsyncStorage.getItem('HAS_COMPLETED_FIRST_TIME_FLOW');
+      if (!hasCompletedFirstTime) {
+        // Start the First Time flow: Home → AvailabilityRoles → BeingAvailable → Permission → Availability (Got It) → Home
         navigation.navigate('AvailabilityRoles');
+        return;
       }
     } catch (error) {
       console.error('Error checking onboarding status:', error);
@@ -771,14 +773,20 @@ const HomeScreen = ({ navigation }) => {
 
 
   useEffect(() => {
-    const messaging = getMessaging();
-    const unsubscribe = onTokenRefresh(messaging, async (newToken) => {
-      try {
-        const { accessToken } = await loadAuth();
-        if (!accessToken || !newToken) return;
-        await updateDeviceToken(accessToken, { deviceToken: newToken, platform: Platform.OS });
-      } catch (e) {}
-    });
+    let unsubscribe = null;
+    try {
+      const { getMessaging, onTokenRefresh } = require('@react-native-firebase/messaging');
+      const messaging = getMessaging();
+      unsubscribe = onTokenRefresh(messaging, async (newToken) => {
+        try {
+          const { accessToken } = await loadAuth();
+          if (!accessToken || !newToken) return;
+          await updateDeviceToken(accessToken, { deviceToken: newToken, platform: Platform.OS });
+        } catch (e) {}
+      });
+    } catch (e) {
+      console.log('[FCM] Token refresh listener not set - Firebase not initialized');
+    }
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
     };
@@ -865,10 +873,22 @@ const HomeScreen = ({ navigation }) => {
     const previousValue = isAvailable;
 
     if (value === true) {
+      // Turning ON availability - check if user has seen First Time flow
       try {
-        const hasCompleted = await AsyncStorage.getItem('HAS_COMPLETED_ONBOARDING');
-        if (!hasCompleted) {
+        const hasCompletedFirstTime = await AsyncStorage.getItem('HAS_COMPLETED_FIRST_TIME_FLOW');
+        if (!hasCompletedFirstTime) {
+          // Start the First Time flow
           navigation.navigate('AvailabilityRoles');
+          return;
+        }
+      } catch (e) { }
+    } else {
+      // Turning OFF availability (Not Available) - check if user has seen the Guide flow
+      try {
+        const hasSeenGuide = await AsyncStorage.getItem('HAS_SEEN_AVAILABILITY_GUIDE');
+        if (!hasSeenGuide) {
+          // Show Guide flow: YourRole → NoObligation → SafetyFirst → ... → EmergencyContacted → Home
+          navigation.navigate('YourRole');
           return;
         }
       } catch (e) { }
@@ -985,11 +1005,72 @@ const HomeScreen = ({ navigation }) => {
     });
   };
 
-  const handlePresence = () => {
-    if (activePresence) {
-      navigation.navigate('NearbyMap', { requestId: activePresence._id, mode: 'requester' });
-    } else {
-      navigation.navigate('WhatsHappening');
+  const handlePresence = async () => {
+    try {
+      const auth = await loadAuth();
+      
+      // If no access token, show alert but don't auto-redirect
+      if (!auth?.accessToken) {
+        Alert.alert(
+          'Session Expired',
+          'Your session has expired. Please log in again to use Need Presence.',
+          [
+            { 
+              text: 'Cancel', 
+              style: 'cancel',
+              onPress: () => console.log('[HomeScreen] User cancelled login prompt')
+            },
+            { 
+              text: 'Login', 
+              onPress: () => {
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'PhoneVerification' }],
+                });
+              }
+            }
+          ]
+        );
+        return;
+      }
+      
+      // Validate token by checking userId/role exists
+      if (!auth?.userId || !auth?.role) {
+        console.log('[HomeScreen] Token exists but user data missing, clearing auth...');
+        const { clearAuth } = require('../../services/storage/asyncStorage.service');
+        await clearAuth();
+        Alert.alert(
+          'Session Expired',
+          'Your session has expired. Please log in again.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { 
+              text: 'Login', 
+              onPress: () => {
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'PhoneVerification' }],
+                });
+              }
+            }
+          ]
+        );
+        return;
+      }
+      
+      // User is authenticated, proceed to appropriate screen
+      if (activePresence) {
+        navigation.navigate('NearbyMap', { requestId: activePresence._id, mode: 'requester' });
+      } else {
+        navigation.navigate('WhatsHappening');
+      }
+    } catch (error) {
+      console.error('[HomeScreen] Error in handlePresence:', error);
+      Alert.alert(
+        'Error',
+        'Something went wrong. Please try again.',
+        [{ text: 'OK' }]
+      );
     }
   };
 
@@ -1570,8 +1651,13 @@ const HomeScreen = ({ navigation }) => {
                     )}
                   </View>
 
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: spacing(20) }}>
-                    {['All', 'Active', 'Completed', 'Cancelled'].map((status) => (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={true}
+                    contentContainerStyle={{ flexDirection: 'row', alignItems: 'center', paddingRight: spacing(20) }}
+                    style={{ flex: 1 }}
+                  >
+                    {['All', 'Active', 'Completed', 'Cancelled'].map((status, index) => (
                       <TouchableOpacity
                         key={status}
                         onPress={() => setHistoryFilter(status)}
@@ -1580,7 +1666,7 @@ const HomeScreen = ({ navigation }) => {
                           paddingVertical: vscale(6),
                           borderRadius: scale(20),
                           backgroundColor: filterStatus === status ? '#DC5C69' : '#F1F5F9',
-                          marginRight: spacing(8),
+                          marginRight: index === 3 ? spacing(20) : spacing(8),
                           borderWidth: 1,
                           borderColor: filterStatus === status ? '#DC5C69' : '#E2E8F0'
                         }}

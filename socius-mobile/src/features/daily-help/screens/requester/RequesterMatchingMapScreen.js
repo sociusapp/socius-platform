@@ -857,8 +857,8 @@ const MatchingMapScreen = ({ navigation, route }) => {
   const initialRegion = request?.location?.coordinates ? {
     latitude: request.location.coordinates[1],
     longitude: request.location.coordinates[0],
-    latitudeDelta: 0.01,
-    longitudeDelta: 0.01,
+    latitudeDelta: 0.005,
+    longitudeDelta: 0.005,
   } : {
     latitude: 37.78825,
     longitude: -122.4324,
@@ -1231,7 +1231,7 @@ const MatchingMapScreen = ({ navigation, route }) => {
                   style={[styles.mapPreview, { backgroundColor: '#e8eaed' }]}
                   provider={PROVIDER_GOOGLE}
                   initialRegion={initialRegion}
-                  showsUserLocation={true}
+                  showsUserLocation={false}
                   scrollEnabled={false}
                   zoomEnabled={false}
                   rotateEnabled={false}
@@ -1245,11 +1245,12 @@ const MatchingMapScreen = ({ navigation, route }) => {
                         latitude: request.location.coordinates[1],
                         longitude: request.location.coordinates[0],
                       }}
+                      anchor={{ x: 0.5, y: 0.5 }}
                       title="Meeting Point"
-                      description={request.description}
-                      pinColor="#DC5C69"
                     >
-                      <Icon name="map-marker" size={42} color="#DC5C69" />
+                      <View style={styles.meetingMarker}>
+                        <Icon name="map-marker-radius" size={36} color="#DC5C69" />
+                      </View>
                     </Marker>
                   )}
                 </MapView>
@@ -1257,6 +1258,13 @@ const MatchingMapScreen = ({ navigation, route }) => {
               <View style={styles.distanceBadge}>
                 <Text style={styles.distanceText}>{distanceLabel}</Text>
               </View>
+              <TouchableOpacity
+                style={styles.fullscreenButton}
+                onPress={() => navigation.navigate('LocationMap')}
+                activeOpacity={0.8}
+              >
+                <Icon name="fullscreen" size={22} color="#FFFFFF" />
+              </TouchableOpacity>
             </View>
             <View style={styles.meetingLocationContainer}>
               <Text style={styles.meetingLocationText}>
@@ -2303,6 +2311,35 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: 12,
+  },
+  meetingMarker: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 44,
+    height: 44,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  fullscreenButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(220, 92, 105, 0.9)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
   },
   locationOverlay: {
     position: 'absolute',

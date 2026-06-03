@@ -75,8 +75,10 @@ const HelpSupportScreen = ({ navigation }) => {
                 return (
                   <View key={idx}>
                     <TouchableOpacity style={[styles.listRow, { paddingVertical: vscale(10), borderTopWidth: scale(1) }]} onPress={() => toggleIndex(idx)}>
-                      <Text style={[styles.listRowText, { fontSize: ms(14) }]}>{q.label}</Text>
-                      <Icon name={open ? 'chevron-up' : 'chevron-down'} size={ms(20)} color="#999999" />
+                      <Text style={[styles.listRowText, { fontSize: ms(14), flex: 1, paddingRight: spacing(8) }]}>{q.label}</Text>
+                      <View style={{ justifyContent: 'center', alignItems: 'center' }}>
+                        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={ms(20)} color="#999999" />
+                      </View>
                     </TouchableOpacity>
                     {open && (
                       <Text style={[styles.answerText, { fontSize: ms(13), lineHeight: ms(20), paddingVertical: vscale(8) }]}>{q.answer}</Text>

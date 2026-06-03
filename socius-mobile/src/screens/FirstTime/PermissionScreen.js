@@ -14,11 +14,13 @@ const PermissionRequiredScreen = ({ navigation }) => {
   ];
 
   const handleAllowPermission = () => {
+    // Navigate to Availability screen (Got It screen) - last in First Time flow
     navigation.navigate('Availability');
   };
 
   const handleNotNow = () => {
-    navigation.goBack();
+    // Even if user cancels, still go to Availability screen to complete the flow
+    navigation.navigate('Availability');
   };
 
   return (

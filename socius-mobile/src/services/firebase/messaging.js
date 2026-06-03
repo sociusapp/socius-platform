@@ -8,31 +8,77 @@ import {
 } from '@react-native-firebase/messaging';
 import { AppState } from 'react-native';
 
-const messaging = getMessaging();
+let messaging = null;
+let firebaseInitFailed = false;
+let loggedOnce = false;
+
+const logOnce = (message) => {
+  if (!loggedOnce) {
+    console.log(message);
+    loggedOnce = true;
+  }
+};
+
+const getMessagingInstance = () => {
+  if (messaging) return messaging;
+  try {
+    messaging = getMessaging();
+    return messaging;
+  } catch (error) {
+    logOnce('[Firebase Messaging] Not initialized - config missing');
+    firebaseInitFailed = true;
+    return null;
+  }
+};
 
 const onMessageForeground = (handler) => {
-  return onMessage(messaging, (remoteMessage) => {
+  const msg = getMessagingInstance();
+  if (!msg || firebaseInitFailed) {
+    // Silently skip
+    return () => {};
+  }
+  return onMessage(msg, (remoteMessage) => {
     console.log('[FCM] onMessage foreground raw', remoteMessage?.data || remoteMessage);
     handler(remoteMessage);
   });
 };
 
 const onNotificationOpened = (handler) => {
-  return onNotificationOpenedApp(messaging, (remoteMessage) => {
+  const msg = getMessagingInstance();
+  if (!msg || firebaseInitFailed) {
+    // Silently skip
+    return () => {};
+  }
+  return onNotificationOpenedApp(msg, (remoteMessage) => {
     handler(remoteMessage);
   });
 };
 
 const getInitialNotification = () => {
-  return getInitialNotificationMsg(messaging);
+  const msg = getMessagingInstance();
+  if (!msg || firebaseInitFailed) {
+    // Silently skip
+    return Promise.resolve(null);
+  }
+  return getInitialNotificationMsg(msg);
 };
 
 const subscribeToTopic = (topic) => {
-  return subscribeToTopicMsg(messaging, topic);
+  const msg = getMessagingInstance();
+  if (!msg || firebaseInitFailed) {
+    // Silently skip
+    return Promise.resolve();
+  }
+  return subscribeToTopicMsg(msg, topic);
 };
 
 const unsubscribeFromTopic = (topic) => {
-  return unsubscribeFromTopicMsg(messaging, topic);
+  const msg = getMessagingInstance();
+  if (!msg || firebaseInitFailed) {
+    // Silently skip
+    return Promise.resolve();
+  }
+  return unsubscribeFromTopicMsg(msg, topic);
 };
 
 const registerAppStateListener = (handler) => {

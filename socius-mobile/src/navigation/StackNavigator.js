@@ -28,6 +28,7 @@ import VerificationAttentionScreen from '../screens/Onboarding/VerificationAtten
 // ==================== LEGAL / POLICY SCREENS ====================
 import TermsOfUseScreen from '../screens/Legal/TermsOfUseScreen';
 import PrivacyPolicyScreen from '../screens/Legal/PrivacyPolicyScreen';
+import DataProtectionScreen from '../screens/Legal/DataProtectionScreen';
 import CommunityGuidelinesScreen from '../screens/Legal/CommunityGuidelinesScreen';
 import VolunteerCodeOfConductScreen from '../screens/Legal/VolunteerCodeOfConductScreen';
 
@@ -163,6 +164,7 @@ const StackNavigator = () => {
       <Stack.Screen name="BeforeContinue" component={BeforeContinueScreen} />
       <Stack.Screen name="TermsOfUse" component={TermsOfUseScreen} />
       <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
+      <Stack.Screen name="DataProtection" component={DataProtectionScreen} />
       <Stack.Screen name="CommunityGuidelines" component={CommunityGuidelinesScreen} />
       <Stack.Screen name="VolunteerCodeOfConduct" component={VolunteerCodeOfConductScreen} />
       <Stack.Screen name="Subscription" component={SubscriptionScreen} />

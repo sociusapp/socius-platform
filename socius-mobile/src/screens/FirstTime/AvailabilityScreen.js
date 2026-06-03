@@ -4,12 +4,23 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useResponsive } from '../../utils/responsive';
 import Button from '../../components/common/Button';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const AvailabilityScreen = ({ navigation }) => {
   const { contentWidth, ms, spacing, vscale, scale } = useResponsive();
 
   const handleGotIt = async () => {
-    navigation.navigate('AvailabilityRoles');
+    try {
+      // Mark First Time flow as completed
+      await AsyncStorage.setItem('HAS_COMPLETED_FIRST_TIME_FLOW', 'true');
+    } catch (e) {
+      // ignore storage errors and proceed
+    }
+    // Navigate to MainApp (Home)
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],
+    });
   };
 
   const handleLearnMore = () => {

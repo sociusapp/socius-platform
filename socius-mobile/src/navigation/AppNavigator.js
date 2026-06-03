@@ -439,16 +439,48 @@ const navigateAdminBroadcastDeepLink = async (navRef, data = {}) => {
 const AppNavigator = () => {
   const dispatch = useDispatch();
 
+  // Prevent multiple session expired redirects
+  const sessionExpiredHandledRef = useRef(false);
+
   useEffect(() => {
     onSessionExpired(() => {
-      console.log('[AppNavigator] Session expired, redirecting to login');
-      dispatch(logout());
-      if (navigationRef.isReady()) {
-        navigationRef.reset({
-          index: 0,
-          routes: [{ name: 'PhoneVerification' }],
-        });
+      // Prevent multiple triggers within 5 seconds
+      if (sessionExpiredHandledRef.current) {
+        console.log('[AppNavigator] Session expired handler already triggered, ignoring');
+        return;
       }
+      sessionExpiredHandledRef.current = true;
+      setTimeout(() => {
+        sessionExpiredHandledRef.current = false;
+      }, 5000);
+
+      console.log('[AppNavigator] Session expired, clearing auth state');
+      dispatch(logout());
+      
+      // Show alert instead of auto-redirect
+      showAlert(
+        'Session Expired',
+        'Your session has expired. Please log in again to continue.',
+        [
+          { text: 'Cancel', style: 'cancel', onPress: closeAlert },
+          { 
+            text: 'Login', 
+            style: 'primary',
+            onPress: () => {
+              closeAlert();
+              if (navigationRef.isReady()) {
+                navigationRef.reset({
+                  index: 0,
+                  routes: [{ name: 'PhoneVerification' }],
+                });
+              }
+            }
+          }
+        ],
+        'alert-circle-outline',
+        '#DC5C69',
+        { dialogType: 'confirmation' }
+      );
     });
   }, [dispatch]);
 

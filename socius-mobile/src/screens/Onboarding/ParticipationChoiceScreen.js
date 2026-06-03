@@ -1,16 +1,18 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useResponsive } from '../../utils/responsive';
 import Button from '../../components/common/Button';
 import Header from '../../components/common/Header';
+import { getPresenceCategories } from '../../services/api/needPresence.api';
+import { loadAuth } from '../../services/storage/asyncStorage.service';
 
 const ParticipationChoiceScreen = ({ navigation }) => {
   const [selectedRole, setSelectedRole] = useState('Community Member');
-  const [selectedNotifications, setSelectedNotifications] = useState([
-    'Community Safety',
-    'Women\'s Safety'
-  ]);
+  const [selectedNotifications, setSelectedNotifications] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const roles = [
     {
@@ -28,25 +30,55 @@ const ParticipationChoiceScreen = ({ navigation }) => {
     }
   ];
 
-  const notificationTypes = [
-    'Calm Presence',
-    'Personal Safety',
-    'Community Awareness',
-    'Medical Support',
-    'Blood Donation',
-    'Transport / Lift Help',
-    'Tools / Repair Assistance',
-    'Language & Translation',
-    'General Help',
-    'Awareness Only',
-  ];
+  // Fetch categories from admin panel API
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const { accessToken } = await loadAuth();
+        if (!accessToken) {
+          setError('Session expired');
+          setLoading(false);
+          return;
+        }
+        const response = await getPresenceCategories(accessToken);
+        if (response?.success && Array.isArray(response?.data?.categories)) {
+          const cats = response.data.categories
+            .filter(cat => cat.isActive !== false)
+            .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+          setCategories(cats);
+          // Pre-select first 2 categories by default
+          if (cats.length > 0) {
+            setSelectedNotifications(cats.slice(0, 2).map(c => c.title || c.name));
+          }
+        } else if (response?.success && Array.isArray(response?.data)) {
+          const cats = response.data
+            .filter(cat => cat.isActive !== false)
+            .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+          setCategories(cats);
+          if (cats.length > 0) {
+            setSelectedNotifications(cats.slice(0, 2).map(c => c.title || c.name));
+          }
+        }
+      } catch (err) {
+        console.error('[ParticipationChoice] Failed to load categories:', err);
+        setError('Failed to load categories');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchCategories();
+  }, []);
 
   const toggleNotification = (type) => {
-    setSelectedNotifications(prev => 
-      prev.includes(type) 
+    setSelectedNotifications(prev =>
+      prev.includes(type)
         ? prev.filter(item => item !== type)
         : [...prev, type]
     );
+  };
+
+  const getCategoryDisplayName = (category) => {
+    return category.title || category.name || category.label || '';
   };
 
     const handleContinue = () => {
@@ -128,31 +160,44 @@ const ParticipationChoiceScreen = ({ navigation }) => {
         {/* Notification Types Section */}
         <View style={[styles.notificationSection, { marginTop: vscale(32), marginBottom: vscale(24) }]}>
           <Text style={[styles.notificationTitle, { fontSize: subtitleFont(16), marginBottom: vscale(16) }]}>What would you like to be notified about?</Text>
-          
-          <View style={[styles.tagsContainer, { gap: spacing(10) }]}>
-            {notificationTypes.map((type) => {
-              const isSelected = selectedNotifications.includes(type);
-              return (
-                <TouchableOpacity
-                  key={type}
-                  style={[
-                    styles.tag,
-                    isSelected && styles.tagSelected,
-                    { paddingHorizontal: spacing(16), paddingVertical: vscale(8), borderRadius: scale(20), borderWidth: scale(1) }
-                  ]}
-                  onPress={() => toggleNotification(type)}
-                >
-                  <Text style={[
-                    styles.tagText,
-                    isSelected && styles.tagTextSelected,
-                    { fontSize: smallFont(13) }
-                  ]}>
-                    {type}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+
+          {loading ? (
+            <ActivityIndicator size="large" color="#DC5C69" style={{ marginVertical: vscale(20) }} />
+          ) : error ? (
+            <Text style={[styles.errorText, { fontSize: bodyFont(14), color: '#DC5C69', textAlign: 'center' }]}>
+              {error}
+            </Text>
+          ) : categories.length === 0 ? (
+            <Text style={[styles.emptyText, { fontSize: bodyFont(14), color: '#9CA3AF', textAlign: 'center' }]}>
+              No categories available
+            </Text>
+          ) : (
+            <View style={[styles.tagsContainer, { gap: spacing(10) }]}>
+              {categories.map((category) => {
+                const displayName = getCategoryDisplayName(category);
+                const isSelected = selectedNotifications.includes(displayName);
+                return (
+                  <TouchableOpacity
+                    key={category._id || category.id}
+                    style={[
+                      styles.tag,
+                      isSelected && styles.tagSelected,
+                      { paddingHorizontal: spacing(16), paddingVertical: vscale(8), borderRadius: scale(20), borderWidth: scale(1) }
+                    ]}
+                    onPress={() => toggleNotification(displayName)}
+                  >
+                    <Text style={[
+                      styles.tagText,
+                      isSelected && styles.tagTextSelected,
+                      { fontSize: smallFont(13) }
+                    ]}>
+                      {displayName}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
         </View>
 
         <Text style={[styles.infoText, { fontSize: smallFont(13), marginTop: vscale(12), lineHeight: smallFont(18) }]}>You will only see requests related to what you select.</Text>
@@ -300,6 +345,14 @@ const styles = StyleSheet.create({
   infoText: {
     fontWeight: '400',
     color: '#9CA3AF',
+    textAlign: 'center',
+  },
+  errorText: {
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  emptyText: {
+    fontWeight: '400',
     textAlign: 'center',
   },
 

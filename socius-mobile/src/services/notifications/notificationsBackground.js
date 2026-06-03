@@ -1,6 +1,50 @@
 import { Platform } from 'react-native';
-import messaging from '@react-native-firebase/messaging';
 import notifee, { AndroidStyle, EventType } from '@notifee/react-native';
+
+let messaging = null;
+let firebaseInitFailed = false;
+let loggedOnce = false;
+let messagingModule = null;
+
+const logOnce = (message) => {
+  if (!loggedOnce) {
+    console.log(message);
+    loggedOnce = true;
+  }
+};
+
+// Lazy load Firebase messaging
+const getMessagingModule = () => {
+  if (messagingModule) return messagingModule;
+  try {
+    const { getMessaging } = require('@react-native-firebase/messaging');
+    messagingModule = { getMessaging };
+    return messagingModule;
+  } catch (error) {
+    if (!firebaseInitFailed) {
+      logOnce('[Firebase Messaging BG] Not initialized - config missing');
+      firebaseInitFailed = true;
+    }
+    return null;
+  }
+};
+
+const getMessagingInstance = () => {
+  if (messaging) return messaging;
+  const modules = getMessagingModule();
+  if (!modules) {
+    firebaseInitFailed = true;
+    return null;
+  }
+  try {
+    messaging = modules.getMessaging();
+    return messaging;
+  } catch (error) {
+    logOnce('[Firebase Messaging BG] getMessaging failed');
+    firebaseInitFailed = true;
+    return null;
+  }
+};
 import {
   CHANNELS,
   handleIncomingCallMessage,
@@ -29,8 +73,22 @@ import { respondBorrowItemRequest, respondOfferItemRequest } from '../api/dailyH
 import { appEvents } from '../socket/socket.service';
 import { refreshActiveHelpSessionNotifications } from './activeHelpSessionSync';
 
-messaging().setBackgroundMessageHandler(async remoteMessage => {
-  console.log('[FCM] background message received', remoteMessage?.data || remoteMessage);
+// Only set background handler if Firebase is initialized
+try {
+  const msg = getMessagingInstance();
+  if (msg && !firebaseInitFailed) {
+    msg.setBackgroundMessageHandler(async remoteMessage => {
+      console.log('[FCM] background message received', remoteMessage?.data || remoteMessage);
+      await handleBackgroundMessage(remoteMessage);
+    });
+  } else {
+    console.warn('[FCM] Background message handler not set - Firebase not initialized');
+  }
+} catch (error) {
+  console.warn('[FCM] Failed to set background message handler:', error.message);
+}
+
+const handleBackgroundMessage = async (remoteMessage) => {
   const data = remoteMessage?.data || {};
   const type = String(data.type || '').toLowerCase();
 
@@ -164,7 +222,7 @@ messaging().setBackgroundMessageHandler(async remoteMessage => {
   } catch (e) {}
 
   await refreshActiveHelpSessionNotifications().catch(() => {});
-});
+};
 
 notifee.onBackgroundEvent(async ({ type, detail }) => {
   const { notification, pressAction } = detail;

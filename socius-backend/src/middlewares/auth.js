@@ -72,7 +72,9 @@ const authenticate = async (req, res, next) => {
       // Match /presence as a path segment (avoid "/admin/presence-categories" false positives).
       const pathOnly = String(req.originalUrl || req.url || '').split('?')[0]
       const isPresenceApi = /\/presence(\/|$)/.test(pathOnly)
-      if (isPresenceApi && !user.isIdentityVerified) {
+      // Allow /presence/categories and /presence/items for onboarding flow (public catalog data)
+      const isPublicCatalogEndpoint = /\/presence\/(categories|items)(\/|$)/.test(pathOnly)
+      if (isPresenceApi && !isPublicCatalogEndpoint && !user.isIdentityVerified) {
         return forbidden(res, 'Identity verification required for presence requests', AUTH_ERROR_CODES.VERIFICATION_REQUIRED)
       }
     }

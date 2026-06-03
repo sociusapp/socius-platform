@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.socius.app",
+      "sha256_cert_fingerprints": [
+        "76:45:45:D1:75:FF:12:46:D3:3C:45:64:EE:AF:E4:3D:FA:D4:36:FE:74:6E:53:6D:FF:84:7A:E7:63:1D:51:FC"
+      ]
+    }
+  }
+]

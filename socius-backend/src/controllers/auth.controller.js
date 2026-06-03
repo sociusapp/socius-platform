@@ -5,7 +5,15 @@ const logger = require('../utils/logger')
 const sendOtp = async (req, res, next) => {
   try {
     const { phone, countryCode } = req.body
-    const result = await authService.sendOtp({ phone, ipAddress: req.ip })
+    
+    // Normalize phone number with country code for consistency
+    const normalizedPhone = countryCode && !phone.startsWith('+') 
+      ? `${countryCode}${phone}` 
+      : phone
+    
+    logger.info(`[Auth] Send OTP for phone: ${normalizedPhone}`)
+    
+    const result = await authService.sendOtp({ phone: normalizedPhone, ipAddress: req.ip })
     return success(res, result, 'OTP sent successfully')
   } catch (err) {
     next(err)
@@ -14,9 +22,17 @@ const sendOtp = async (req, res, next) => {
 
 const verifyOtp = async (req, res, next) => {
   try {
-    const { phone, otp, deviceToken, platform, deviceId, deviceModel, appVersion } = req.body
+    const { phone, countryCode, otp, deviceToken, platform, deviceId, deviceModel, appVersion } = req.body
+    
+    // Normalize phone number with country code for consistency
+    const normalizedPhone = countryCode && !phone.startsWith('+') 
+      ? `${countryCode}${phone}` 
+      : phone
+    
+    logger.info(`[Auth] Verify OTP for phone: ${normalizedPhone} (raw: ${phone}, country: ${countryCode})`)
+    
     const result = await authService.verifyOtpAndLogin({
-      phone,
+      phone: normalizedPhone,
       otp,
       deviceToken,
       platform,

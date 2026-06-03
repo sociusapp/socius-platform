@@ -16,6 +16,8 @@ const sendOtp = (phone, countryCode = '+91') => {
 };
 
 const verifyOtp = ({ phone, countryCode, otp, deviceToken, platform, deviceId, deviceModel, appVersion }) => {
+  console.log('[Auth API] verifyOtp called with:', { phone, countryCode, otp, hasDeviceToken: !!deviceToken });
+  
   return api
     .post('/auth/verify-otp', {
       phone,
@@ -27,7 +29,19 @@ const verifyOtp = ({ phone, countryCode, otp, deviceToken, platform, deviceId, d
       deviceModel,
       appVersion,
     })
-    .then((response) => response.data);
+    .then((response) => {
+      console.log('[Auth API] verifyOtp success:', response.data);
+      return response.data;
+    })
+    .catch((error) => {
+      console.error('[Auth API] verifyOtp error:', {
+        message: error?.message,
+        status: error?.response?.status,
+        data: error?.response?.data,
+        url: error?.config?.url,
+      });
+      throw error;
+    });
 };
 
 const logout = (token, deviceToken) => {

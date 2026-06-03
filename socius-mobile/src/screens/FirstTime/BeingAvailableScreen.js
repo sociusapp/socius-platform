@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useResponsive } from '../../utils/responsive';
@@ -67,10 +67,14 @@ const BeingAvailableScreen = ({ navigation }) => {
             </Text>
           </View>
 
-          {/* Bottom Text */}
-          <Text style={[styles.bottomText, { fontSize: ms(14), lineHeight: ms(21), marginBottom: vscale(24) }]}>
-            Your safety and comfort come first.
-          </Text>
+          {/* Bottom Text with lines */}
+          <View style={[styles.bottomTextContainer, { marginBottom: vscale(24) }]}>
+            <View style={[styles.textLine, { flex: 1, height: 1, backgroundColor: '#E8EAED' }]} />
+            <Text style={[styles.bottomText, { fontSize: ms(14), lineHeight: ms(21), marginHorizontal: spacing(12) }]}>
+              Your safety and comfort come first.
+            </Text>
+            <View style={[styles.textLine, { flex: 1, height: 1, backgroundColor: '#E8EAED' }]} />
+          </View>
 
           {/* Spacer */}
           <View style={styles.spacer} />
@@ -83,15 +87,12 @@ const BeingAvailableScreen = ({ navigation }) => {
             fullWidth
           />
 
-          {/* Cancel Button - link style */}
-          <View style={{ alignItems: 'center' }}>
-            <Button
-              title="Cancel"
-              onPress={handleCancel}
-              variant="link"
-              fullWidth={false}
-            />
-          </View>
+          {/* Cancel Text Link */}
+          <TouchableOpacity onPress={handleCancel} style={{ alignItems: 'center', marginTop: vscale(16) }}>
+            <Text style={[styles.cancelText, { fontSize: ms(16), color: '#666666' }]}>
+              Cancel
+            </Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -118,7 +119,7 @@ const styles = StyleSheet.create({
   },
 
   iconContainer: {
-    backgroundColor: '#FEE8EA',
+    backgroundColor: '#FFE4E8',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -136,10 +137,11 @@ const styles = StyleSheet.create({
 
   // ===== IMPORTANT CARD =====
   importantCard: {
-    backgroundColor: '#FFF5F6',
-    borderColor: '#FEE8EA',
+    backgroundColor: '#FFF0F3',
+    borderColor: '#FFD1D9',
+    borderWidth: 1,
     shadowColor: '#000000',
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.08,
   },
 
   importantText: {
@@ -149,10 +151,21 @@ const styles = StyleSheet.create({
   },
 
   // ===== BOTTOM TEXT =====
+  bottomTextContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  textLine: {
+    height: 1,
+  },
   bottomText: {
     fontWeight: '400',
     color: '#888888',
     textAlign: 'center',
+  },
+  cancelText: {
+    fontWeight: '400',
+    textDecorationLine: 'underline',
   },
 
   spacer: {

@@ -186,9 +186,9 @@ const REPORT_ACTION = {
 
 // ─── OTP ─────────────────────────────────────────────────
 const OTP = {
-  EXPIRY_MINUTES: 10,
+  EXPIRY_MINUTES: 30,
   LENGTH: 6,
-  MAX_ATTEMPTS: 5,
+  MAX_ATTEMPTS: 10,
   RESEND_AFTER_SECONDS: 30,
 }
 

@@ -273,16 +273,48 @@ const OTPVerificationScreen = ({ navigation, route }) => {
         appVersion = Application.nativeApplicationVersion || null;
       } catch (e) { }
 
-      const response = await verifyOtpApi({
+      // DEBUG: Log exact values being sent
+      console.log('[OTP Verify] Sending:', {
         phone,
         countryCode,
         otp: otpCode,
-        deviceToken,
+        deviceToken: deviceToken ? 'present' : 'null',
         platform: Platform.OS,
         deviceId,
         deviceModel,
         appVersion,
       });
+
+      const requestData = {
+        phone,
+        countryCode,
+        otp: otpCode,
+        platform: Platform.OS,
+      };
+      
+      // Only include deviceToken if it's a valid string
+      if (deviceToken && typeof deviceToken === 'string') {
+        requestData.deviceToken = deviceToken;
+      }
+      
+      // Only include deviceId if it's a valid string
+      if (deviceId && typeof deviceId === 'string') {
+        requestData.deviceId = deviceId;
+      }
+      
+      // Only include deviceModel if it's a valid string
+      if (deviceModel && typeof deviceModel === 'string') {
+        requestData.deviceModel = deviceModel;
+      }
+      
+      // Only include appVersion if it's a valid string
+      if (appVersion && typeof appVersion === 'string') {
+        requestData.appVersion = appVersion;
+      }
+
+      const response = await verifyOtpApi(requestData);
+
+      console.log('[OTP Verify] Response:', response);
 
       const { success, message, data, errorCode } = response || {};
 
@@ -361,6 +393,13 @@ const OTPVerificationScreen = ({ navigation, route }) => {
         routes: [nextRoute],
       });
     } catch (error) {
+      console.error('[OTPFormScreen] handleVerify error:', {
+        message: error?.message,
+        response: error?.response,
+        data: error?.response?.data,
+        stack: error?.stack,
+      });
+      
       const apiMessage =
         error?.response?.data?.message ||
         error?.response?.data?.errors?.[0]?.message;

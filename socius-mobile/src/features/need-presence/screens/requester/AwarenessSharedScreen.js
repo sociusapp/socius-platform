@@ -194,109 +194,80 @@ const AwarenessSharedScreen = ({ navigation, route }) => {
         showsVerticalScrollIndicator={false}
       >
         <View style={{ width: contentWidth, alignSelf: 'center' }}>
+          {/* Header - Centered */}
           <MotionView preset="fadeUp" delay={80}>
-            <Text style={[styles.screenTitle, { fontSize: ms(26), marginTop: vscale(12), marginBottom: vscale(8) }]}>
-              Awareness Shared
-            </Text>
-            <Text style={[styles.screenSubtitle, { fontSize: ms(15), marginBottom: vscale(28) }]}>
-              People nearby may choose to stay aware.
-            </Text>
-          </MotionView>
-
-          <MotionView preset="fadeUp" delay={120} style={[styles.card, { borderRadius: scale(20), marginBottom: vscale(24) }]}>
-            <Text style={[styles.cardLead, { fontSize: ms(17), marginBottom: vscale(8) }]}>Some people nearby have seen this.</Text>
-            <Text style={[styles.cardSub, { fontSize: ms(14) }]}>They may or may not choose to come.</Text>
-          </MotionView>
-
-          <MotionView preset="fadeUp" delay={160}>
-            <View style={styles.dividerLabelRow}>
-              <View style={[styles.hr, { height: scale(1) }]} />
-              <Text style={[styles.dividerLabel, { fontSize: ms(12), marginHorizontal: spacing(12) }]}>
-                Nearby community members
+            <View style={{ alignItems: 'center', marginTop: vscale(20), marginBottom: vscale(24) }}>
+              <Text style={[styles.screenTitle, { fontSize: ms(24), marginBottom: vscale(12), textAlign: 'center' }]}>
+                Awareness Shared
               </Text>
-              <View style={[styles.hr, { height: scale(1) }]} />
+              <Text style={[styles.screenSubtitle, { fontSize: ms(15), textAlign: 'center', maxWidth: contentWidth * 0.9 }]}>
+                No nearby community members are currently available.
+              </Text>
             </View>
           </MotionView>
 
-          <MotionView preset="fadeUp" delay={200} style={[styles.avatarRow, { marginTop: vscale(20), marginBottom: vscale(24) }]}>
-            {loading ? (
-              <ActivityIndicator color="#C94444" />
-            ) : members.length ? (
-              members.slice(0, 6).map((m) => (
-                <View key={String(m.id || m.name)} style={styles.avatarItem}>
-                  {m.photo ? (
-                    <Image source={{ uri: m.photo }} style={[styles.avatar, { width: scale(56), height: scale(56), borderRadius: scale(28) }]} />
-                  ) : (
-                    <View style={[styles.avatar, styles.avatarPlaceholder, { width: scale(56), height: scale(56), borderRadius: scale(28) }]}>
-                      <Icon name="account" size={scale(28)} color="#94A3B8" />
-                    </View>
-                  )}
-                  <Text style={[styles.avatarName, { fontSize: ms(11), marginTop: vscale(6) }]} numberOfLines={1}>
-                    {m.name}
-                  </Text>
-                </View>
-              ))
-            ) : (
-              <View style={[styles.waitingPill, { borderRadius: scale(999), paddingVertical: vscale(10), paddingHorizontal: spacing(16) }]}>
-                <Icon name="eye-outline" size={scale(18)} color="#64748B" style={{ marginRight: spacing(8) }} />
-                <Text style={[styles.waitingText, { fontSize: ms(14) }]}>Waiting for people nearby to respond</Text>
-              </View>
-            )}
-          </MotionView>
-
-          <MotionView preset="fadeUp" delay={240} style={[styles.card, { borderRadius: scale(20), marginBottom: vscale(28) }]}>
-            <Text style={[styles.infoLine, { fontSize: ms(14), marginBottom: vscale(10) }]}>You can cancel this at any time.</Text>
-            <Text style={[styles.infoLine, { fontSize: ms(14) }]}>You can also contact emergency services whenever needed.</Text>
-          </MotionView>
-
-          <MotionView preset="fadeUp" delay={280}>
-            <TouchableOpacity
-              activeOpacity={0.88}
-              onPress={openLiveMap}
-              style={[styles.primaryWrap, { borderRadius: scale(28), marginBottom: vscale(14), shadowRadius: scale(8) }]}
-            >
-              <LinearGradient
-                colors={['#D84D42', '#C63F34']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 0, y: 1 }}
-                style={[styles.primaryGradient, { paddingVertical: vscale(16) }]}
-              >
-                <Text style={[styles.primaryText, { fontSize: ms(17) }]}>View live map & updates</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </MotionView>
-
-          <MotionView preset="fadeUp" delay={300}>
-            <TouchableOpacity
-              style={[
-                styles.cancelOutline,
-                {
-                  borderRadius: scale(28),
-                  borderWidth: scale(1),
-                  paddingVertical: vscale(16),
-                  marginBottom: vscale(12),
-                },
-              ]}
-              onPress={confirmCancel}
-              disabled={cancelSubmitting}
-              activeOpacity={0.85}
-            >
-              <Text style={[styles.cancelOutlineText, { fontSize: ms(16) }]}>
-                {cancelSubmitting ? 'Cancelling…' : 'Cancel awareness'}
+          {/* Info Card 1 - Cream/Beige Background */}
+          <MotionView preset="fadeUp" delay={120}>
+            <View style={[styles.infoCardCream, { borderRadius: scale(16), padding: spacing(20), marginBottom: vscale(16) }]}>
+              <Text style={[styles.infoCardText, { fontSize: ms(15), marginBottom: vscale(8), lineHeight: ms(22) }]}>
+                This can happen when people nearby are offline or unavailable.
               </Text>
-            </TouchableOpacity>
+              <Text style={[styles.infoCardSubText, { fontSize: ms(13), lineHeight: ms(18) }]}>
+                Availability can change at any time.
+              </Text>
+            </View>
           </MotionView>
 
-          <MotionView preset="fadeUp" delay={320}>
+          {/* Info Card 2 - White with border */}
+          <MotionView preset="fadeUp" delay={160}>
+            <View style={[styles.infoCardWhite, { borderRadius: scale(16), padding: spacing(20), marginBottom: vscale(28) }]}>
+              <Text style={[styles.infoCardText, { fontSize: ms(15), lineHeight: ms(22) }]}>
+                If you need immediate help, consider contacting emergency services.
+              </Text>
+            </View>
+          </MotionView>
+
+          {/* Contact Emergency Services - Red Outline */}
+          <MotionView preset="fadeUp" delay={200}>
             <TouchableOpacity
-              style={[styles.emergencyBtn, { borderRadius: scale(28), paddingVertical: vscale(14), marginBottom: vscale(8) }]}
+              style={[styles.emergencyOutlineBtn, { borderRadius: scale(28), paddingVertical: vscale(16), marginBottom: vscale(12) }]}
               onPress={() => navigation.navigate('EmergencyHelp')}
               activeOpacity={0.85}
             >
-              <Icon name="phone-in-talk" size={scale(20)} color="#374151" style={{ marginRight: spacing(8) }} />
-              <Text style={[styles.emergencyBtnText, { fontSize: ms(15) }]}>Contact emergency services</Text>
+              <Text style={[styles.emergencyOutlineText, { fontSize: ms(16) }]}>Contact Emergency Services</Text>
             </TouchableOpacity>
-            <Text style={[styles.footerNote, { fontSize: ms(12) }]}>If this is urgent or dangerous</Text>
+          </MotionView>
+
+          {/* Continue Awareness - Gray Outline */}
+          <MotionView preset="fadeUp" delay={240}>
+            <TouchableOpacity
+              style={[styles.continueBtn, { borderRadius: scale(28), paddingVertical: vscale(16), marginBottom: vscale(20) }]}
+              onPress={openLiveMap}
+              activeOpacity={0.85}
+            >
+              <Text style={[styles.continueText, { fontSize: ms(16) }]}>Continue Awareness</Text>
+            </TouchableOpacity>
+          </MotionView>
+
+          {/* Bottom Note */}
+          <MotionView preset="fadeUp" delay={280}>
+            <Text style={[styles.bottomNote, { fontSize: ms(14), textAlign: 'center', marginBottom: vscale(20) }]}>
+              We'll notify you if <Text style={{ fontStyle: 'italic' }}>someone becomes available.</Text>
+            </Text>
+          </MotionView>
+
+          {/* Cancel Awareness - Text Link */}
+          <MotionView preset="fadeUp" delay={320}>
+            <TouchableOpacity
+              onPress={confirmCancel}
+              disabled={cancelSubmitting}
+              activeOpacity={0.85}
+              style={{ alignItems: 'center', marginBottom: vscale(20) }}
+            >
+              <Text style={[styles.cancelLinkText, { fontSize: ms(16) }]}>
+                {cancelSubmitting ? 'Cancelling…' : 'Cancel Awareness'}
+              </Text>
+            </TouchableOpacity>
           </MotionView>
         </View>
       </ScrollView>
@@ -456,6 +427,60 @@ const styles = StyleSheet.create({
   secondaryBtnText: {
     fontWeight: '600',
     color: '#334155',
+  },
+  // New styles for updated design
+  infoCardCream: {
+    backgroundColor: '#FDF8F3', // Cream/beige background
+    borderWidth: 1,
+    borderColor: '#F0E6DC',
+  },
+  infoCardWhite: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  infoCardText: {
+    color: '#334155',
+    fontWeight: '500',
+  },
+  infoCardSubText: {
+    color: '#94A3B8',
+    fontStyle: 'italic',
+  },
+  emergencyOutlineBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#DC5C69',
+  },
+  emergencyOutlineText: {
+    color: '#DC5C69',
+    fontWeight: '600',
+  },
+  continueBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  continueText: {
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  bottomNote: {
+    color: '#64748B',
+  },
+  cancelLinkText: {
+    color: '#DC5C69',
+    fontWeight: '500',
+    textDecorationLine: 'underline',
   },
 });
 

@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, SafeAreaView, ScrollView, Image } from 'react-n
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../components/common/Header';
 import Button from '../../components/common/Button';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const EmergencyContactedScreen = ({ navigation }) => {
   const whatThisMeansPoints = [
@@ -17,7 +18,13 @@ const EmergencyContactedScreen = ({ navigation }) => {
     { icon: 'account', text: 'You may disengage safely.' }
   ];
 
-  const handleReturnHome = () => {
+  const handleReturnHome = async () => {
+    try {
+      // Mark Availability Guide as seen (so we don't show it again when user clicks Not Available)
+      await AsyncStorage.setItem('HAS_SEEN_AVAILABILITY_GUIDE', 'true');
+    } catch (e) {
+      // ignore storage errors and proceed
+    }
     navigation.reset({
       index: 0,
       routes: [{ name: 'MainApp', params: { screen: 'HomeTab' } }],

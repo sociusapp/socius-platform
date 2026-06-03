@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { clearAuth, loadAuth, loadAvailabilityPreference, loadAvailabilityUpdatedAt, loadLastKnownLocation, saveAvailabilityPreference } from '../../services/storage/asyncStorage.service';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getProfile, getHome, updateProfile, getEmergencyContacts, deleteEmergencyContact as apiDeleteEmergencyContact } from '../../services/api/user.api';
+import { getPresenceCategories } from '../../services/api/needPresence.api';
 import { logout as logoutApi } from '../../services/api/auth.api';
 import { toggleAvailability } from '../../services/api/incident.api';
 import { requestLocationPermission, getCurrentPosition } from '../../services/location/geolocation.service';
@@ -23,10 +24,9 @@ const ProfileScreen = ({ navigation }) => {
   const [availabilityWidth, setAvailabilityWidth] = useState(0);
   const [toggleAnim] = useState(new Animated.Value(0));
   const [profile, setProfile] = useState(null);
-  const [selectedCategories, setSelectedCategories] = useState([
-    'Calm presence',
-    'Care & support',
-  ]);
+  const [selectedCategories, setSelectedCategories] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [emergencyExpanded, setEmergencyExpanded] = useState(false);
   const [associationsExpanded, setAssociationsExpanded] = useState(false);
   const [collegeAssociation, setCollegeAssociation] = useState('');
@@ -40,12 +40,44 @@ const ProfileScreen = ({ navigation }) => {
   const [verificationStatus, setVerificationStatus] = useState(null);
   const [profileImageUri, setProfileImageUri] = useState(null);
   const [isVerified, setIsVerified] = useState(false);
-  const categories = [
-    { id: 'calm_presence', label: 'Calm presence' },
-    { id: 'care_support', label: 'Care & support' },
-    { id: 'practical_help', label: 'Practical help' },
-    { id: 'nearby_checkin', label: 'Nearby check-in' },
-  ];
+
+  // Fetch categories from admin panel API
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const { accessToken } = await loadAuth();
+        if (!accessToken) {
+          setCategoriesLoading(false);
+          return;
+        }
+        const response = await getPresenceCategories(accessToken);
+        if (response?.success && Array.isArray(response?.data?.categories)) {
+          const cats = response.data.categories
+            .filter(cat => cat.isActive !== false)
+            .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+            .map(cat => ({
+              id: cat._id || cat.id,
+              label: cat.title || cat.name || cat.label
+            }));
+          setCategories(cats);
+        } else if (response?.success && Array.isArray(response?.data)) {
+          const cats = response.data
+            .filter(cat => cat.isActive !== false)
+            .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+            .map(cat => ({
+              id: cat._id || cat.id,
+              label: cat.title || cat.name || cat.label
+            }));
+          setCategories(cats);
+        }
+      } catch (err) {
+        console.error('[ProfileScreen] Failed to load categories:', err);
+      } finally {
+        setCategoriesLoading(false);
+      }
+    };
+    fetchCategories();
+  }, []);
   const emergencyContacts = Array.isArray(profile?.emergencyContacts)
     ? profile.emergencyContacts
     : Array.isArray(profile?.emergency_contacts)
@@ -124,6 +156,14 @@ const ProfileScreen = ({ navigation }) => {
       setSelectedCategories([...selectedCategories, label]);
     }
   };
+
+  // Transform categories from API to display format
+  const displayCategories = categories.length > 0 ? categories : [
+    { id: 'calm_presence', label: 'Calm presence' },
+    { id: 'care_support', label: 'Care & support' },
+    { id: 'practical_help', label: 'Practical help' },
+    { id: 'nearby_checkin', label: 'Nearby check-in' },
+  ];
 
   const handleSettingsControls = () => {
     navigation.navigate('Settings');
@@ -562,7 +602,7 @@ const ProfileScreen = ({ navigation }) => {
       </View>
 
       <ScrollView
-        contentContainerStyle={[styles.scrollContent, { paddingHorizontal: spacing(16), paddingBottom: vscale(80) }]}
+        contentContainerStyle={[styles.scrollContent, { paddingHorizontal: spacing(16), paddingTop: vscale(16), paddingBottom: vscale(80) }]}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
         }
@@ -701,7 +741,7 @@ const ProfileScreen = ({ navigation }) => {
             <Text style={[styles.categoriesTitle, { fontSize: ms(16), marginBottom: vscale(14) }]}>What I'm open to</Text>
 
             <View style={[styles.categoryGrid, { gap: spacing(8), marginBottom: vscale(14) }]}>
-              {categories.map((category) => (
+              {displayCategories.map((category) => (
                 <TouchableOpacity
                   key={category.id}
                   style={[

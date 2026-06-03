@@ -9,6 +9,12 @@ const {
   getNearbyUsers,
   getPublicUser,
 } = require('../controllers/user.controller')
+const {
+  getContacts,
+  addContact,
+  updateContact,
+  deleteContact,
+} = require('../controllers/emergencyContacts.controller')
 const { authenticate } = require('../middlewares/auth')
 const { validate, schemas } = require('../middlewares/validate')
 
@@ -36,5 +42,17 @@ router.patch('/flags/:flag', authenticate, markFirstTimeFlag)
 
 // DELETE /api/user/account
 router.delete('/account', authenticate, deleteAccount)
+
+// GET /api/user/emergency-contacts
+router.get('/emergency-contacts', authenticate, getContacts)
+
+// POST /api/user/emergency-contacts
+router.post('/emergency-contacts', authenticate, validate(schemas.addEmergencyContact), addContact)
+
+// PUT /api/user/emergency-contacts/:id
+router.put('/emergency-contacts/:id', authenticate, validate(schemas.addEmergencyContact), updateContact)
+
+// DELETE /api/user/emergency-contacts/:id
+router.delete('/emergency-contacts/:id', authenticate, deleteContact)
 
 module.exports = router

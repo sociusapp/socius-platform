@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View, Text, StyleSheet, Platform, ActivityIndicator, TouchableOpacity, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Circle, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
-import { WebView } from 'react-native-webview';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../components/common/Header';
 import Button from '../../components/common/Button';
@@ -35,7 +34,6 @@ const LocationMapScreen = ({ navigation }) => {
   const [coords, setCoords] = useState(null);
   const [label, setLabel] = useState('');
   const [mapReady, setMapReady] = useState(false);
-  const [useWebMap, setUseWebMap] = useState(false);
   const [nearbyUsers, setNearbyUsers] = useState([]);
 
   const region = useMemo(() => {
@@ -50,73 +48,6 @@ const LocationMapScreen = ({ navigation }) => {
 
   const mapInitialRegion = region || FALLBACK_REGION;
 
-  const leafletHtml = useMemo(() => {
-    const centerLat = region?.latitude ?? FALLBACK_REGION.latitude;
-    const centerLng = region?.longitude ?? FALLBACK_REGION.longitude;
-    const safeLat = Number.isFinite(centerLat) ? centerLat : FALLBACK_REGION.latitude;
-    const safeLng = Number.isFinite(centerLng) ? centerLng : FALLBACK_REGION.longitude;
-    const zoom = region ? 15 : 5;
-    const circleRadius = INSIDE_RADIUS_METERS;
-    const points = Array.isArray(nearbyUsers)
-      ? nearbyUsers
-          .map((u) => ({
-            latitude: Number(u?.latitude),
-            longitude: Number(u?.longitude),
-            isAvailable: !!u?.isAvailable,
-            distanceMeters: Number(u?.distanceMeters),
-          }))
-          .filter((p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude))
-      : [];
-    const pointsJson = JSON.stringify(points);
-    return `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link
-      rel="stylesheet"
-      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-      crossorigin=""
-    />
-    <style>
-      html, body, #map { height: 100%; width: 100%; margin: 0; padding: 0; }
-      .leaflet-control-attribution { display: none; }
-    </style>
-  </head>
-  <body>
-    <div id="map"></div>
-    <script
-      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-      crossorigin=""
-    ></script>
-    <script>
-      const center = [${safeLat}, ${safeLng}];
-      const map = L.map('map', { zoomControl: true }).setView(center, ${zoom});
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19
-      }).addTo(map);
-      L.marker(center).addTo(map);
-      L.circle(center, { radius: ${circleRadius}, color: '#DC5C69', weight: 2, fillColor: '#DC5C69', fillOpacity: 0.12 }).addTo(map);
-      const users = ${pointsJson};
-      users.forEach((p) => {
-        const inside = Number.isFinite(p.distanceMeters) ? p.distanceMeters <= ${INSIDE_RADIUS_METERS} : false;
-        const isAvailable = !!p.isAvailable;
-        const fillColor = isAvailable ? (inside ? '${COLORS.availableIn.fill}' : '${COLORS.availableOut.fill}') : (inside ? '${COLORS.notIn.fill}' : '${COLORS.notOut.fill}');
-        const strokeColor = isAvailable ? (inside ? '${COLORS.availableIn.stroke}' : '${COLORS.availableOut.stroke}') : (inside ? '${COLORS.notIn.stroke}' : '${COLORS.notOut.stroke}');
-        L.circleMarker([p.latitude, p.longitude], {
-          radius: inside ? 5 : 4,
-          color: strokeColor,
-          weight: 2,
-          fillColor: fillColor,
-          fillOpacity: inside ? 0.9 : 0.75
-        }).addTo(map);
-      });
-    </script>
-  </body>
-</html>`;
-  }, [region, nearbyUsers]);
 
   const classified = useMemo(() => {
     const list = Array.isArray(nearbyUsers) ? nearbyUsers : [];
@@ -184,7 +115,6 @@ const LocationMapScreen = ({ navigation }) => {
       setCoords({ latitude, longitude });
       setLabel(nextLabel);
       setMapReady(false);
-      setUseWebMap(false);
       saveLastKnownLocation({ label: nextLabel, latitude, longitude, updatedAt: Date.now() }).catch(() => {});
       setTimeout(() => {
         if (mapRef.current) {
@@ -227,17 +157,6 @@ const LocationMapScreen = ({ navigation }) => {
     })();
   }, [refreshLocation]);
 
-  useEffect(() => {
-    if (!region) return;
-    if (useWebMap) return;
-    if (mapReady) return;
-    const t = setTimeout(() => {
-      if (!mapReady) {
-        setUseWebMap(true);
-      }
-    }, 2500);
-    return () => clearTimeout(t);
-  }, [region, mapReady, useWebMap]);
 
   useEffect(() => {
     let cancelled = false;
@@ -307,15 +226,7 @@ const LocationMapScreen = ({ navigation }) => {
 
       <View style={styles.body}>
         <View style={styles.mapWrap}>
-          {useWebMap ? (
-            <WebView
-              originWhitelist={['*']}
-              source={{ html: leafletHtml }}
-              style={styles.map}
-              onLoadEnd={() => setMapReady(true)}
-            />
-          ) : (
-            <MapView
+          <MapView
               ref={mapRef}
               style={styles.map}
               provider={PROVIDER_GOOGLE}
@@ -331,7 +242,12 @@ const LocationMapScreen = ({ navigation }) => {
             >
               {region ? (
                 <>
-                  <Marker coordinate={{ latitude: region.latitude, longitude: region.longitude }} />
+                  <Marker
+                    coordinate={{ latitude: region.latitude, longitude: region.longitude }}
+                    anchor={{ x: 0.5, y: 0.5 }}
+                  >
+                    <View style={styles.youMarker} />
+                  </Marker>
                   <Circle
                     center={{ latitude: region.latitude, longitude: region.longitude }}
                     radius={INSIDE_RADIUS_METERS}
@@ -357,7 +273,6 @@ const LocationMapScreen = ({ navigation }) => {
                 </>
               ) : null}
             </MapView>
-          )}
 
           {(!mapReady || loading) && (
             <View style={styles.loadingOverlay} pointerEvents="none">
@@ -381,10 +296,6 @@ const LocationMapScreen = ({ navigation }) => {
                 <View style={[styles.chip, { borderRadius: scale(999), paddingVertical: vscale(6), paddingHorizontal: spacing(10), marginLeft: spacing(10) }]}>
                   <Icon name="account-multiple-outline" size={scale(16)} color="#6B7280" />
                   <Text style={[styles.chipText, { fontSize: ms(12), marginLeft: spacing(6) }]}>{nearbyUsers.length} in {FETCH_RADIUS_METERS / 1000}km</Text>
-                </View>
-                <View style={[styles.chip, { borderRadius: scale(999), paddingVertical: vscale(6), paddingHorizontal: spacing(10), marginLeft: spacing(10) }]}>
-                  <Icon name={useWebMap ? "map-outline" : "google-maps"} size={scale(16)} color="#6B7280" />
-                  <Text style={[styles.chipText, { fontSize: ms(12), marginLeft: spacing(6) }]}>{useWebMap ? 'OSM' : 'Google'}</Text>
                 </View>
               </View>
               <View style={[styles.countRow, { marginTop: vscale(8) }]}>
@@ -540,6 +451,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#3B82F6',
     borderWidth: 2,
     borderColor: '#2563EB',
+  },
+  youMarker: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#DC5C69',
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
   },
   loadingBox: {
     flex: 1,

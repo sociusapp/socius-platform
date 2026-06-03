@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../../components/common/Header';
@@ -27,69 +27,80 @@ const ReportConcernScreen = ({ navigation }) => {
     <SafeAreaView style={styles.container}>
       <Header title="Report a Concern" onBackPress={() => navigation.goBack()} />
 
-      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingHorizontal: spacing(16), paddingTop: vscale(12), paddingBottom: vscale(24) }]} showsVerticalScrollIndicator={false}>
-        <View style={{ width: contentWidth, alignSelf: 'center' }}>
-          <Text style={[styles.subtitleText, { fontSize: ms(13), marginBottom: vscale(12) }]}>
-            Share any concerns about this interaction so we can improve safety and fairness.
-          </Text>
-
-          <View style={[styles.listContainer, { marginBottom: vscale(12), gap: vscale(10) }]}>
-            {reasons.map((item, idx) => {
-              const selected = selectedIndex === idx;
-              return (
-                <TouchableOpacity
-                  key={idx}
-                  style={[styles.reasonRow, selected && styles.reasonRowSelected, { borderRadius: scale(14), borderWidth: scale(1), paddingHorizontal: spacing(12), paddingVertical: vscale(12), shadowOffset: { width: 0, height: vscale(2) }, shadowRadius: scale(8), elevation: scale(2) }]}
-                  onPress={() => setSelectedIndex(idx)}
-                  activeOpacity={0.8}
-                >
-                  <View style={[styles.reasonIconCircle, { width: scale(34), height: scale(34), borderRadius: scale(17), marginRight: spacing(12) }]}>
-                    <Icon name={item.icon} size={scale(22)} color="#5A6F7D" />
-                  </View>
-                  <Text style={[styles.reasonLabel, selected && styles.reasonLabelSelected, { fontSize: ms(14) }]}>
-                    {item.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <View style={[styles.inputCard, { borderRadius: scale(14), borderWidth: scale(1), paddingHorizontal: spacing(12), paddingVertical: vscale(10), marginBottom: vscale(12), shadowOffset: { width: 0, height: vscale(2) }, shadowRadius: scale(8), elevation: scale(2) }]}>
-            <TextInput
-              style={[styles.input, { fontSize: ms(14), minHeight: vscale(44) }]}
-              placeholder="Add details (optional)"
-              placeholderTextColor="#999999"
-              value={details}
-              onChangeText={setDetails}
-              multiline
-            />
-            <Text style={[styles.inputHint, { fontSize: ms(12), marginTop: vscale(6) }]}>
-              Do not include sensitive personal information.
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
+      >
+        <ScrollView
+          contentContainerStyle={[styles.scrollContent, { paddingHorizontal: spacing(16), paddingTop: vscale(12), paddingBottom: vscale(100) }]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+        >
+          <View style={{ width: contentWidth, alignSelf: 'center' }}>
+            <Text style={[styles.subtitleText, { fontSize: ms(13), marginBottom: vscale(12) }]}>
+              Share any concerns about this interaction so we can improve safety and fairness.
             </Text>
-          </View>
 
-          <View style={[styles.infoCard, { borderRadius: scale(14), borderWidth: scale(1), paddingHorizontal: spacing(12), paddingVertical: vscale(10), marginBottom: vscale(16) }]}>
-            <View style={[styles.infoRow, { gap: spacing(8) }]}>
-              <Icon name="information" size={scale(20)} color="#666666" />
-              <Text style={[styles.infoText, { fontSize: ms(12), lineHeight: ms(18) }]}>
-                Reports are reviewed after incidents are closed. They are not monitored in real time.
+            <View style={[styles.listContainer, { marginBottom: vscale(12), gap: vscale(10) }]}>
+              {reasons.map((item, idx) => {
+                const selected = selectedIndex === idx;
+                return (
+                  <TouchableOpacity
+                    key={idx}
+                    style={[styles.reasonRow, selected && styles.reasonRowSelected, { borderRadius: scale(14), borderWidth: scale(1), paddingHorizontal: spacing(12), paddingVertical: vscale(12), shadowOffset: { width: 0, height: vscale(2) }, shadowRadius: scale(8), elevation: scale(2) }]}
+                    onPress={() => setSelectedIndex(idx)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.reasonIconCircle, { width: scale(34), height: scale(34), borderRadius: scale(17), marginRight: spacing(12) }]}>
+                      <Icon name={item.icon} size={scale(22)} color="#5A6F7D" />
+                    </View>
+                    <Text style={[styles.reasonLabel, selected && styles.reasonLabelSelected, { fontSize: ms(14) }]}>
+                      {item.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={[styles.inputCard, { borderRadius: scale(14), borderWidth: scale(1), paddingHorizontal: spacing(12), paddingVertical: vscale(10), marginBottom: vscale(12), shadowOffset: { width: 0, height: vscale(2) }, shadowRadius: scale(8), elevation: scale(2) }]}>
+              <TextInput
+                style={[styles.input, { fontSize: ms(14), minHeight: vscale(44) }]}
+                placeholder="Add details (optional)"
+                placeholderTextColor="#999999"
+                value={details}
+                onChangeText={setDetails}
+                multiline
+              />
+              <Text style={[styles.inputHint, { fontSize: ms(12), marginTop: vscale(6) }]}>
+                Do not include sensitive personal information.
               </Text>
             </View>
+
+            <View style={[styles.infoCard, { borderRadius: scale(14), borderWidth: scale(1), paddingHorizontal: spacing(12), paddingVertical: vscale(10), marginBottom: vscale(16) }]}>
+              <View style={[styles.infoRow, { gap: spacing(8) }]}>
+                <Icon name="information" size={scale(20)} color="#666666" />
+                <Text style={[styles.infoText, { fontSize: ms(12), lineHeight: ms(18) }]}>
+                  Reports are reviewed after incidents are closed. They are not monitored in real time.
+                </Text>
+              </View>
+            </View>
+
+            <Button
+              title="Submit Report"
+              onPress={handleSubmit}
+              variant="primary"
+              fullWidth
+              style={[styles.submitButton, { borderRadius: scale(26), paddingVertical: vscale(12), marginBottom: vscale(10) }]}
+            />
+
+            <Text style={[styles.footerNote, { fontSize: ms(12) }]}>
+              Reports help improve safety and accountability.
+            </Text>
           </View>
-
-          <Button
-            title="Submit Report"
-            onPress={handleSubmit}
-            variant="primary"
-            fullWidth
-            style={[styles.submitButton, { borderRadius: scale(26), paddingVertical: vscale(12), marginBottom: vscale(10) }]}
-          />
-
-          <Text style={[styles.footerNote, { fontSize: ms(12) }]}>
-            Reports help improve safety and accountability.
-          </Text>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
